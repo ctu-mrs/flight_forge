@@ -1,0 +1,295 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "DronePawn.h"
+#include "Server/UedsGameModeServer.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameUserSettings.h"
+#include "Kismet/GameplayStatics.h"
+#include "Serialization/ArchiveReplaceObjectRef.h"
+#include "uedsGameModeBase.generated.h"
+
+/**
+ * 
+ */
+UCLASS()
+class UEDS_API AuedsGameModeBase : public AGameModeBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Blueprintable)
+	int ForestDensityLevel = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Blueprintable)
+	int ForestHillyLevel = 3;
+
+private:
+	std::unique_ptr<UedsGameModeServer> Server;
+
+	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND;
+
+#if PLATFORM_WINDOWS
+	std::unique_ptr<FWindowsCriticalSection> FPSCriticalSection = std::make_unique<FWindowsCriticalSection>();
+#else
+	std::unique_ptr<FPThreadsCriticalSection> FPSCriticalSection = std::make_unique<FPThreadsCriticalSection>();
+#endif
+	double FPS = 0; 
+
+#if PLATFORM_WINDOWS
+	std::unique_ptr<FWindowsCriticalSection> DronePawnsCriticalSection = std::make_unique<FWindowsCriticalSection>();
+#else
+	std::unique_ptr<FPThreadsCriticalSection> DronePawnsCriticalSection = std::make_unique<FPThreadsCriticalSection>();
+#endif
+	TMap<int, std::pair<ADronePawn*, APlayerController*>> DronePawns = TMap<int, std::pair<ADronePawn*, APlayerController*>>();
+
+	AuedsGameModeBase(const FObjectInitializer& ObjectInitializer) : AGameModeBase(ObjectInitializer)
+	{
+		PrimaryActorTick.bCanEverTick = true;
+		
+		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>>();
+		
+		Server = std::make_unique<UedsGameModeServer>(*this, 8000);
+	}
+
+	// Must be used in order to tell UE that there will be more players - drones
+	// TODO maybe cleaner solution?
+	virtual void PostLogin(APlayerController* NewPlayer) override
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::PostLogin"));
+	}
+
+	virtual void BeginPlay() override
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Starting game mode server"));
+		Server->Run();
+		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
+		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
+		// {
+		// 	
+		// }else
+		// {
+		// SwitchWorldLevel(Serializable::GameMode::WorldLevelEnum::FOREST);
+		// }
+
+		// SpawnDrone();
+		Super::BeginPlay();
+	}
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
+	{
+		Server->Stop();
+	}
+
+	virtual void Tick(float DeltaSeconds) override
+	{
+		std::shared_ptr<FInstruction<AuedsGameModeBase>> Instruction;
+		while(InstructionQueue->Dequeue(Instruction))
+		{
+			//UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::Tick got Instruction"));
+			Instruction->Function(*this);
+			Instruction->Finished = true;
+		}
+
+		FPSCriticalSection->Lock();
+		FPS = 1.0f / DeltaSeconds;
+		FPSCriticalSection->Unlock();
+	
+		Super::Tick(DeltaSeconds);
+	}
+
+	int NextDronePort = 4000;
+	
+	int GetAvailableDronePort()
+	{
+		return NextDronePort++;
+	}
+
+public:
+	void GetDronePorts(std::vector<int>& Ports)
+	{
+		TArray<int> Keys;
+		
+		DronePawnsCriticalSection->Lock();
+		const auto PawnsCount = DronePawns.Num();
+		DronePawns.GetKeys(Keys);
+		DronePawnsCriticalSection->Unlock();
+
+		Ports.resize(PawnsCount);
+		std::copy_n(Keys.GetData(), PawnsCount, Ports.begin());
+	}
+	
+	int SpawnDrone()
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone"));
+		
+		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
+		ADronePawn* PlayerPawn = nullptr;
+		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+
+		// First Find spawn point by raycast DOWNWARDS 
+		if(UWorld* World = GetWorld())
+		{
+			FHitResult HitResult;
+			FVector Start = PlayerStart->GetTransform().GetLocation();
+			FVector End = Start + FVector::DownVector * 100000;
+			FVector SpawnOffset = 100*FVector::UpVector;
+			if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast DOWN"));
+				DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
+				PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+			}
+			else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+			{
+				
+				UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast UP"));
+				DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
+				PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+			}
+		}
+		
+		if(PlayerPawn == nullptr)
+		{
+			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
+			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at PlayerStart"));
+		}
+
+		const auto DronePort = GetAvailableDronePort();
+		PlayerPawn->droneServer->SetPort(DronePort);
+		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		PlayerPawn->StartServer();
+
+		DronePawnsCriticalSection->Lock();
+		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
+		DronePawnsCriticalSection->Unlock();
+
+		return PlayerPawn->droneServer->GetPort();
+	}
+
+	bool RemoveDrone(int Port)
+	{
+		//UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::RemoveDrone"));
+		
+		DronePawnsCriticalSection->Lock();
+		auto DronePair = DronePawns.Find(Port);
+		if(DronePair)
+		{
+			DronePair->second->Destroy();
+			DronePair->first->Destroy();
+		}
+		const bool Success = DronePawns.Remove(Port) > 0;
+		DronePawnsCriticalSection->Unlock();
+
+		return Success;
+	}
+
+	CameraCaptureModeEnum GetCaptureMode()
+	{
+		return CameraCaptureMode;
+	}
+
+	bool SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode)
+	{
+		CameraCaptureMode = CaptureMode;
+
+		for(auto& a : DronePawns)
+		{
+			a.Value.first->SetCameraCaptureMode(CaptureMode);
+		}
+
+		return true;
+	}
+
+	float GetFPS()
+	{
+		float _FPS = 0;
+
+		FPSCriticalSection->Lock();
+		_FPS = FPS;
+		FPSCriticalSection->Unlock();
+
+		return _FPS;
+	}
+
+	void GetAllDronesLocation(std::vector<FVector>& Positions)
+	{
+		TArray<int> DronePorts;
+		
+		DronePawnsCriticalSection->Lock();
+		DronePawns.GetKeys(DronePorts);
+		for (const auto DronePort : DronePorts)
+		{
+			auto DronePawn = DronePawns.Find(DronePort)->first;
+			Positions.push_back(DronePawn->GetActorLocation());
+		}
+		DronePawnsCriticalSection->Unlock();
+	}
+
+	bool SetGraphicsSettings(const int32 Level)
+	{
+		bool bResult = true;
+		
+		UGameUserSettings *GameUserSettings = GEngine->GetGameUserSettings();
+		
+		if (GameUserSettings != nullptr)
+		{
+			GameUserSettings->SetOverallScalabilityLevel(Level);
+		
+			GameUserSettings->ApplySettings(false);
+		}
+		else
+		{
+			bResult = false;
+		}
+
+		return bResult;
+	
+	}
+
+	//UFUNCTION(BlueprintCallable)
+	bool SwitchWorldLevel(const Serializable::GameMode::WorldLevelEnum WorldLevelEnum)
+	{
+		FName NameOfWorld;
+
+		switch (WorldLevelEnum)
+		{
+		case Serializable::GameMode::WorldLevelEnum::VALLEY:
+			NameOfWorld = "Valley";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::FOREST:
+			NameOfWorld = "Forest";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::INFINITE_FOREST:
+			NameOfWorld = "InfinityForest";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::WAREHOUSE:
+			NameOfWorld = "Warehouse";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::CAVE:
+			NameOfWorld = "CaveTunnel";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::ERDING_AIRBASE:
+			NameOfWorld = "ErdingAirBase";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
+			NameOfWorld = "temesvar";
+			break;
+		default:
+			NameOfWorld = "InfiniteForest";
+			break;
+		}
+		
+		UGameplayStatics::OpenLevel(this, NameOfWorld);
+
+		return true; 
+	}
+	
+	
+	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>> InstructionQueue;
+	
+	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)
+	TSubclassOf<ADronePawn> DronePawnClass;
+};
