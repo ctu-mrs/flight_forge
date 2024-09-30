@@ -1,0 +1,27 @@
+﻿using UnrealBuildTool;
+
+public class CaveGenerator : ModuleRules
+{
+    public CaveGenerator(ReadOnlyTargetRules Target) : base(Target)
+    {
+        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+
+        PublicDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "Core",
+            }
+        );
+
+        PrivateDependencyModuleNames.AddRange(
+            new string[]
+            {
+                "CoreUObject",
+                "Engine",
+                "Slate",
+                "SlateCore", 
+                "ProceduralMeshComponent"
+            }
+        );
+    }
+}

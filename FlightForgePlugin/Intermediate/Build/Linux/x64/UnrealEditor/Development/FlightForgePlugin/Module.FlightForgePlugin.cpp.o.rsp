@@ -1,0 +1,67 @@
+-c
+-pipe
+-msse4.2
+-Wall
+-Werror
+-Wdelete-non-virtual-dtor
+-Wenum-conversion
+-Wbitfield-enum-conversion
+-Wno-enum-enum-conversion
+-Wno-enum-float-conversion
+-Wno-ambiguous-reversed-operator
+-Wno-deprecated-anon-enum-enum-conversion
+-Wno-deprecated-volatile
+-Wno-unused-but-set-variable
+-Wno-unused-but-set-parameter
+-Wno-ordered-compare-function-pointers
+-Wno-bitwise-instead-of-logical
+-Wno-gnu-string-literal-operator-template
+-Wno-inconsistent-missing-override
+-Wno-invalid-offsetof
+-Wno-switch
+-Wno-tautological-compare
+-Wno-unknown-pragmas
+-Wno-unused-function
+-Wno-unused-lambda-capture
+-Wno-unused-local-typedef
+-Wno-unused-private-field
+-Wno-unused-variable
+-Wno-undefined-var-template
+-Wshadow
+-Wundef
+-Wno-float-conversion
+-Wno-implicit-float-conversion
+-Wno-implicit-int-conversion
+-Wno-c++11-narrowing
+-fdiagnostics-absolute-paths
+-fdiagnostics-color
+-Wno-undefined-bool-conversion
+-O3
+-fexceptions
+-DPLATFORM_EXCEPTIONS_DISABLED=0
+-gdwarf-4
+-ggnu-pubnames
+-fvisibility-ms-compat
+-fvisibility-inlines-hidden
+--driver-mode=g++
+-nostdinc++
+-isystem"ThirdParty/Unix/LibCxx/include"
+-isystem"ThirdParty/Unix/LibCxx/include/c++/v1"
+-fbinutils-version=2.36
+
+-fno-math-errno
+-fno-rtti
+-mssse3
+-fPIC
+-ftls-model=local-dynamic
+-target x86_64-unknown-linux-gnu
+--sysroot="../Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v22_clang-16.0.6-centos7/x86_64-unknown-linux-gnu"
+@"/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Plugins/FlightForgePlugin/Intermediate/Build/Linux/x64/UnrealEditor/Development/FlightForgePlugin/FlightForgePlugin.Shared.rsp"
+-include-pch "/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Intermediate/Build/Linux/x64/MyProjectEditor/Development/Engine/SharedPCH.Engine.Cpp20.h.gch"
+-include "/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Plugins/FlightForgePlugin/Intermediate/Build/Linux/x64/UnrealEditor/Development/FlightForgePlugin/Definitions.FlightForgePlugin.h"
+-x c++
+-std=c++20
+-fpch-validate-input-files-content
+"/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Plugins/FlightForgePlugin/Intermediate/Build/Linux/x64/UnrealEditor/Development/FlightForgePlugin/Module.FlightForgePlugin.cpp"
+-MD -MF"/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Plugins/FlightForgePlugin/Intermediate/Build/Linux/x64/UnrealEditor/Development/FlightForgePlugin/Module.FlightForgePlugin.cpp.d"
+-o "/home/david/git/unreal_engine_simulator_blueprint/plug_test/MyProject/Plugins/FlightForgePlugin/Intermediate/Build/Linux/x64/UnrealEditor/Development/FlightForgePlugin/Module.FlightForgePlugin.cpp.o"
