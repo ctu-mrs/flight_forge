@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <functional>
 
 template <typename T>
 struct FInstruction

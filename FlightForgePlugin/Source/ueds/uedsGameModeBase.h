@@ -335,7 +335,7 @@ public:
 			NameOfWorld = "ErdingAirBase";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
-			NameOfWorld = "temesvar";
+			NameOfWorld = "Temesvar_annotated";
 			break;
 		default:
 			NameOfWorld = "InfiniteForest";
