@@ -72,8 +72,8 @@ enum MessageType : unsigned short
   get_lidar_seg                   = 19,
   set_location_and_rotation_async = 20,
   get_crash_state                 = 21,
-  get_lidar_int                   = 22,
-  get_rangefinder_data            = 23,
+  get_rangefinder_data            = 22,
+  get_lidar_int                   = 23,
 };
 
 struct RangefinderConfig

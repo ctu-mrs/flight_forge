@@ -923,6 +923,8 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
 
   UE_LOG(LogTemp, Warning, TEXT("ADronePawn::SetRgbCameraConfig"));
 
+  rgb_camera_config_ = Config;
+  
   RgbCameraBufferCriticalSection->Lock();
   RgbSegCameraBufferCriticalSection->Lock();
 
@@ -975,6 +977,8 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
 bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
 
   UE_LOG(LogTemp, Warning, TEXT("ADronePawn::SetStereoCameraConfig"));
+
+  stereo_camera_config_ = Config;
 
   StereoCameraBufferCriticalSection->Lock();
 
