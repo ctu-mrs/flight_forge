@@ -38,6 +38,8 @@ public class FlightForgePlugin : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"ProceduralMeshComponent",
+				"MessageSerialization"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
