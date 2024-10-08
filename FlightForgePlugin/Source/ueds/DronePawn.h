@@ -238,6 +238,8 @@ private:
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
+  void SetStaticMesh(FString model_name);
+
 #if PLATFORM_WINDOWS
   std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;

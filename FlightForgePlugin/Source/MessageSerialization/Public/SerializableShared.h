@@ -704,6 +704,7 @@ namespace SpawnDroneAtLocation
     double x;
     double y;
     double z;
+    int idMesh;
   };
 
   struct Response : public Common::NetworkResponse

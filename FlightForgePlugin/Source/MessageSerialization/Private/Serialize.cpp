@@ -332,7 +332,7 @@ void Serialization::SerializeRequest(Serializable::GameMode::SpawnDrone::Request
 void Serialization::SerializeRequest(Serializable::GameMode::SpawnDroneAtLocation::Request& Request, std::stringstream& InputStream) {
   InputStream.seekg(0);
   cereal::BinaryInputArchive InputArchive(InputStream);
-  InputArchive(Request.type, Request.x, Request.y, Request.z);
+  InputArchive(Request.type, Request.x, Request.y, Request.z, Request.idMesh);
 }
 
 void Serialization::SerializeRequest(Serializable::GameMode::RemoveDrone::Request& Request, std::stringstream& InputStream) {

@@ -179,11 +179,10 @@ public:
 
 		return PlayerPawn->droneServer->GetPort();
 	}
-
-	UFUNCTION(BlueprintCallable)
-	int SpawnDroneAtLocation(FVector Location)
+	
+	int SpawnDroneAtLocation(FVector Location, int IdMesh)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf"), Location.X, Location.Y, Location.Z);
+		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
 		
 		ADronePawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
