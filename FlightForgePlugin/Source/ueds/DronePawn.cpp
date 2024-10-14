@@ -787,9 +787,9 @@ void ADronePawn::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const 
     for (int32 Index = 0; Index < ImageWidth * ImageHeight; Index++)
     {
         // Copy and swap channels
-        DstDataPtr[Index * 3 + 0] = SrcDataPtr[Index].R; // Red channel
+        DstDataPtr[Index * 3 + 0] = SrcDataPtr[Index].B; // Red channel
         DstDataPtr[Index * 3 + 1] = SrcDataPtr[Index].G; // Green channel
-        DstDataPtr[Index * 3 + 2] = SrcDataPtr[Index].B; // Blue channel
+        DstDataPtr[Index * 3 + 2] = SrcDataPtr[Index].R; // Blue channel
     }
 }
 
