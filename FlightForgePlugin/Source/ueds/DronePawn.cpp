@@ -18,6 +18,9 @@
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include <cereal/details/helpers.hpp>
 
+#include "NaniteSceneProxy.h"
+#include "Kismet/BlueprintTypeConversions.h"
+
 //}
 
 /* ADronePawn() //{ */
@@ -43,6 +46,18 @@ ADronePawn::ADronePawn() {
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
+
+  PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
+  PropellerFrontLeft->SetupAttachment(RootMeshComponent);
+
+  PropellerFrontRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontRight"));
+  PropellerFrontRight->SetupAttachment(RootMeshComponent);
+
+  PropellerRearLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearLeft"));
+  PropellerRearLeft->SetupAttachment(RootMeshComponent);
+
+  PropellerRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearRight"));
+  PropellerRearRight->SetupAttachment(RootMeshComponent);
 
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
@@ -676,6 +691,51 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
   }
 }
 
+void ADronePawn::SetStaticMesh(const int &frame_id) const
+{
+  FString mesh_path = "/FlightForgePlugin/Meshes/Drones/";
+  FString frame_name;
+  
+  switch (frame_id)
+  {
+    case X500 :
+      frame_name = "X500";
+      break;
+    case T650 :
+      frame_name = "T650";
+      break;
+    case Agile :
+      frame_name = "Agile";
+      break;
+    default:
+      frame_name = "X500";
+  }
+  mesh_path += frame_name + "/" + frame_name + "." + frame_name;
+  
+  if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path))
+  {
+      RootMeshComponent->SetStaticMesh(FrameMesh);
+  }  else
+  {
+    UE_LOG(LogTemp, Warning, TEXT("The Frame was not loaded!"));
+  }
+  
+}
+
+void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay)
+{
+  RootMeshComponent->SetSimulatePhysics(true);
+  GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ADronePawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
+}
+
+void ADronePawn::DisabledPhysics_StartRotatePropellers()
+{
+  UE_LOG(LogTemp, Warning, TEXT("Disabled physics after a 3 second delay"));
+
+  RootMeshComponent->SetSimulatePhysics(false);
+  this->propellers_rotate = true;
+}
+
 //}
 
 /* GetLeftCameraDataFromServerThread() //{ */
@@ -1041,6 +1101,7 @@ void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, b
 //}
 
 /* tick() //{ */
+
 
 void ADronePawn::Tick(float DeltaSeconds) {
 

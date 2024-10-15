@@ -26,6 +26,13 @@ class UTextureRenderTarget2D;
 
 #define DEFAULT_RANGEFINDER_BEAM_LENGTH 3000
 
+enum DroneFrame
+{
+  X500,
+  T650,
+  Agile
+};
+
 /* Enum for the camera capture type */
 enum CameraMode
 {
@@ -148,8 +155,20 @@ public:
   UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
   UMaterial* PostProcessMaterial = nullptr;
 
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* RootMeshComponent;
+
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
+  UStaticMeshComponent* PropellerRearLeft;
+
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
+  UStaticMeshComponent* PropellerRearRight;
+
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
+  UStaticMeshComponent* PropellerFrontLeft;
+
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
+  UStaticMeshComponent* PropellerFrontRight;
 
   // Sets default values for this character's properties
   ADronePawn();
@@ -227,6 +246,15 @@ public:
 
   bool uav_crashed_ = false;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  bool propellers_rotate = false;
+
+  FTimerHandle TimerHandle_Disabled_Physics;
+
+  void SetStaticMesh(const int &frame_id) const;
+
+  void Simulate_UE_Physics(const float &stop_simulation_delay);
+  
 private:
   void Tick(float DeltaSeconds) override;
 
@@ -238,7 +266,8 @@ private:
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
-  void SetStaticMesh(FString model_name);
+
+  void DisabledPhysics_StartRotatePropellers();
 
 #if PLATFORM_WINDOWS
   std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
