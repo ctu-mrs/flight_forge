@@ -33,6 +33,24 @@ enum DroneFrame
   Agile
 };
 
+class PropellersTransform
+{
+public:
+  PropellersTransform(const FTransform& RearLeft, const FTransform& RearRight, const FTransform& FrontLeft,
+    const FTransform& FrontRight)
+    : RearLeft(RearLeft),
+      RearRight(RearRight),
+      FrontLeft(FrontLeft),
+      FrontRight(FrontRight)
+  {
+  }
+
+  FTransform RearLeft;
+  FTransform RearRight;
+  FTransform FrontLeft;
+  FTransform FrontRight;
+};
+
 /* Enum for the camera capture type */
 enum CameraMode
 {
@@ -251,7 +269,7 @@ public:
 
   FTimerHandle TimerHandle_Disabled_Physics;
 
-  void SetStaticMesh(const int &frame_id) const;
+  void SetStaticMesh(const int &frame_id);
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
   
@@ -266,7 +284,8 @@ private:
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
-
+  void SetPropellersTransform(const int &frame_id);
+  
   void DisabledPhysics_StartRotatePropellers();
 
 #if PLATFORM_WINDOWS
@@ -308,4 +327,6 @@ private:
   bool RgbCameraRendered                  = false;
   bool RgbSegCameraRendered               = false;
   bool StereoCameraRendered               = false;
+
+  TArray<PropellersTransform> PropellersTransforms;
 };

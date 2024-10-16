@@ -59,6 +59,27 @@ ADronePawn::ADronePawn() {
   PropellerRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearRight"));
   PropellerRearRight->SetupAttachment(RootMeshComponent);
 
+  // X500
+  PropellersTransforms.Add(PropellersTransform(
+  FTransform(FRotator(0, 0, 0), FVector(-18.8, -18.8, 6.5), FVector(-0.85, 0.85, -0.8)),
+  FTransform(FRotator(0, 0, 0), FVector(-18.8, 18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
+  FTransform(FRotator(0, 0, 0), FVector(18.8, -18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
+  FTransform(FRotator(0, 0, 0), FVector(18.8, 18.8, 6.5), FVector(-0.85, 0.85, -0.8))));
+
+  // T650
+  PropellersTransforms.Add(PropellersTransform(
+    FTransform(FRotator(0, 0, 0), FVector(-26.3, -26.3, 4.6), FVector(-1, 1, -1)),
+    FTransform(FRotator(0, 0, 0), FVector(-26.3, 26.3, 4.6), FVector(-1, -1, -1)),
+    FTransform(FRotator(0, 0, 0), FVector(26.3, -26.3, 4.6), FVector(-1, -1, -1)),
+    FTransform(FRotator(0, 0, 0), FVector(26.3, 26.3, 4.6), FVector(-1, 1, -1))));
+
+  // Agile
+  PropellersTransforms.Add(PropellersTransform(
+    FTransform(FRotator(0, 0, 0), FVector(-9.4, -11.8, 2), FVector(-0.4, 0.4, -0.4)),
+    FTransform(FRotator(0, 0, 0), FVector(-9.4, 11.8, 2), FVector(-0.4, -0.4, -0.4)),
+    FTransform(FRotator(0, 0, 0), FVector(9.4, -11.8, 2), FVector(-0.4, -0.4, -0.4)),
+    FTransform(FRotator(0, 0, 0), FVector(9.4, 11.8, 2), FVector(-0.4, 0.4, -0.4))));
+
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
 
@@ -691,7 +712,17 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
   }
 }
 
-void ADronePawn::SetStaticMesh(const int &frame_id) const
+void ADronePawn::SetPropellersTransform(const int& frame_id)
+{
+  const PropellersTransform *Transforms = PropellersTransforms.GetData();
+
+  PropellerFrontLeft->SetRelativeTransform(Transforms[frame_id].FrontLeft);
+  PropellerFrontRight->SetRelativeTransform(Transforms[frame_id].FrontRight);
+  PropellerRearLeft->SetRelativeTransform(Transforms[frame_id].RearLeft);
+  PropellerRearRight->SetRelativeTransform(Transforms[frame_id].RearRight);
+}
+
+void ADronePawn::SetStaticMesh(const int &frame_id)
 {
   FString mesh_path = "/FlightForgePlugin/Meshes/Drones/";
   FString frame_name;
@@ -720,6 +751,7 @@ void ADronePawn::SetStaticMesh(const int &frame_id) const
     UE_LOG(LogTemp, Warning, TEXT("The Frame was not loaded!"));
   }
   
+  SetPropellersTransform(frame_id);
 }
 
 void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay)
