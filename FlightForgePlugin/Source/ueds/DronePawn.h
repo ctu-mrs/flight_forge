@@ -30,21 +30,26 @@ enum DroneFrame
 {
   X500,
   T650,
-  Agile
+  Agile,
+  Robofly
 };
 
-class PropellersTransform
+class FramePropellersTransform
 {
 public:
-  PropellersTransform(const FTransform& RearLeft, const FTransform& RearRight, const FTransform& FrontLeft,
+  FramePropellersTransform(const FString& FrameName, const FString& PropellerType, const FTransform& RearLeft, const FTransform& RearRight, const FTransform& FrontLeft,
     const FTransform& FrontRight)
-    : RearLeft(RearLeft),
+    : FrameName(FrameName),
+      PropellerType(PropellerType),
+      RearLeft(RearLeft),
       RearRight(RearRight),
       FrontLeft(FrontLeft),
       FrontRight(FrontRight)
   {
   }
 
+  FString FrameName;
+  FString PropellerType;
   FTransform RearLeft;
   FTransform RearRight;
   FTransform FrontLeft;
@@ -328,5 +333,5 @@ private:
   bool RgbSegCameraRendered               = false;
   bool StereoCameraRendered               = false;
 
-  TArray<PropellersTransform> PropellersTransforms;
+  TArray<FramePropellersTransform> FramePropellersTransforms;
 };

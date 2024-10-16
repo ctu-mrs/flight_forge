@@ -60,25 +60,40 @@ ADronePawn::ADronePawn() {
   PropellerRearRight->SetupAttachment(RootMeshComponent);
 
   // X500
-  PropellersTransforms.Add(PropellersTransform(
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("X500")),
+  FString(TEXT("X500")),
   FTransform(FRotator(0, 0, 0), FVector(-18.8, -18.8, 6.5), FVector(-0.85, 0.85, -0.8)),
   FTransform(FRotator(0, 0, 0), FVector(-18.8, 18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
   FTransform(FRotator(0, 0, 0), FVector(18.8, -18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
   FTransform(FRotator(0, 0, 0), FVector(18.8, 18.8, 6.5), FVector(-0.85, 0.85, -0.8))));
 
   // T650
-  PropellersTransforms.Add(PropellersTransform(
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("T650")),
+  FString(TEXT("X500")),
     FTransform(FRotator(0, 0, 0), FVector(-26.3, -26.3, 4.6), FVector(-1, 1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(-26.3, 26.3, 4.6), FVector(-1, -1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(26.3, -26.3, 4.6), FVector(-1, -1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(26.3, 26.3, 4.6), FVector(-1, 1, -1))));
 
   // Agile
-  PropellersTransforms.Add(PropellersTransform(
-    FTransform(FRotator(0, 0, 0), FVector(-9.4, -11.8, 2), FVector(-0.4, 0.4, -0.4)),
-    FTransform(FRotator(0, 0, 0), FVector(-9.4, 11.8, 2), FVector(-0.4, -0.4, -0.4)),
-    FTransform(FRotator(0, 0, 0), FVector(9.4, -11.8, 2), FVector(-0.4, -0.4, -0.4)),
-    FTransform(FRotator(0, 0, 0), FVector(9.4, 11.8, 2), FVector(-0.4, 0.4, -0.4))));
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("Agile")),
+  FString(TEXT("Robofly")),
+    FTransform(FRotator(0, 0, 0), FVector(-9.45, -11.7, 2.4), FVector(1, -1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(-9.45, 11.7, 2.4), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.45, -11.7, 2.4), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.45, 11.7, 2.4), FVector(1, -1, 1))));
+
+  // RoboFly
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("Robofly")),
+  FString(TEXT("Robofly")),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, -9.55,1.7), FVector(1, -1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55,1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
 
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
@@ -714,7 +729,20 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
 
 void ADronePawn::SetPropellersTransform(const int& frame_id)
 {
-  const PropellersTransform *Transforms = PropellersTransforms.GetData();
+  const FramePropellersTransform *Transforms = FramePropellersTransforms.GetData();
+
+  FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType;
+  
+  if (UStaticMesh* PropellerMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path))
+  {
+    PropellerFrontLeft->SetStaticMesh(PropellerMesh);
+    PropellerFrontRight->SetStaticMesh(PropellerMesh);
+    PropellerRearLeft->SetStaticMesh(PropellerMesh);
+    PropellerRearRight->SetStaticMesh(PropellerMesh);
+  }  else
+  {
+    UE_LOG(LogTemp, Warning, TEXT("The Propeller was not loaded!"));
+  }
 
   PropellerFrontLeft->SetRelativeTransform(Transforms[frame_id].FrontLeft);
   PropellerFrontRight->SetRelativeTransform(Transforms[frame_id].FrontRight);
@@ -725,22 +753,19 @@ void ADronePawn::SetPropellersTransform(const int& frame_id)
 void ADronePawn::SetStaticMesh(const int &frame_id)
 {
   FString mesh_path = "/FlightForgePlugin/Meshes/Drones/";
-  FString frame_name;
   
-  switch (frame_id)
+  int predefined_frame_size = FramePropellersTransforms.Num();
+  
+  FString frame_name;
+
+  if ( frame_id < predefined_frame_size )
   {
-    case X500 :
-      frame_name = "X500";
-      break;
-    case T650 :
-      frame_name = "T650";
-      break;
-    case Agile :
-      frame_name = "Agile";
-      break;
-    default:
-      frame_name = "X500";
+    frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
+  } else
+  {
+    frame_name = "X500";
   }
+  
   mesh_path += frame_name + "/" + frame_name + "." + frame_name;
   
   if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path))
@@ -756,7 +781,7 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
 
 void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay)
 {
-  RootMeshComponent->SetSimulatePhysics(true);
+  //RootMeshComponent->SetSimulatePhysics(true);
   GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ADronePawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
 }
 
@@ -879,9 +904,9 @@ void ADronePawn::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const 
     for (int32 Index = 0; Index < ImageWidth * ImageHeight; Index++)
     {
         // Copy and swap channels
-        DstDataPtr[Index * 3 + 0] = SrcDataPtr[Index].R; // Red channel
+        DstDataPtr[Index * 3 + 0] = SrcDataPtr[Index].B; // Red channel
         DstDataPtr[Index * 3 + 1] = SrcDataPtr[Index].G; // Green channel
-        DstDataPtr[Index * 3 + 2] = SrcDataPtr[Index].B; // Blue channel
+        DstDataPtr[Index * 3 + 2] = SrcDataPtr[Index].R; // Blue channel
     }
 }
 
