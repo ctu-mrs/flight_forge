@@ -61,8 +61,8 @@ ADronePawn::ADronePawn() {
 
   // X500
   FramePropellersTransforms.Add(FramePropellersTransform(
-  FString(TEXT("X500")),
-  FString(TEXT("X500")),
+  FString(TEXT("x500")),
+  FString(TEXT("x500")),
   FTransform(FRotator(0, 0, 0), FVector(-18.8, -18.8, 6.5), FVector(-0.85, 0.85, -0.8)),
   FTransform(FRotator(0, 0, 0), FVector(-18.8, 18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
   FTransform(FRotator(0, 0, 0), FVector(18.8, -18.8, 6.5), FVector(-0.85, -0.85, -0.8)),
@@ -70,17 +70,17 @@ ADronePawn::ADronePawn() {
 
   // T650
   FramePropellersTransforms.Add(FramePropellersTransform(
-  FString(TEXT("T650")),
-  FString(TEXT("X500")),
+  FString(TEXT("t650")),
+  FString(TEXT("x500")),
     FTransform(FRotator(0, 0, 0), FVector(-26.3, -26.3, 4.6), FVector(-1, 1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(-26.3, 26.3, 4.6), FVector(-1, -1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(26.3, -26.3, 4.6), FVector(-1, -1, -1)),
     FTransform(FRotator(0, 0, 0), FVector(26.3, 26.3, 4.6), FVector(-1, 1, -1))));
 
-  // Agile
+  // A300
   FramePropellersTransforms.Add(FramePropellersTransform(
-  FString(TEXT("Agile")),
-  FString(TEXT("Robofly")),
+  FString(TEXT("a300")),
+  FString(TEXT("robofly")),
     FTransform(FRotator(0, 0, 0), FVector(-9.45, -11.7, 2.4), FVector(1, -1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(-9.45, 11.7, 2.4), FVector(1, 1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(9.45, -11.7, 2.4), FVector(1, 1, 1)),
@@ -88,8 +88,8 @@ ADronePawn::ADronePawn() {
 
   // RoboFly
   FramePropellersTransforms.Add(FramePropellersTransform(
-  FString(TEXT("Robofly")),
-  FString(TEXT("Robofly")),
+  FString(TEXT("robofly")),
+  FString(TEXT("robofly")),
     FTransform(FRotator(0, 0, 0), FVector(-9.55, -9.55,1.7), FVector(1, -1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55,1.7), FVector(1, 1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
@@ -752,7 +752,7 @@ void ADronePawn::SetPropellersTransform(const int& frame_id)
 
 void ADronePawn::SetStaticMesh(const int &frame_id)
 {
-  FString mesh_path = "/FlightForgePlugin/Meshes/Drones/";
+  FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
   
   int predefined_frame_size = FramePropellersTransforms.Num();
   
@@ -763,7 +763,7 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
     frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
   } else
   {
-    frame_name = "X500";
+    frame_name = "x500";
   }
   
   mesh_path += frame_name + "/" + frame_name + "." + frame_name;
