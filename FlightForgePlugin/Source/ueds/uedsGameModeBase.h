@@ -189,27 +189,28 @@ public:
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
 		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS 
-		if(UWorld* World = GetWorld())
-		{
-			FHitResult HitResult;
-			FVector Start = Location;
-			FVector End = Start + FVector::DownVector * 100000;
-			FVector SpawnOffset = 100*FVector::UpVector;
-			if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast DOWN"));
-				//DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
-				PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-			}
-			else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-			{
-				
-				UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast UP"));
-				//DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
-				PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-			}
-		}
+		// First Find spawn point by raycast DOWNWARDS
+		
+		// if(UWorld* World = GetWorld())
+		// {
+		// 	FHitResult HitResult;
+		// 	FVector Start = Location;
+		// 	FVector End = Start + FVector::DownVector * 100000;
+		// 	FVector SpawnOffset = 300*FVector::UpVector;
+		// 	if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+		// 	{
+		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast DOWN"));
+		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
+		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+		// 	}
+		// 	else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+		// 	{
+		// 		
+		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast UP"));
+		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
+		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+		// 	}
+		// }
 		
 		if(PlayerPawn == nullptr)
 		{

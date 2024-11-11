@@ -309,12 +309,12 @@ bool DroneServer::GetRgbCameraData(const FTCPClient& Client, Serializable::Drone
 	}
 
 	Serializable::Drone::GetRgbCameraData::Response Response(true);
-	Response.image_data_ = std::vector<unsigned char>(CompressedBitmap.Num());
-
+	Response.image_ = std::vector<unsigned char>(CompressedBitmap.Num());
+	
 	// TODO
 	// std::copy(CompressedBitmap.begin(), CompressedBitmap.end(), std::back_inserter(Response->imageData));
 	for(int i = 0; i < CompressedBitmap.Num(); i++) {
-		Response.image_data_[i] = CompressedBitmap[i];
+		Response.image_[i] = CompressedBitmap[i];
 	}
 
 	std::stringstream OutputStream;
@@ -394,10 +394,10 @@ bool DroneServer::GetRgbSegCameraData(const FTCPClient& Client, Serializable::Dr
 	}
 
 	Serializable::Drone::GetRgbSegCameraData::Response Response(true);
-	Response.imageData = std::vector<unsigned char>(CompressedBitmap.Num());
+	Response.image_ = std::vector<unsigned char>(CompressedBitmap.Num());
 
 	for(int i = 0; i < CompressedBitmap.Num(); i++) {
-		Response.imageData[i] = CompressedBitmap[i];
+		Response.image_[i] = CompressedBitmap[i];
 	}
 
 	Response.stamp_ = stamp;
@@ -725,17 +725,17 @@ bool DroneServer::GetLidarConfig(const FTCPClient& Client, Serializable::Drone::
 	Response.config = Serializable::Drone::LidarConfig{};
 
 	Response.config.Enable = LidarConfig.Enable;
-	Response.config.showBeams = LidarConfig.ShowBeams;
-	Response.config.beamLength = LidarConfig.BeamLength;
+	Response.config.ShowBeams = LidarConfig.ShowBeams;
+	Response.config.BeamLength = LidarConfig.BeamLength;
 	Response.config.BeamHorRays = LidarConfig.BeamHorRays;
 	Response.config.BeamVertRays = LidarConfig.BeamVertRays;
 	Response.config.Frequency= LidarConfig.Frequency;
-	Response.config.offsetX = LidarConfig.Offset.X;
-	Response.config.offsetY = LidarConfig.Offset.Y;
-	Response.config.offsetZ = LidarConfig.Offset.Z;
-	Response.config.orientationPitch = LidarConfig.Orientation.Pitch;
-	Response.config.orientationYaw = LidarConfig.Orientation.Yaw;
-	Response.config.orientationRoll = LidarConfig.Orientation.Roll;
+	Response.config.OffsetX = LidarConfig.Offset.X;
+	Response.config.OffsetY = LidarConfig.Offset.Y;
+	Response.config.OffsetZ = LidarConfig.Offset.Z;
+	Response.config.OrientationPitch = LidarConfig.Orientation.Pitch;
+	Response.config.OrientationYaw = LidarConfig.Orientation.Yaw;
+	Response.config.OrientationRoll = LidarConfig.Orientation.Roll;
 	Response.config.FOVHor = LidarConfig.FOVHor;
 	Response.config.FOVVert = LidarConfig.FOVVert;
 
@@ -756,15 +756,15 @@ bool DroneServer::SetLidarConfig(const FTCPClient& Client, Serializable::Drone::
 
 	FLidarConfig Config;
 	Config.Enable = Request.config.Enable;	
-	Config.ShowBeams = Request.config.showBeams;
-	Config.BeamLength = Request.config.beamLength;
+	Config.ShowBeams = Request.config.ShowBeams;
+	Config.BeamLength = Request.config.BeamLength;
 	Config.BeamHorRays = Request.config.BeamHorRays;
 	Config.BeamVertRays = Request.config.BeamVertRays;
 	Config.Frequency = Request.config.Frequency;
 
-	Config.Offset = FVector(Request.config.offsetX, Request.config.offsetY, Request.config.offsetZ);
-
-	Config.Orientation = FRotator(Request.config.orientationPitch, Request.config.orientationYaw, Request.config.orientationRoll);
+	Config.Offset = FVector(Request.config.OffsetX, Request.config.OffsetY, Request.config.OffsetZ);
+	
+	Config.Orientation = FRotator(Request.config.OrientationPitch, Request.config.OrientationYaw, Request.config.OrientationRoll);
 	Config.FOVHor = Request.config.FOVHor;
 	Config.FOVVert = Request.config.FOVVert;
 
@@ -794,24 +794,24 @@ bool DroneServer::GetRgbCameraConfig(const FTCPClient& Client, Serializable::Dro
 	Serializable::Drone::GetRgbCameraConfig::Response Response(true);
 	Response.config = Serializable::Drone::RgbCameraConfig{};
 
-	Response.config.showDebugCamera = CameraConfig.ShowCameraComponent;
+	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
 
-	Response.config.offsetX = CameraConfig.Offset.X;
-	Response.config.offsetY = CameraConfig.Offset.Y;
-	Response.config.offsetZ = CameraConfig.Offset.Z;
+	Response.config.offset_x_ = CameraConfig.Offset.X;
+	Response.config.offset_y_ = CameraConfig.Offset.Y;
+	Response.config.offset_z_ = CameraConfig.Offset.Z;
 
-	Response.config.orientationPitch = CameraConfig.Orientation.Pitch;
-	Response.config.orientationYaw = CameraConfig.Orientation.Yaw;
-	Response.config.orientationRoll = CameraConfig.Orientation.Roll;
+	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
+	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
+	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
 
-	Response.config.angleFOV = CameraConfig.FOVAngle;
+	Response.config.fov_ = CameraConfig.FOVAngle;
 
-	Response.config.Width = CameraConfig.Width;
-	Response.config.Height = CameraConfig.Height;
+	Response.config.width_ = CameraConfig.Width;
+	Response.config.height_ = CameraConfig.Height;
 
-	Response.config.enable_temporal_aa = CameraConfig.enable_temporal_aa;
-	Response.config.enable_hdr = CameraConfig.enable_hdr;
-	Response.config.enable_raytracing = CameraConfig.enable_raytracing;
+	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
+	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
+	Response.config.enable_raytracing_ = CameraConfig.enable_raytracing;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -836,26 +836,26 @@ bool DroneServer::GetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	Serializable::Drone::GetStereoCameraConfig::Response Response(true);
 	Response.config = Serializable::Drone::StereoCameraConfig{};
 
-	Response.config.showDebugCamera = CameraConfig.ShowCameraComponent;
+	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
 
-	Response.config.offsetX = CameraConfig.Offset.X;
-	Response.config.offsetY = CameraConfig.Offset.Y;
-	Response.config.offsetZ = CameraConfig.Offset.Z;
+	Response.config.offset_x_ = CameraConfig.Offset.X;
+	Response.config.offset_y_ = CameraConfig.Offset.Y;
+	Response.config.offset_z_ = CameraConfig.Offset.Z;
 
-	Response.config.orientationPitch = CameraConfig.Orientation.Pitch;
-	Response.config.orientationYaw = CameraConfig.Orientation.Yaw;
-	Response.config.orientationRoll = CameraConfig.Orientation.Roll;
+	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
+	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
+	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
 
-	Response.config.angleFOV = CameraConfig.FOVAngle;
+	Response.config.fov_ = CameraConfig.FOVAngle;
 
-	Response.config.Width = CameraConfig.Width;
-	Response.config.Height = CameraConfig.Height;
+	Response.config.width_ = CameraConfig.Width;
+	Response.config.height_ = CameraConfig.Height;
 
-	Response.config.baseline = CameraConfig.baseline;
+	Response.config.baseline_ = CameraConfig.baseline;
 
-	Response.config.enable_temporal_aa = CameraConfig.enable_temporal_aa;
-	Response.config.enable_hdr = CameraConfig.enable_hdr;
-	Response.config.enable_raytracing = CameraConfig.enable_raytracing;
+	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
+	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
+	Response.config.enable_raytracing_ = CameraConfig.enable_raytracing;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -873,21 +873,21 @@ bool DroneServer::SetRgbCameraConfig(const FTCPClient& Client, Serializable::Dro
 	if(!DronePawn) {
 		return false;
 	}
-
+	
 	FRgbCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.showDebugCamera;
+	Config.ShowCameraComponent = Request.config.show_debug_camera_;
 
-	Config.Offset = FVector(Request.config.offsetX, Request.config.offsetY, Request.config.offsetZ);
-	Config.Orientation = FRotator(Request.config.orientationPitch, Request.config.orientationYaw, Request.config.orientationRoll);
+	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
+	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
 
-	Config.FOVAngle = Request.config.angleFOV;
+	Config.FOVAngle = Request.config.fov_;
 
-	Config.Width = Request.config.Width;
-	Config.Height = Request.config.Height;
+	Config.Width = Request.config.width_;
+	Config.Height = Request.config.height_;
 
-	Config.enable_hdr = Request.config.enable_hdr;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa;
-	Config.enable_raytracing = Request.config.enable_raytracing;
+	Config.enable_hdr = Request.config.enable_hdr_;
+	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
+	Config.enable_raytracing = Request.config.enable_raytracing_;
 
 	bool Status = false;
 
@@ -919,21 +919,21 @@ bool DroneServer::SetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	}
 
 	FStereoCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.showDebugCamera;
+	Config.ShowCameraComponent = Request.config.show_debug_camera_;
 
-	Config.Offset = FVector(Request.config.offsetX, Request.config.offsetY, Request.config.offsetZ);
-	Config.Orientation = FRotator(Request.config.orientationPitch, Request.config.orientationYaw, Request.config.orientationRoll);
+	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
+	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
 
-	Config.FOVAngle = Request.config.angleFOV;
+	Config.FOVAngle = Request.config.fov_;
 
-	Config.Width = Request.config.Width;
-	Config.Height = Request.config.Height;
+	Config.Width = Request.config.width_;
+	Config.Height = Request.config.height_;
 
-	Config.baseline = Request.config.baseline;
+	Config.baseline = Request.config.baseline_;
 
-	Config.enable_hdr = Request.config.enable_hdr;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa;
-	Config.enable_raytracing = Request.config.enable_raytracing;
+	Config.enable_hdr = Request.config.enable_hdr_;
+	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
+	Config.enable_raytracing = Request.config.enable_raytracing_;
 
 	bool Status = false;
 
