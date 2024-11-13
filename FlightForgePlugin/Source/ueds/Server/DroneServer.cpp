@@ -889,6 +889,10 @@ bool DroneServer::SetRgbCameraConfig(const FTCPClient& Client, Serializable::Dro
 	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
 	Config.enable_raytracing = Request.config.enable_raytracing_;
 
+	Config.enable_motion_blur = Request.config.enable_motion_blur_;
+	Config.motion_blur_amount = Request.config.motion_blur_amount_;
+	Config.motion_blur_distortion = Request.config.motion_blur_distortion_;
+
 	bool Status = false;
 
 	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();

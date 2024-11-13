@@ -199,7 +199,7 @@ void ADronePawn::BeginPlay() {
   SceneCaptureComponent2DRgb->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgb->bCaptureOnMovement           = false;
   SceneCaptureComponent2DRgb->bUseRayTracingIfEnabled      = true;
-
+  
   SceneCaptureComponent2DRgbSeg->CaptureSource = SCS_FinalColorHDR;
   SceneCaptureComponent2DRgbSeg->TextureTarget = RenderTarget2DRgbSeg;
   SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(false);
@@ -231,6 +231,9 @@ void ADronePawn::BeginPlay() {
   rgb_camera_config_.FOVAngle            = 90;
   rgb_camera_config_.Width               = 640;
   rgb_camera_config_.Height              = 480;
+  rgb_camera_config_.enable_motion_blur  = true;
+  rgb_camera_config_.motion_blur_amount  = 1.0;
+  rgb_camera_config_.motion_blur_distortion = 50.0;
 
   stereo_camera_config_.ShowCameraComponent = false;
   stereo_camera_config_.Offset              = FVector(0, 0, 0);
@@ -1068,6 +1071,9 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   SceneCaptureComponent2DRgb->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DRgb->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgb->bCaptureOnMovement           = false;
+  SceneCaptureComponent2DRgb->PostProcessSettings.MotionBlurAmount = Config.motion_blur_amount;
+  SceneCaptureComponent2DRgb->PostProcessSettings.MotionBlurMax    = Config.motion_blur_distortion;
+  SceneCaptureComponent2DRgb->ShowFlags.SetMotionBlur(Config.enable_motion_blur);
 
   SceneCaptureComponent2DRgbSeg->TextureTarget                = RenderTarget2DRgbSeg;
   SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;

@@ -103,6 +103,9 @@ struct FRgbCameraConfig
   bool     enable_temporal_aa;
   bool     enable_hdr;
   bool     enable_raytracing;
+  bool     enable_motion_blur;
+  double   motion_blur_amount;
+  double   motion_blur_distortion;
 };
 
 struct FStereoCameraConfig

@@ -167,10 +167,14 @@ struct RgbCameraConfig
   bool enable_raytracing_;
   bool enable_hdr_;
 
+  bool     enable_motion_blur_;
+  double   motion_blur_amount_;
+  double   motion_blur_distortion_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_);
+            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_);
   }
 };
 
