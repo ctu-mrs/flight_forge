@@ -8,7 +8,6 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
-#include "Serialization/ArchiveReplaceObjectRef.h"
 #include "uedsGameModeBase.generated.h"
 
 #if PLATFORM_WINDOWS
@@ -313,7 +312,7 @@ public:
 	}
 
 	//UFUNCTION(BlueprintCallable)
-	bool SwitchWorldLevel(const Serializable::GameMode::WorldLevelEnum WorldLevelEnum)
+	bool SwitchWorldLevel(const short& WorldLevelEnum)
 	{
 		FName NameOfWorld;
 
@@ -356,6 +355,11 @@ public:
 		return PlayerStart->GetActorLocation();
 	}
 
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+	bool SetWeather(int TypeId);
+
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+	bool SetDaytime(int hour, int minute);
 
 	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>> InstructionQueue;
 	

@@ -956,7 +956,9 @@ enum MessageType : unsigned short
   set_forest_density      = 12,
   set_forest_hilly_level  = 13,
   get_world_origin        = 14,
-  spawn_drone_at_location = 15
+  spawn_drone_at_location = 15,
+  set_weather             = 16,
+  set_daytime             = 17
 };
 
 namespace GetDrones
@@ -1167,7 +1169,7 @@ namespace SetGraphicsSettings
   {
     Request() : Common::NetworkRequest(MessageType::set_graphics_settings){};
 
-    GraphicsSettingsEnum  graphicsSettings;
+    int graphicsSettings;
 
     template <class Archive>
     void serialize(Archive& archive) {
@@ -1193,14 +1195,59 @@ enum WorldLevelEnum : unsigned short
   ERDING_AIRBASE,
   TEMESVAR
 };
+  
+namespace SetWeather
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::set_weather){};
 
+    int weather_id;
+
+    template <class Archive>
+    void serialize(Archive& archive)
+    {
+      archive(cereal::base_class<Common::NetworkRequest>(this), weather_id);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_weather)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_weather, _status){};
+  };
+}
+
+  namespace SetDaytime
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::set_daytime){};
+
+    int hour;
+    int minute;
+    
+    template <class Archive>
+    void serialize(Archive& archive)
+    {
+      archive(cereal::base_class<Common::NetworkRequest>(this), hour, minute);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_daytime)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_daytime, _status){};
+  };
+}  
+  
 namespace SwitchWorldLevel
 {
   struct Request : public Common::NetworkRequest
   {
     Request() : Common::NetworkRequest(MessageType::switch_world_level){};
 
-    WorldLevelEnum worldLevelEnum;
+    short worldLevelEnum;
 
     template <class Archive>
     void serialize(Archive& archive) {

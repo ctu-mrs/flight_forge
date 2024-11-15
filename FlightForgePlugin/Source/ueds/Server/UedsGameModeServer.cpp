@@ -104,6 +104,20 @@ bool UedsGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<std::st
     return SpawnDroneAtLocation(Client, CustomRequest);
   }
 
+  if (Request.type == Serializable::GameMode::MessageType::set_weather)
+  {
+    Serializable::GameMode::SetWeather::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetWeather(Client, CustomRequest);
+  }
+
+  if (Request.type == Serializable::GameMode::MessageType::set_daytime)
+  {
+    Serializable::GameMode::SetDaytime::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetDatetime(Client, CustomRequest);
+  }
+
   return false;
 }
 
@@ -402,6 +416,44 @@ bool UedsGameModeServer::SwitchWorldLevel(const FTCPClient& Client,
 
   //return Respond(Client, OutputStream);
   return result;
+}
+
+bool UedsGameModeServer::SetWeather(const FTCPClient& Client, Serializable::GameMode::SetWeather::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  auto Response    = Serializable::GameMode::SetWeather::Response();
+  auto Instruction = std::make_shared<FInstruction<AuedsGameModeBase>>();
+
+  Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { Response.status = _GameMode.SetWeather(Request.weather_id); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream); 
+}
+
+bool UedsGameModeServer::SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  auto Response    = Serializable::GameMode::SetWeather::Response();
+  auto Instruction = std::make_shared<FInstruction<AuedsGameModeBase>>();
+
+  Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { Response.status = _GameMode.SetDaytime(Request.hour, Request.minute); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream); 
 }
 
 //}

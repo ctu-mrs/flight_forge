@@ -45,4 +45,8 @@ private:
 	bool SetForestHillyLevel(const FTCPClient& Client, Serializable::GameMode::SetForestHillyLevel::Request& Request);
 
 	bool GetWorldOrigin(const FTCPClient& Client, Serializable::GameMode::GetWorldOrigin::Request& Request);
+
+	bool SetWeather(const FTCPClient& Client, Serializable::GameMode::SetWeather::Request& Request);
+
+	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
 };
