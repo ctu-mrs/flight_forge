@@ -757,17 +757,15 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
 {
   FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
   
-  int predefined_frame_size = FramePropellersTransforms.Num();
-  
-  FString frame_name;
+  int predefined_frame_count = FramePropellersTransforms.Num();
 
-  if ( frame_id < predefined_frame_size )
+  //last "empty" frame is not included in "FramePropellersTransforms"
+  if (predefined_frame_count == frame_id)
   {
-    frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
-  } else
-  {
-    frame_name = "x500";
+    return;
   }
+
+  FString frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
   
   mesh_path += frame_name + "/" + frame_name + "." + frame_name;
   
