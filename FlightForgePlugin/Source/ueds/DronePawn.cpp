@@ -95,6 +95,14 @@ ADronePawn::ADronePawn() {
     FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
 
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("wing")),
+  FString(TEXT("robofly")),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, -9.55,1.7), FVector(1, -1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55,1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
+
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
 
@@ -775,6 +783,12 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
   }  else
   {
     UE_LOG(LogTemp, Warning, TEXT("The Frame was not loaded!"));
+  }
+
+  // wing has not propellers
+  if (frame_name == "wing")
+  {
+    return;
   }
   
   SetPropellersTransform(frame_id);

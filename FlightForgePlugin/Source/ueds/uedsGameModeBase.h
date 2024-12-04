@@ -339,6 +339,15 @@ public:
 		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
 			NameOfWorld = "Temesvar_annotated";
 			break;
+		case Serializable::GameMode::WorldLevelEnum::EletricTowers:
+			NameOfWorld = "EletricTowers";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::Race_1:
+			NameOfWorld = "Race_1";
+			break;
+		case Serializable::GameMode::WorldLevelEnum::Race_2:
+			NameOfWorld = "Race_2";
+			break;
 		default:
 			NameOfWorld = "InfiniteForest";
 			break;

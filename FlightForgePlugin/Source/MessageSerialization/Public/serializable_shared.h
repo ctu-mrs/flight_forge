@@ -1185,7 +1185,7 @@ namespace SetGraphicsSettings
 
 }// namespace SetGraphicsSettings
 
-enum WorldLevelEnum : unsigned short
+enum WorldLevelEnum : short
 {
   VALLEY,
   FOREST,
@@ -1193,7 +1193,10 @@ enum WorldLevelEnum : unsigned short
   WAREHOUSE,
   CAVE,
   ERDING_AIRBASE,
-  TEMESVAR
+  TEMESVAR,
+  EletricTowers,
+  Race_1,
+  Race_2
 };
   
 namespace SetWeather
