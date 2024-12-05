@@ -752,7 +752,7 @@ void ADronePawn::SetPropellersTransform(const int& frame_id)
     PropellerRearRight->SetStaticMesh(PropellerMesh);
   }  else
   {
-    UE_LOG(LogTemp, Warning, TEXT("The Propeller was not loaded!"));
+    UE_LOG(LogTemp, Error, TEXT("The Propeller was not loaded!"));
   }
 
   PropellerFrontLeft->SetRelativeTransform(Transforms[frame_id].FrontLeft);
@@ -782,7 +782,7 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
       RootMeshComponent->SetStaticMesh(FrameMesh);
   }  else
   {
-    UE_LOG(LogTemp, Warning, TEXT("The Frame was not loaded!"));
+    UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded!"));
   }
 
   // wing has not propellers
