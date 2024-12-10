@@ -794,24 +794,24 @@ bool DroneServer::GetRgbCameraConfig(const FTCPClient& Client, Serializable::Dro
 	Serializable::Drone::GetRgbCameraConfig::Response Response(true);
 	Response.config = Serializable::Drone::RgbCameraConfig{};
 
-	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
+	Response.config.showDebugCamera= CameraConfig.ShowCameraComponent;
 
-	Response.config.offset_x_ = CameraConfig.Offset.X;
-	Response.config.offset_y_ = CameraConfig.Offset.Y;
-	Response.config.offset_z_ = CameraConfig.Offset.Z;
+	Response.config.offsetX = CameraConfig.Offset.X;
+	Response.config.offsetY = CameraConfig.Offset.Y;
+	Response.config.offsetZ = CameraConfig.Offset.Z;
 
-	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
-	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
-	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
+	Response.config.orientationPitch = CameraConfig.Orientation.Pitch;
+	Response.config.orientationYaw = CameraConfig.Orientation.Yaw;
+	Response.config.orientationRoll = CameraConfig.Orientation.Roll;
 
-	Response.config.fov_ = CameraConfig.FOVAngle;
+	Response.config.angleFOV = CameraConfig.FOVAngle;
 
-	Response.config.width_ = CameraConfig.Width;
-	Response.config.height_ = CameraConfig.Height;
+	Response.config.Width = CameraConfig.Width;
+	Response.config.Height = CameraConfig.Height;
 
-	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
-	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
-	Response.config.enable_raytracing_ = CameraConfig.enable_raytracing;
+	Response.config.enable_temporal_aa = CameraConfig.enable_temporal_aa;
+	Response.config.enable_hdr = CameraConfig.enable_hdr;
+	Response.config.enable_raytracing = CameraConfig.enable_raytracing;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -836,26 +836,26 @@ bool DroneServer::GetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	Serializable::Drone::GetStereoCameraConfig::Response Response(true);
 	Response.config = Serializable::Drone::StereoCameraConfig{};
 
-	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
+	Response.config.showDebugCamera= CameraConfig.ShowCameraComponent;
 
-	Response.config.offset_x_ = CameraConfig.Offset.X;
-	Response.config.offset_y_ = CameraConfig.Offset.Y;
-	Response.config.offset_z_ = CameraConfig.Offset.Z;
+	Response.config.offsetX = CameraConfig.Offset.X;
+	Response.config.offsetY = CameraConfig.Offset.Y;
+	Response.config.offsetZ = CameraConfig.Offset.Z;
 
-	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
-	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
-	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
+	Response.config.orientationPitch = CameraConfig.Orientation.Pitch;
+	Response.config.orientationYaw = CameraConfig.Orientation.Yaw;
+	Response.config.orientationRoll = CameraConfig.Orientation.Roll;
 
-	Response.config.fov_ = CameraConfig.FOVAngle;
+	Response.config.angleFOV = CameraConfig.FOVAngle;
 
-	Response.config.width_ = CameraConfig.Width;
-	Response.config.height_ = CameraConfig.Height;
+	Response.config.Width = CameraConfig.Width;
+	Response.config.Height = CameraConfig.Height;
 
-	Response.config.baseline_ = CameraConfig.baseline;
+	Response.config.baseline = CameraConfig.baseline;
 
-	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
-	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
-	Response.config.enable_raytracing_ = CameraConfig.enable_raytracing;
+	Response.config.enable_temporal_aa = CameraConfig.enable_temporal_aa;
+	Response.config.enable_hdr = CameraConfig.enable_hdr;
+	Response.config.enable_raytracing = CameraConfig.enable_raytracing;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -875,19 +875,19 @@ bool DroneServer::SetRgbCameraConfig(const FTCPClient& Client, Serializable::Dro
 	}
 	
 	FRgbCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
+	Config.ShowCameraComponent = Request.config.showDebugCamera;
 
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset = FVector(Request.config.offsetX, Request.config.offsetY, Request.config.offsetZ);
+	Config.Orientation = FRotator(Request.config.orientationPitch, Request.config.orientationYaw, Request.config.orientationRoll);
 
-	Config.FOVAngle = Request.config.fov_;
+	Config.FOVAngle = Request.config.angleFOV;
 
-	Config.Width = Request.config.width_;
-	Config.Height = Request.config.height_;
+	Config.Width = Request.config.Width;
+	Config.Height = Request.config.Height;
 
-	Config.enable_hdr = Request.config.enable_hdr_;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
-	Config.enable_raytracing = Request.config.enable_raytracing_;
+	Config.enable_hdr = Request.config.enable_hdr;
+	Config.enable_temporal_aa = Request.config.enable_temporal_aa;
+	Config.enable_raytracing = Request.config.enable_raytracing;
 
 	Config.enable_motion_blur = Request.config.enable_motion_blur_;
 	Config.motion_blur_amount = Request.config.motion_blur_amount_;
@@ -923,21 +923,21 @@ bool DroneServer::SetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	}
 
 	FStereoCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
+	Config.ShowCameraComponent = Request.config.showDebugCamera;
 
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset = FVector(Request.config.offsetX, Request.config.offsetY, Request.config.offsetZ);
+	Config.Orientation = FRotator(Request.config.orientationPitch, Request.config.orientationYaw, Request.config.orientationRoll);
 
-	Config.FOVAngle = Request.config.fov_;
+	Config.FOVAngle = Request.config.angleFOV;
 
-	Config.Width = Request.config.width_;
-	Config.Height = Request.config.height_;
+	Config.Width = Request.config.Width;
+	Config.Height = Request.config.Height;
 
-	Config.baseline = Request.config.baseline_;
+	Config.baseline = Request.config.baseline;
 
-	Config.enable_hdr = Request.config.enable_hdr_;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
-	Config.enable_raytracing = Request.config.enable_raytracing_;
+	Config.enable_hdr = Request.config.enable_hdr;
+	Config.enable_temporal_aa = Request.config.enable_temporal_aa;
+	Config.enable_raytracing = Request.config.enable_raytracing;
 
 	bool Status = false;
 

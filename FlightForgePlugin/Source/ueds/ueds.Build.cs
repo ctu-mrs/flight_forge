@@ -14,7 +14,7 @@ public class ueds : ModuleRules
 		
 		bEnableUndefinedIdentifierWarnings = false;
     bEnableExceptions = true;
-    bUseRTTI = true;
+    //bUseRTTI = true;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets" });
 		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent" });
 
