@@ -2,7 +2,7 @@
 // This code is licensed under MIT license (see LICENSE for details)
 
 #pragma once
-
+#include <memory>
 #include "serializable_shared.h"
 
 namespace Serializable::Drone::GetLocation
