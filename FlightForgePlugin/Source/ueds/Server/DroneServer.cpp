@@ -16,180 +16,180 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 
 	Serializable::Common::NetworkRequest Request;
-	Serialization::SerializeRequest(Request, *InputStream);
+	Serialization::SerializeRequest<Serializable::Common::NetworkRequest>(Request, *InputStream);
 
 	if(Request.type == Serializable::Drone::MessageType::get_location) {
 
 		Serializable::Drone::GetLocation::Request CustomRequest;
-		Serialization::SerializeRequest(CustomRequest, *InputStream);
+		Serialization::SerializeRequest<Serializable::Drone::GetLocation::Request>(CustomRequest, *InputStream);
 
 		return GetLocation(Client, CustomRequest);
 	}
 
 	if(Request.type == Serializable::Drone::MessageType::get_crash_state) {
-
+	
 		Serializable::Drone::GetCrashState::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetCrashState(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_location) {
-
+	
 		Serializable::Drone::SetLocation::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetLocation(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_data) {
-
+	
 		Serializable::Drone::GetRgbCameraData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetRgbCameraData(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_stereo_camera_data) {
-
+	
 		Serializable::Drone::GetStereoCameraData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetStereoCameraData(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_seg_camera_data) {
-
+	
 		Serializable::Drone::GetRgbSegCameraData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetRgbSegCameraData(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_rotation) {
-
+	
 		Serializable::Drone::GetRotation::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetRotation(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_rotation) {
-
+	
 		Serializable::Drone::SetRotation::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetRotation(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_location_and_rotation) {
-
+	
 		Serializable::Drone::SetLocationAndRotation::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetLocationAndRotation(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_location_and_rotation_async) {
-
+	
 		Serializable::Drone::SetLocationAndRotationAsync::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetLocationAndRotationAsync(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_data) {
-
+	
 		Serializable::Drone::GetLidarData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetLidarData(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_seg) {
-
+	
 		Serializable::Drone::GetLidarSegData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetLidarSegData(Client, CustomRequest);
 	}
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_int) {
-
+	
 		Serializable::Drone::GetLidarIntData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetLidarIntData(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_config) {
-
+	
 		Serializable::Drone::GetLidarConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetLidarConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_lidar_config) {
-
+	
 		Serializable::Drone::SetLidarConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetLidarConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_config) {
-
+	
 		Serializable::Drone::GetRgbCameraConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetRgbCameraConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_rgb_camera_config) {
-
+	
 		Serializable::Drone::SetRgbCameraConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetRgbCameraConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_stereo_camera_config) {
-
+	
 		Serializable::Drone::GetStereoCameraConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetStereoCameraConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_stereo_camera_config) {
-
+	
 		Serializable::Drone::SetStereoCameraConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetStereoCameraConfig(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_move_line_visible) {
-
+	
 		Serializable::Drone::GetMoveLineVisible::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetMoveLineVisible(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::set_move_line_visible) {
-
+	
 		Serializable::Drone::SetMoveLineVisible::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return SetMoveLineVisible(Client, CustomRequest);
 	}
-
+	
 	if(Request.type == Serializable::Drone::MessageType::get_rangefinder_data) {
-
+	
 		Serializable::Drone::GetRangefinderData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-
+	
 		return GetRangeFinderData(Client, CustomRequest);
 	}
 
@@ -212,7 +212,7 @@ bool DroneServer::GetLocation(const FTCPClient& Client, Serializable::Drone::Get
 	auto Response = Serializable::Drone::GetLocation::FVectorToResponse(Location);
 
 	std::stringstream OutputStream;
-	Serialization::DeserializeResponse(*Response, OutputStream);
+	Serialization::DeserializeResponse<Serializable::Drone::GetLocation::Response>(*Response, OutputStream);
 
 	return Respond(Client, OutputStream);
 }
