@@ -12,105 +12,105 @@ bool UedsGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<std::st
   }
 
   Serializable::Common::NetworkRequest Request;
-  Serialization::SerializeRequest(Request, *InputStream);
+  Serialization::SerializeRequest<Serializable::Common::NetworkRequest>(Request, *InputStream);
 
   if (Request.type == Serializable::GameMode::MessageType::get_drones) {
     Serializable::GameMode::GetDrones::Request CustomRequest;
-    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    Serialization::SerializeRequest<Serializable::GameMode::GetDrones::Request>(CustomRequest, *InputStream);
     return GetDrones(Client, CustomRequest);
   }
 
   if (Request.type == Serializable::GameMode::MessageType::spawn_drone) {
     Serializable::GameMode::SpawnDrone::Request CustomRequest;
-    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    Serialization::SerializeRequest<Serializable::GameMode::SpawnDrone::Request>(CustomRequest, *InputStream);
     return SpawnDrone(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::remove_drone) {
     Serializable::GameMode::RemoveDrone::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return RemoveDrone(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::get_camera_capture_mode) {
     Serializable::GameMode::GetCameraCaptureMode::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetCameraCaptureMode(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_camera_capture_mode) {
     Serializable::GameMode::SetCameraCaptureMode::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SetCameraCaptureMode(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::get_fps) {
     Serializable::GameMode::GetFps::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetFPS(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::get_api_version) {
     Serializable::GameMode::GetApiVersion::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetApiVersion(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::get_time) {
     Serializable::GameMode::GetTime::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetTime(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_graphics_settings)
   {
     Serializable::GameMode::SetGraphicsSettings::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SetGraphicsSettings(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::switch_world_level)
   {
     Serializable::GameMode::SwitchWorldLevel::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SwitchWorldLevel(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_forest_density)
   {
     Serializable::GameMode::SetForestDensity::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SetForestDensity(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_forest_hilly_level)
   {
     Serializable::GameMode::SetForestHillyLevel::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SetForestHillyLevel(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::get_world_origin)
   {
     Serializable::GameMode::GetWorldOrigin::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetWorldOrigin(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::spawn_drone_at_location)
   {
     Serializable::GameMode::SpawnDroneAtLocation::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SpawnDroneAtLocation(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_weather)
   {
     Serializable::GameMode::SetWeather::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return SetWeather(Client, CustomRequest);
   }
-
+  
   if (Request.type == Serializable::GameMode::MessageType::set_daytime)
   {
     Serializable::GameMode::SetDaytime::Request CustomRequest;
@@ -136,7 +136,7 @@ bool UedsGameModeServer::GetDrones(const FTCPClient& Client, Serializable::GameM
   GameMode->GetDronePorts(Response.ports);
 
   std::stringstream OutputStream;
-  Serialization::DeserializeResponse(Response, OutputStream);
+  Serialization::DeserializeResponse<Serializable::GameMode::GetDrones::Response>(Response, OutputStream);
 
   return Respond(Client, OutputStream);
 }
@@ -221,7 +221,7 @@ bool UedsGameModeServer::SpawnDrone(const FTCPClient& Client, Serializable::Game
   Response.port = PawnPort;
 
   std::stringstream OutputStream;
-  Serialization::DeserializeResponse(Response, OutputStream);
+  Serialization::DeserializeResponse<Serializable::GameMode::SpawnDrone::Response>(Response, OutputStream);
 
   return Respond(Client, OutputStream);
 }
