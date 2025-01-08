@@ -97,13 +97,13 @@ std::shared_ptr<std::stringstream> TcpServer::BytesToStream(const uint8* In, int
 bool TcpServer::Route(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream)
 {
 	Serializable::Common::NetworkRequest Request;
-	Serialization::SerializeRequest(Request, *InputStream);
+	Serialization::SerializeRequest<Serializable::Common::NetworkRequest>(Request, *InputStream);
 
 	if(Request.type == Serializable::Common::MessageType::ping)
 	{
 		std::stringstream OutputStream;
 		Serializable::Common::Ping::Response Response(true);
-		Serialization::DeserializeResponse(Response, OutputStream);
+		Serialization::DeserializeResponse<Serializable::Common::Ping::Response>(Response, OutputStream);
 		return Respond(Client, OutputStream);
 	}
 

@@ -12,6 +12,8 @@ public class ueds : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		
+		//bUseRTTI = true;
+		
 		bEnableUndefinedIdentifierWarnings = false;
     bEnableExceptions = true;
     //bUseRTTI = true;

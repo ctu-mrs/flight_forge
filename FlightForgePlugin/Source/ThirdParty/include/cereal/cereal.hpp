@@ -45,6 +45,8 @@
 #include "cereal/details/helpers.hpp"
 #include "cereal/types/base_class.hpp"
 
+#include "cereal/external/ctti/type_id.hpp"
+
 namespace cereal
 {
   // ######################################################################
@@ -176,7 +178,7 @@ namespace cereal
         a serialization function.  Classes with no data members are considered to be
         empty.  Be warned that if this is enabled and you attempt to serialize an
         empty class with improperly formed serialize or load/save functions, no
-        static error will occur - the error will propogate silently and your
+        static error will occur - the error will propagate silently and your
         intended serialization functions may not be called.  You can manually
         ensure that your classes that have custom serialization are correct
         by using the traits is_output_serializable and is_input_serializable
@@ -269,8 +271,9 @@ namespace cereal
     {                                                                            \
       static std::uint32_t registerVersion()                                     \
       {                                                                          \
-        ::cereal::detail::StaticObject<Versions>::getInstance().mapping.emplace( \
-             std::type_index(typeid(TYPE)).hash_code(), VERSION_NUMBER );        \
+        ::cereal::detail::StaticObject<Versions>::getInstance().mapping          \
+            .emplace(std::hash<ctti::type_id_t>()(ctti::type_id<TYPE>()),        \
+                     VERSION_NUMBER);                                            \
         return VERSION_NUMBER;                                                   \
       }                                                                          \
       static inline const std::uint32_t version = registerVersion();             \
@@ -285,8 +288,9 @@ namespace cereal
       static const std::uint32_t version;                                        \
       static std::uint32_t registerVersion()                                     \
       {                                                                          \
-        ::cereal::detail::StaticObject<Versions>::getInstance().mapping.emplace( \
-             std::type_index(typeid(TYPE)).hash_code(), VERSION_NUMBER );        \
+        ::cereal::detail::StaticObject<Versions>::getInstance().mapping          \
+            .emplace(std::hash<ctti::type_id_t>()(ctti::type_id<TYPE>()),        \
+                     VERSION_NUMBER);                                            \
         return VERSION_NUMBER;                                                   \
       }                                                                          \
       CEREAL_UNUSED_FUNCTION                                                     \
@@ -391,7 +395,7 @@ namespace cereal
           point to the same data.
 
           @internal
-          @param sharedPointer The shared pointer itself (the adress is taked via get()).
+          @param sharedPointer The shared pointer itself (the address is taken via get()).
                                The archive takes a copy to prevent the memory location to be freed
                                as long as the address is used as id. This is needed to prevent CVE-2020-11105.
           @return A key that uniquely identifies the pointer */
@@ -595,7 +599,7 @@ namespace cereal
       template <class T> inline
       std::uint32_t registerClassVersion()
       {
-        static const auto hash = std::type_index(typeid(T)).hash_code();
+        static const auto hash = std::hash<ctti::type_id_t>()(ctti::type_id<T>());
         const auto insertResult = itsVersionedTypes.insert( hash );
         const auto lock = detail::StaticObject<detail::Versions>::lock();
         const auto version =
@@ -820,7 +824,7 @@ namespace cereal
 
           @internal
           @param id The unique id that was serialized for the polymorphic type
-          @return The string identifier for the tyep */
+          @return The string identifier for the type */
       inline std::string getPolymorphicName(std::uint32_t const id)
       {
         auto name = itsPolymorphicTypeMap.find( id );
@@ -837,7 +841,7 @@ namespace cereal
 
           @internal
           @param id The unique identifier for the polymorphic type
-          @param name The name associated with the tyep */
+          @param name The name associated with the type */
       inline void registerPolymorphicName(std::uint32_t const id, std::string const & name)
       {
         std::uint32_t const stripped_id = id & ~detail::msb_32bit;
@@ -1013,7 +1017,7 @@ namespace cereal
       template <class T> inline
       std::uint32_t loadClassVersion()
       {
-        static const auto hash = std::type_index(typeid(T)).hash_code();
+        static const auto hash = std::hash<ctti::type_id_t>()(ctti::type_id<T>());
         auto lookupResult = itsVersionedTypes.find( hash );
 
         if( lookupResult != itsVersionedTypes.end() ) // already exists
