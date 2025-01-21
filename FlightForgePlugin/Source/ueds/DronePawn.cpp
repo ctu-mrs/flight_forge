@@ -210,7 +210,7 @@ void ADronePawn::BeginPlay() {
   
   SceneCaptureComponent2DRgbSeg->CaptureSource = SCS_FinalColorHDR;
   SceneCaptureComponent2DRgbSeg->TextureTarget = RenderTarget2DRgbSeg;
-  SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(false);
+  SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(true);
   SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DRgbSeg->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgbSeg->bCaptureOnMovement           = false;
@@ -1091,6 +1091,8 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DRgbSeg->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgbSeg->bCaptureOnMovement           = false;
+  SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+  
 
   if (Config.Width > 0 && Config.Height > 0) {
     RenderTarget2DRgb->ResizeTarget(Config.Width, Config.Height);

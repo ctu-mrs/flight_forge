@@ -1,9 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "CsvPrinter.h"
+#include "BlueprintUtils.h"
 
-void UCsvPrinter::WriteGateTransformToCsv(const FString& Filename, const TArray<FString>& GateNames, const TArray<FVector>& Vectors, const TArray<float>& Heading, bool& bOutResult, FString& OutString)
+void UBlueprintUtils::WriteGateTransformToCsv(const FString& Filename, const TArray<FString>& GateNames, const TArray<FVector>& Vectors, const TArray<float>& Heading, bool& bOutResult, FString& OutString)
 {
 	if (GateNames.Num() != Vectors.Num() || Vectors.Num() != Heading.Num())
 	{
@@ -13,12 +13,7 @@ void UCsvPrinter::WriteGateTransformToCsv(const FString& Filename, const TArray<
 	}
 
 	// Combine all data into a sortable array
-	struct FGateData
-	{
-		FString GateName;
-		FVector Vector;
-		float Heading;
-	};
+
 
 	TArray<FGateData> GateDataArray;
 	for (int i = 0; i < GateNames.Num(); i++)

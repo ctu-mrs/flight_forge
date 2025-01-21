@@ -4,13 +4,22 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "CsvPrinter.generated.h"
+#include "BlueprintUtils.generated.h"
 
 /**
  * 
  */
+USTRUCT()
+struct FGateData
+{
+	FString GateName;
+	FVector Vector;
+	float Heading;
+};
+
+
 UCLASS()
-class FLIGHTFORGEPLUGIN_API UCsvPrinter : public UBlueprintFunctionLibrary
+class FLIGHTFORGEPLUGIN_API UBlueprintUtils : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
