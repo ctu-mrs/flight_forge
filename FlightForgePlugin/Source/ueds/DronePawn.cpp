@@ -95,8 +95,17 @@ ADronePawn::ADronePawn() {
     FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
 
+  //Wings
   FramePropellersTransforms.Add(FramePropellersTransform(
   FString(TEXT("wing")),
+  FString(TEXT("robofly")),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, -9.55,1.7), FVector(1, -1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55,1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
+    FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
+
+  FramePropellersTransforms.Add(FramePropellersTransform(
+  FString(TEXT("wing_2")),
   FString(TEXT("robofly")),
     FTransform(FRotator(0, 0, 0), FVector(-9.55, -9.55,1.7), FVector(1, -1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55,1.7), FVector(1, 1, 1)),
@@ -786,7 +795,7 @@ void ADronePawn::SetStaticMesh(const int &frame_id)
   }
 
   // wing has not propellers
-  if (frame_name == "wing")
+  if (frame_name.Contains("wing"))
   {
     return;
   }
