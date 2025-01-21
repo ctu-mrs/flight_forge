@@ -12,6 +12,8 @@
 USTRUCT()
 struct FGateData
 {
+	GENERATED_BODY()
+	
 	FString GateName;
 	FVector Vector;
 	float Heading;
