@@ -736,8 +736,13 @@ bool DroneServer::GetLidarConfig(const FTCPClient& Client, Serializable::Drone::
 	Response.config.OrientationPitch = LidarConfig.Orientation.Pitch;
 	Response.config.OrientationYaw = LidarConfig.Orientation.Yaw;
 	Response.config.OrientationRoll = LidarConfig.Orientation.Roll;
-	Response.config.FOVHor = LidarConfig.FOVHor;
-	Response.config.FOVVert = LidarConfig.FOVVert;
+  Response.config.FOVHorLeft = LidarConfig.FOVHorLeft;
+  Response.config.FOVHorRight = LidarConfig.FOVHorRight;
+  Response.config.FOVVertUp = LidarConfig.FOVVertUp;
+  Response.config.FOVVertDown = LidarConfig.FOVVertDown;
+	/* Response.config.FOVHor = LidarConfig.FOVHor; */
+	/* Response.config.FOVVert = LidarConfig.FOVVert; */
+
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	
@@ -765,8 +770,12 @@ bool DroneServer::SetLidarConfig(const FTCPClient& Client, Serializable::Drone::
 	Config.Offset = FVector(Request.config.OffsetX, Request.config.OffsetY, Request.config.OffsetZ);
 	
 	Config.Orientation = FRotator(Request.config.OrientationPitch, Request.config.OrientationYaw, Request.config.OrientationRoll);
-	Config.FOVHor = Request.config.FOVHor;
-	Config.FOVVert = Request.config.FOVVert;
+  Config.FOVHorLeft = Request.config.FOVHorLeft;
+  Config.FOVHorRight = Request.config.FOVHorRight;
+  Config.FOVVertUp = Request.config.FOVVertUp;
+  Config.FOVVertDown = Request.config.FOVVertDown;
+	/* Config.FOVHor = Request.config.FOVHor; */
+	/* Config.FOVVert = Request.config.FOVVert; */
 
 	const auto Status = DronePawn->SetLidarConfig(Config);
 

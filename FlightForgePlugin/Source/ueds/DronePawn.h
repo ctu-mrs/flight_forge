@@ -22,7 +22,7 @@ class UTextureRenderTarget2D;
 #define DEFAULT_LIDAR_BEAM_LENGTH 1000
 /* #define DEFAULT_LIDAR_BEAM_HOR 2048 */
 /* #define DEFAULT_LIDAR_BEAM_VER 128 */
-#define DEFAULT_LIDAR_SHOW_BEAMS false
+#define DEFAULT_LIDAR_SHOW_BEAMS false 
 
 #define DEFAULT_RANGEFINDER_BEAM_LENGTH 3000
 
@@ -77,8 +77,12 @@ struct FLidarConfig
   double   Frequency;
   FVector  Offset;
   FRotator Orientation;
-  double   FOVHor;
-  double   FOVVert;
+  /* double   FOVHor; */
+  double  FOVHorLeft;
+  double  FOVHorRight;
+  /* double   FOVVert; */
+  double   FOVVertUp;
+  double   FOVVertDown;
   double   vertRayDiff;
   double   horRayDif;
 
