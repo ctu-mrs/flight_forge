@@ -102,6 +102,9 @@ void UBlueprintUtils::ReadGatesTransformFromYaml(const FString& FilePath, TArray
 				Gate.Orientation.Pitch = GateNode["orientation"]["pitch"].as<float>();
 				Gate.Orientation.Yaw = GateNode["orientation"]["yaw"].as<float>();
 
+				// UE_LOG(LogTemp, Warning, TEXT("Loaded position:  [%lf,%lf,%lf] Orientation: [%lf,%lf,%lf]"),
+				// 	Gate.Position.X,Gate.Position.Y,Gate.Position.Z, Gate.Orientation.Roll, Gate.Orientation.Pitch, Gate.Orientation.Yaw);
+
 				OutGatesData.Add(Gate);
 			}
 
@@ -120,18 +123,20 @@ void UBlueprintUtils::ReadGatesTransformFromYaml(const FString& FilePath, TArray
 
 void UBlueprintUtils::TransformToUECoord(const FVector& RightHandLocation, const FVector& RightHandOrientation, const FVector& WorldOrigin, FTransform& Out_UETransform)
 {
+	float PlayerStartOffset = 92.12;
+	
 	FVector LocationUE;
 	LocationUE.X = WorldOrigin.X + RightHandLocation.X * 100;
 	LocationUE.Y = WorldOrigin.Y - RightHandLocation.Y * 100;
-	LocationUE.Z = WorldOrigin.Z + RightHandLocation.Z * 100 - 92.125101;
+	LocationUE.Z = WorldOrigin.Z + RightHandLocation.Z * 100 - PlayerStartOffset;
 	
 	FRotator OrientationUE;
 	OrientationUE.Roll = 180 * (-RightHandOrientation.X / PI);
 	OrientationUE.Pitch = 180 * (RightHandOrientation.Y / PI);
 	OrientationUE.Yaw = 180 * (-RightHandOrientation.Z / PI);
 
-	UE_LOG(LogTemp, Warning, TEXT("Heading: %lf [right hand], %lf [UE]"), RightHandOrientation.Z, OrientationUE.Yaw);
+	// UE_LOG(LogTemp, Warning, TEXT("Heading: %lf [right hand], %lf [UE]"), RightHandOrientation.Z, OrientationUE.Yaw);
 
 	Out_UETransform.SetLocation(LocationUE);
-	Out_UETransform.Rotator() = OrientationUE;
+	Out_UETransform.SetRotation(OrientationUE.Quaternion());
 }

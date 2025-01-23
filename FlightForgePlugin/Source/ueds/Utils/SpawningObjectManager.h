@@ -23,8 +23,6 @@ public:
 	
 	FString FullPathToActorsFolder_ = "/Game/Blueprints/";
 
-	FString SlimGateName = "BP_a2rl_gate_slim";
-
 	UPROPERTY()
 	AuedsGameModeBase* GameMode;
 
@@ -37,5 +35,5 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UFUNCTION(BlueprintCallable)
-	void SpawnActorByName(const FString& NameOfActor, const FString& FullPathToActorsFolder, const FTransform& Transform);
+	void SpawnActorByName(const FString& NameOfActor, const FString& FullPathToActorsFolder, const FTransform& Transform, int32 StencilValue);
 };

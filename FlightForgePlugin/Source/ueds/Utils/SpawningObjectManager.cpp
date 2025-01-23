@@ -23,7 +23,7 @@ void ASpawningObjectManager::BeginPlay()
 
 	if(!GameMode)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[ASpawningObjectManager] I have not GameModeBase"));
+		UE_LOG(LogTemp, Error, TEXT("[ASpawningObjectManager] I have not GameModeBase, but I need it!"));
 		return;
 	}
 	
@@ -32,15 +32,22 @@ void ASpawningObjectManager::BeginPlay()
 	TArray<FGateDataYaml> GatesTransform;
 	UBlueprintUtils::ReadGatesTransformFromYaml(GatesYamlConfigPath, GatesTransform);
 
+	int32 StencilValue = 10;
 	for (auto Gate : GatesTransform)
 	{
-		FVector Location = FVector(Gate.Position.X, Gate.Position.Y, Gate.Position.Z);
+		FVector Location = FVector(Gate.Position.X, Gate.Position.Y, Gate.Position.Z + 0.1);
 		FVector Orientation = FVector(Gate.Orientation.Roll, Gate.Orientation.Pitch, Gate.Orientation.Yaw);
 		
 		FTransform TransformUE;
 		UBlueprintUtils::TransformToUECoord(Location, Orientation, WorldOrigin, TransformUE);
 
-		this->SpawnActorByName(SlimGateName, FullPathToActorsFolder_, TransformUE);
+		FString SlimGateName = "BP_a2rl_gate_slim";
+		if(Gate.Position.Z > 1.35)
+		{
+			SlimGateName = "BP_a2rl_gate_slim_core";
+		}
+		
+		this->SpawnActorByName(SlimGateName, FullPathToActorsFolder_, TransformUE, StencilValue++);
 	}
 	
 }
@@ -52,13 +59,15 @@ void ASpawningObjectManager::Tick(float DeltaTime)
 }
 
 void ASpawningObjectManager::SpawnActorByName(const FString& NameOfActor, const FString& FullPathToActorsFolder,
-                                                             const FTransform& Transform)
+                                                             const FTransform& Transform, int32 StencilValue)
 {
 	FString FullPatchToActor = FullPathToActorsFolder + NameOfActor + "." + NameOfActor + "_C";
 
 	if (UClass* ActorClass = StaticLoadClass(AActor::StaticClass(), nullptr, *FullPatchToActor))
 	{
-		GetWorld()->SpawnActor<AActor>(ActorClass, Transform);
+		AActor* Actor = GetWorld()->SpawnActor<AActor>(ActorClass, Transform);
+		UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Actor->GetRootComponent());
+		Primitive->SetCustomDepthStencilValue(StencilValue);
 	}
 	else
 	{

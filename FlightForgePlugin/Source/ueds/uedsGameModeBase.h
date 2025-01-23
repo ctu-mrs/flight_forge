@@ -357,6 +357,9 @@ public:
 	    case 12:
 	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
 	      break;
+		case 13:
+			NameOfWorld = "Race_3";
+			break;	
 		default:
 			NameOfWorld = "InfiniteForest";
 			break;
