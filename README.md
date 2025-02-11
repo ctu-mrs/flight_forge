@@ -16,6 +16,5 @@ If you use this work in your research, please cite the following paper:
 },
   year    = {2025},
   booktitle = {IEEE/RSJ International Conference on Robotics and Automation (ICRA)}, 
-  pdf = {data/papers/capek2025flightforge.pdf}
 }
 ```
