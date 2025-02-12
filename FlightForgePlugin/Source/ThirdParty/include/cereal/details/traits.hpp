@@ -30,18 +30,19 @@
 #ifndef CEREAL_DETAILS_TRAITS_HPP_
 #define CEREAL_DETAILS_TRAITS_HPP_
 
-// Check if compiling with GCC
-#if defined(__GNUC__) && !defined(__clang__)
-#if (__GNUC__ == 4 && __GNUC_MINOR__ <= 7)
+#ifndef __clang__
+#if (defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 7)
 #define CEREAL_OLDER_GCC
 #endif // gcc 4.7 or earlier
-#endif // defined(__GNUC__) && !defined(__clang__)
+#endif // __clang__
 
 #include <type_traits>
 #include <typeindex>
 
 #include "cereal/macros.hpp"
 #include "cereal/access.hpp"
+
+#include "cereal/external/ctti/type_id.hpp"
 
 namespace cereal
 {
@@ -1147,15 +1148,15 @@ namespace cereal
       {
         template<class T>
           base_class_id(T const * const t) :
-          type(typeid(T)),
+          type(ctti::type_id<T>()),
           ptr(t),
-          hash(std::hash<std::type_index>()(typeid(T)) ^ (std::hash<void const *>()(t) << 1))
+          hash(std::hash<ctti::type_id_t>()(ctti::type_id<T>()) ^ (std::hash<void const *>()(t) << 1))
           { }
 
           bool operator==(base_class_id const & other) const
           { return (type == other.type) && (ptr == other.ptr); }
 
-          std::type_index type;
+          ctti::type_id_t type;
           void const * ptr;
           size_t hash;
       };

@@ -54,7 +54,7 @@ private:
 		
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>>();
 		
-		Server = std::make_unique<UedsGameModeServer>(*this, 8000);
+		Server = std::make_unique<UedsGameModeServer>(*this, 8551);
 	}
 
 	// Must be used in order to tell UE that there will be more players - drones
@@ -348,6 +348,15 @@ public:
 		case 9:
 			NameOfWorld = "Race_2";
 			break;
+	    case 10:
+	      NameOfWorld = "IndustialWarehouse";
+	      break;
+	    case 11:
+	      NameOfWorld = "ServiceTunnel";
+	      break;
+	    case 12:
+	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
+	      break;
 		default:
 			NameOfWorld = "InfiniteForest";
 			break;
