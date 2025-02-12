@@ -11,7 +11,7 @@ public class MessageSerialization : ModuleRules
 	public MessageSerialization(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		bUseRTTI = true;
+		//bUseRTTI = true;
 		bEnableUndefinedIdentifierWarnings = false;
     bEnableExceptions = true;		
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
