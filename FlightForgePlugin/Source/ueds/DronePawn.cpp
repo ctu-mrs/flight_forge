@@ -153,8 +153,6 @@ ADronePawn::ADronePawn() {
   /* LidarConfig.FOVHor      = 360.0; */
   LidarConfig.FOVHorLeft  = 180.0;
   LidarConfig.FOVHorRight = 180.0;
-  /* LidarConfig.vertRayDiff = (double)LidarConfig.FOVVert / (double)(LidarConfig.BeamVertRays - 1.0); */
-  /* LidarConfig.horRayDif   = (double)LidarConfig.FOVHor / (double)LidarConfig.BeamHorRays; */
   LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
   LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
   FTimerHandle OusterTimerHandle;
@@ -1052,7 +1050,7 @@ FLidarConfig ADronePawn::GetLidarConfig() {
 /* setLidarConfig() //{ */
 
 bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
-
+  UE_LOG(LogTemp, Warning, TEXT("ADronePawn::SetLidarConfig"));
   LidarHitsCriticalSection->Lock();
   LidarSegHitsCriticalSection->Lock();
 
@@ -1078,14 +1076,12 @@ bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
   LidarConfig.Orientation.Yaw   = Config.Orientation.Yaw;
   LidarConfig.Orientation.Roll  = Config.Orientation.Roll;
 
-  /* LidarConfig.FOVHor  = Config.FOVHor; */
-  /* LidarConfig.FOVVert = Config.FOVVert; */
-  /* LidarConfig.FOVVertUp = Config.FOVVertUp; */
-  /* LidarConfig.FOVVertDown = Config.FOVVertDown; */
-  /* LidarConfig.FOVHorLeft = Config.FOVHorLeft; */
-  /* LidarConfig.FOVHorRight = Config.FOVHorRight; */
-  /* LidarConfig.vertRayDiff = (double)LidarConfig.FOVVert / (double)(LidarConfig.BeamVertRays - 1.0); */
-  /* LidarConfig.horRayDif   = (double)LidarConfig.FOVHor / (double)LidarConfig.BeamHorRays; */
+  LidarConfig.FOVVertUp = Config.FOVVertUp;
+  LidarConfig.FOVVertDown = Config.FOVVertDown;
+  LidarConfig.FOVHorLeft = Config.FOVHorLeft;
+  LidarConfig.FOVHorRight = Config.FOVHorRight;
+  LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
+  LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorRight + LidarConfig.FOVHorLeft) / (double)LidarConfig.BeamHorRays;
 
   LidarHits->resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
   LidarSegHits->resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
