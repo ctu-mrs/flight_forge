@@ -1301,11 +1301,12 @@ struct Response : public Common::NetworkResponse
   Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_api_version)){};
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_api_version, _status){};
 
-  int api_version;
+  int api_version_major;
+  int api_version_minor;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), api_version);
+    archive(cereal::base_class<Common::NetworkResponse>(this), api_version_major, api_version_minor);
   }
 };
 }  // namespace GetApiVersion

@@ -3,7 +3,8 @@
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "TcpServer.h"
 
-#define API_VERSION 10
+#define API_VERSION_MAJOR 0
+#define API_VERSION_MINOR 10
 
 class AuedsGameModeBase;
 
