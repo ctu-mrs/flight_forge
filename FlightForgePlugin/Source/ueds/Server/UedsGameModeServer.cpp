@@ -345,12 +345,14 @@ bool UedsGameModeServer::GetApiVersion(const FTCPClient& Client, Serializable::G
   }
 
   auto Response = Serializable::GameMode::GetApiVersion::Response(true);
-  Response.api_version  = API_VERSION;
+  Response.api_version_major  = API_VERSION_MAJOR;
+  Response.api_version_minor  = API_VERSION_MINOR;
 
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);
 
   return Respond(Client, OutputStream);
+  
 }
 
 //}
