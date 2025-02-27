@@ -119,7 +119,7 @@ ADronePawn::ADronePawn() {
    FTransform(FRotator(0, 0, 0), FVector(-13.65, -16.58, -4), FVector(2, -2, 2)),
    FTransform(FRotator(0, 0, 0), FVector(-13.65, 16.58, -4), FVector(2, 2, 2)),
    FTransform(FRotator(0, 0, 0), FVector(13.65, -16.58, -4), FVector(2, 2, 2)),
-   FTransform(FRotator(0, 0, 0), FVector(13.65, 16.58, -4), FVector(2, -2, 2))));t
+   FTransform(FRotator(0, 0, 0), FVector(13.65, 16.58, -4), FVector(2, -2, 2))));
 
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
@@ -870,6 +870,74 @@ void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay)
 {
   //RootMeshComponent->SetSimulatePhysics(true);
   GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ADronePawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
+}
+
+/**
+ * Visibility settings
+ * @param bEnable
+ * 
+ * - true -- UAVs see each others
+ *
+ * - false -- RL purpose, UAVs do not see each others
+ */
+void ADronePawn::SetVisibility(bool bEnable)
+{
+  if (bEnable)
+  {
+    // Visibility settings default -- UAVs see each others
+    RootMeshComponent->bOnlyOwnerSee = false;
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+    PropellerFrontLeft->bOnlyOwnerSee = false;
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+    PropellerFrontRight->bOnlyOwnerSee = false;
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+    PropellerRearLeft->bOnlyOwnerSee = false;
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+    PropellerRearRight->bOnlyOwnerSee = false;
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+  }
+  else
+  {
+    // Visibility settings -- RL purpose, UAVs do not see each others
+    RootMeshComponent->bOnlyOwnerSee = true;
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+    PropellerFrontLeft->bOnlyOwnerSee = true;
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+    PropellerFrontRight->bOnlyOwnerSee = true;
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+    PropellerRearLeft->bOnlyOwnerSee = true;
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+    PropellerRearRight->bOnlyOwnerSee = true;
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+  }
 }
 
 void ADronePawn::DisabledPhysics_StartRotatePropellers()

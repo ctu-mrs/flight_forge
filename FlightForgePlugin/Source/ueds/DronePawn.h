@@ -284,6 +284,8 @@ public:
   void SetStaticMesh(const int &frame_id);
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
+
+  void SetVisibility(bool bEnable);
   
 private:
   void Tick(float DeltaSeconds) override;
