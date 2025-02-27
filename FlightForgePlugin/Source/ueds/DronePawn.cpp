@@ -112,6 +112,15 @@ ADronePawn::ADronePawn() {
     FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
     FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
 
+  //Gimbal UAV
+  FramePropellersTransforms.Add(FramePropellersTransform(
+ FString(TEXT("gimbal")),
+ FString(TEXT("robofly")),
+   FTransform(FRotator(0, 0, 0), FVector(-13.65, -16.58, -4), FVector(2, -2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(-13.65, 16.58, -4), FVector(2, 2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(13.65, -16.58, -4), FVector(2, 2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(13.65, 16.58, -4), FVector(2, -2, 2))));t
+
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
 
