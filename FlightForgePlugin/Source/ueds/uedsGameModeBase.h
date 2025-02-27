@@ -223,6 +223,7 @@ public:
 		PlayerPawn->StartServer();
 		PlayerPawn->SetStaticMesh(IdMesh);
 		PlayerPawn->Simulate_UE_Physics(3.0f);
+		PlayerPawn->SetVisibility(false);
 		
 		DronePawnsCriticalSection->Lock();
 		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
