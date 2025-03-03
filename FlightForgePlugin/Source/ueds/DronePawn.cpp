@@ -316,7 +316,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
     if (!isExternallyLocked) {
         LidarHitsCriticalSection->Lock();
     }
-
+  
     auto World = GetWorld();
     const auto Start = GetActorLocation() + GetActorRotation().RotateVector(LidarConfig.Offset);
     const auto droneTransform = GetActorTransform();
@@ -348,7 +348,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
         ParallelFor(LidarConfig.BeamVertRays, [&](int32 col) {
 
             auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-
+            
             if (LidarConfig.ShowBeams) {
               const FName TraceTag(FString::Printf(TEXT("LidarTraceTag_%d"), 0));
               CollisionParams.TraceTag = TraceTag;
@@ -362,19 +362,26 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
             FVector raycastAngle = rotatedForward.RotateAngleAxis(vertAngle, rotatedRight);
             raycastAngle *= LidarConfig.BeamLength;
 
-
             FHitResult HitResult;
             
             if (World->LineTraceSingleByChannel(HitResult, Start, Start + raycastAngle, ECollisionChannel::ECC_Visibility, CollisionParams)) {
 
                 int i = row * LidarConfig.BeamVertRays + col;
-                
                 if (HitResult.bBlockingHit) {
-                  std::get<0>((*LidarHits)[i])  = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
-                  const auto ray_in_drone_coord = droneTransform.InverseTransformVector(raycastAngle);
-                  std::get<1>((*LidarHits)[i])  = ray_in_drone_coord.X;
-                  std::get<2>((*LidarHits)[i])  = ray_in_drone_coord.Y;
-                  std::get<3>((*LidarHits)[i])  = ray_in_drone_coord.Z;
+
+                  AActor* HitActor = HitResult.GetActor();
+                  if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this)
+                  {
+                      // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
+                  }
+                  else{
+                    std::get<0>((*LidarHits)[i])  = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
+                    const auto ray_in_drone_coord = droneTransform.InverseTransformVector(raycastAngle);
+                    std::get<1>((*LidarHits)[i])  = ray_in_drone_coord.X;
+                    std::get<2>((*LidarHits)[i])  = ray_in_drone_coord.Y;
+                    std::get<3>((*LidarHits)[i])  = ray_in_drone_coord.Z;
+                  }
+                  
                 } else {
                   std::get<0>((*LidarHits)[i])  = -1;
                   const auto ray_in_drone_coord = droneTransform.InverseTransformVector(raycastAngle);
@@ -642,9 +649,9 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
   // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
   LidarHitsCriticalSection->Lock();
-
+  
   UpdateLidar(true);
-
+  
   OutLidarData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
   for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
@@ -880,63 +887,57 @@ void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay)
  *
  * - false -- RL purpose, UAVs do not see each others
  */
-void ADronePawn::SetVisibility(bool bEnable)
+void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
 {
   if (bEnable)
   {
     // Visibility settings default -- UAVs see each others
+    bCanSeeOtherDrone = true;
+    
     RootMeshComponent->bOnlyOwnerSee = false;
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    RootMeshComponent->MarkRenderStateDirty();
 
     PropellerFrontLeft->bOnlyOwnerSee = false;
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerFrontLeft->MarkRenderStateDirty();
 
     PropellerFrontRight->bOnlyOwnerSee = false;
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-
+    PropellerFrontRight->MarkRenderStateDirty();
+    
     PropellerRearLeft->bOnlyOwnerSee = false;
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-
+    PropellerRearLeft->MarkRenderStateDirty();
+    
     PropellerRearRight->bOnlyOwnerSee = false;
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerRearRight->MarkRenderStateDirty();
   }
   else
   {
     // Visibility settings -- RL purpose, UAVs do not see each others
+    bCanSeeOtherDrone = false;
+    
     RootMeshComponent->bOnlyOwnerSee = true;
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
     RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    RootMeshComponent->MarkRenderStateDirty();
 
     PropellerFrontLeft->bOnlyOwnerSee = true;
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
     PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-
+    PropellerFrontLeft->MarkRenderStateDirty();
+    
     PropellerFrontRight->bOnlyOwnerSee = true;
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
     PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-
+    PropellerFrontRight->MarkRenderStateDirty();
+    
     PropellerRearLeft->bOnlyOwnerSee = true;
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
     PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-
+    PropellerRearLeft->MarkRenderStateDirty();
+    
     PropellerRearRight->bOnlyOwnerSee = true;
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    PropellerRearRight->MarkRenderStateDirty();
   }
 }
 

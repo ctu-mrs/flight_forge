@@ -285,9 +285,11 @@ public:
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
-  void SetVisibility(bool bEnable);
+  void SetVisibilityOtherDrones(bool bEnable);
   
 private:
+  bool bCanSeeOtherDrone = true;
+  
   void Tick(float DeltaSeconds) override;
 
   void UpdateLidar(bool isExternallyLocked);

@@ -50,4 +50,6 @@ private:
 	bool SetWeather(const FTCPClient& Client, Serializable::GameMode::SetWeather::Request& Request);
 
 	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
+
+	bool SetMutualDroneVisibility(const FTCPClient& Client, Serializable::GameMode::SetMutualVisibility::Request& Request);
 };

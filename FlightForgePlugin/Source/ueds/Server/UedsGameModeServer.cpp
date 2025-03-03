@@ -118,6 +118,13 @@ bool UedsGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<std::st
     return SetDatetime(Client, CustomRequest);
   }
 
+  if(Request.type == Serializable::GameMode::MessageType::set_mutual_visibility)
+  {
+    Serializable::GameMode::SetMutualVisibility::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetMutualDroneVisibility(Client, CustomRequest);
+  }
+
   return false;
 }
 
@@ -449,6 +456,26 @@ bool UedsGameModeServer::SetDatetime(const FTCPClient& Client, Serializable::Gam
   auto Instruction = std::make_shared<FInstruction<AuedsGameModeBase>>();
 
   Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { Response.status = _GameMode.SetDaytime(Request.hour, Request.minute); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream); 
+}
+
+bool UedsGameModeServer::SetMutualDroneVisibility(const FTCPClient& Client,
+  Serializable::GameMode::SetMutualVisibility::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  auto Response    = Serializable::GameMode::SetMutualVisibility::Response(true);
+  auto Instruction = std::make_shared<FInstruction<AuedsGameModeBase>>();
+
+  Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { _GameMode.SetMutualVisibility(Request.mutual_visibiliti_enabled); };
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 
