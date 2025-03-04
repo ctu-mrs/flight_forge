@@ -123,7 +123,7 @@ ADronePawn::ADronePawn() {
 
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
-
+  
   SceneCaptureMeshHolderStereoLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderStereoLeft"));
   SceneCaptureMeshHolderStereoLeft->SetupAttachment(RootMeshComponent);
 
@@ -202,7 +202,6 @@ void ADronePawn::BeginPlay() {
   Super::BeginPlay();
 
   // TODO check https://github.com/TimmHess/UnrealImageCapture
-
   RenderTarget2DRgb = NewObject<UTextureRenderTarget2D>();
   RenderTarget2DRgb->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
   RenderTarget2DRgb->RenderTargetFormat = RTF_RGBA8;
@@ -222,7 +221,7 @@ void ADronePawn::BeginPlay() {
   RenderTarget2DRgbSeg->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
   RenderTarget2DRgbSeg->RenderTargetFormat = RTF_RGBA8;
   RenderTarget2DRgbSeg->bGPUSharedFlag     = true;
-
+  
   SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorHDR;
   SceneCaptureComponent2DRgb->TextureTarget = RenderTarget2DRgb;
   SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(true);
@@ -894,23 +893,18 @@ void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
     // Visibility settings default -- UAVs see each others
     bCanSeeOtherDrone = true;
     
-    RootMeshComponent->bOnlyOwnerSee = false;
     RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     RootMeshComponent->MarkRenderStateDirty();
-
-    PropellerFrontLeft->bOnlyOwnerSee = false;
+    
     PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     PropellerFrontLeft->MarkRenderStateDirty();
-
-    PropellerFrontRight->bOnlyOwnerSee = false;
+    
     PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     PropellerFrontRight->MarkRenderStateDirty();
     
-    PropellerRearLeft->bOnlyOwnerSee = false;
     PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     PropellerRearLeft->MarkRenderStateDirty();
     
-    PropellerRearRight->bOnlyOwnerSee = false;
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     PropellerRearRight->MarkRenderStateDirty();
   }
@@ -919,23 +913,18 @@ void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
     // Visibility settings -- RL purpose, UAVs do not see each others
     bCanSeeOtherDrone = false;
     
-    RootMeshComponent->bOnlyOwnerSee = true;
     RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     RootMeshComponent->MarkRenderStateDirty();
 
-    PropellerFrontLeft->bOnlyOwnerSee = true;
     PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     PropellerFrontLeft->MarkRenderStateDirty();
     
-    PropellerFrontRight->bOnlyOwnerSee = true;
     PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     PropellerFrontRight->MarkRenderStateDirty();
-    
-    PropellerRearLeft->bOnlyOwnerSee = true;
+   
     PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     PropellerRearLeft->MarkRenderStateDirty();
     
-    PropellerRearRight->bOnlyOwnerSee = true;
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     PropellerRearRight->MarkRenderStateDirty();
   }
