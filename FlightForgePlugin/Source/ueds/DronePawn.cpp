@@ -352,7 +352,16 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
 
             if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastAngle, ECollisionChannel::ECC_Visibility, CollisionParams)) {
                 if (HitResult.bBlockingHit) {
+                  
+                  AActor* HitActor = HitResult.GetActor();
+                  if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this)
+                  {
+                    // skip
+                    std::get<0>((*LidarHits)[i]) = -1;
+                    // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
+                  } else {
                     std::get<0>((*LidarHits)[i]) = HitResult.Distance;
+                  }
 
                 } else {
                     std::get<0>((*LidarHits)[i]) = -1;
@@ -430,7 +439,16 @@ void ADronePawn::UpdateSegLidar(bool isExternallyLocked) {
 
         if (HitResult.bBlockingHit) {
 
-          std::get<0>((*LidarSegHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
+          AActor* HitActor = HitResult.GetActor();
+          if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this)
+          {
+            // skip
+            std::get<0>((*LidarSegHits)[i]) = -1;
+            // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
+          } else {
+            std::get<0>((*LidarSegHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
+          }
+
           // Transform ray into Lidar coordinates
           const auto ray_in_lidar_coord   = lidarGlobalTransform.InverseTransformVector(raycastAngle);
 
@@ -537,7 +555,16 @@ void ADronePawn::UpdateIntLidar(bool isExternallyLocked) {
       if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastAngle, ECollisionChannel::ECC_Visibility, CollisionParams)) {
         if (HitResult.bBlockingHit) {
 
-          std::get<0>((*LidarIntHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
+          AActor* HitActor = HitResult.GetActor();
+          if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this)
+          {
+            // skip
+            std::get<0>((*LidarHits)[i]) = -1;
+            // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
+          } else {
+            std::get<0>((*LidarIntHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
+          }
+         
           // Transform ray into Lidar coordinates
           const auto ray_in_lidar_coord   = lidarGlobalTransform.InverseTransformVector(raycastAngle);
 
