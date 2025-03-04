@@ -3,7 +3,8 @@
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "TcpServer.h"
 
-#define API_VERSION 9
+#define API_VERSION_MAJOR 0
+#define API_VERSION_MINOR 10
 
 class AuedsGameModeBase;
 
@@ -49,4 +50,6 @@ private:
 	bool SetWeather(const FTCPClient& Client, Serializable::GameMode::SetWeather::Request& Request);
 
 	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
+
+	bool SetMutualDroneVisibility(const FTCPClient& Client, Serializable::GameMode::SetMutualVisibility::Request& Request);
 };
