@@ -223,6 +223,7 @@ public:
 		PlayerPawn->StartServer();
 		PlayerPawn->SetStaticMesh(IdMesh);
 		PlayerPawn->Simulate_UE_Physics(3.0f);
+		PlayerPawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
 		
 		DronePawnsCriticalSection->Lock();
 		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
@@ -371,6 +372,13 @@ public:
 	{
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
 		return PlayerStart->GetActorLocation();
+	}
+
+	bool bMutualDroneVisibilityEnabled_ = true;
+
+	void SetMutualVisibility(bool bMutualDroneVisibilityEnabled)
+	{
+		bMutualDroneVisibilityEnabled_ = bMutualDroneVisibilityEnabled;
 	}
 
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)

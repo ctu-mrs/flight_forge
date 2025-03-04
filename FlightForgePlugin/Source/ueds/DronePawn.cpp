@@ -96,6 +96,15 @@ ADronePawn::ADronePawn() {
       FTransform(FRotator(0, 0, 0), FVector(-9.55, 9.55, 1.7), FVector(1, 1, 1)), FTransform(FRotator(0, 0, 0), FVector(9.55, -9.55, 1.7), FVector(1, 1, 1)),
       FTransform(FRotator(0, 0, 0), FVector(9.55, 9.55, 1.7), FVector(1, -1, 1))));
 
+  //Gimbal UAV
+  FramePropellersTransforms.Add(FramePropellersTransform(
+ FString(TEXT("gimbal")),
+ FString(TEXT("robofly")),
+   FTransform(FRotator(0, 0, 0), FVector(-13.65, -16.58, -4), FVector(2, -2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(-13.65, 16.58, -4), FVector(2, 2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(13.65, -16.58, -4), FVector(2, 2, 2)),
+   FTransform(FRotator(0, 0, 0), FVector(13.65, 16.58, -4), FVector(2, -2, 2))));
+
   SceneCaptureMeshHolderRgb = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderRgb"));
   SceneCaptureMeshHolderRgb->SetupAttachment(RootMeshComponent);
 
@@ -290,7 +299,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
     if (!isExternallyLocked) {
         LidarHitsCriticalSection->Lock();
     }
-
+  
     auto World = GetWorld();
     const auto droneTransform = GetActorTransform();
 
@@ -345,6 +354,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
             if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastAngle, ECollisionChannel::ECC_Visibility, CollisionParams)) {
                 if (HitResult.bBlockingHit) {
                     std::get<0>((*LidarHits)[i]) = HitResult.Distance;
+
                 } else {
                     std::get<0>((*LidarHits)[i]) = -1;
                 }
@@ -636,9 +646,9 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
   // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
   LidarHitsCriticalSection->Lock();
-
+  
   UpdateLidar(true);
-
+  
   OutLidarData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
   for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
@@ -857,7 +867,71 @@ void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
   GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ADronePawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
 }
 
-void ADronePawn::DisabledPhysics_StartRotatePropellers() {
+
+/**
+ * Visibility settings
+ * @param bEnable
+ * 
+ * - true -- UAVs see each others
+ *
+ * - false -- RL purpose, UAVs do not see each others
+ */
+void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
+{
+  if (bEnable)
+  {
+    // Visibility settings default -- UAVs see each others
+    bCanSeeOtherDrone = true;
+    
+    RootMeshComponent->bOnlyOwnerSee = false;
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    RootMeshComponent->MarkRenderStateDirty();
+
+    PropellerFrontLeft->bOnlyOwnerSee = false;
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerFrontLeft->MarkRenderStateDirty();
+
+    PropellerFrontRight->bOnlyOwnerSee = false;
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerFrontRight->MarkRenderStateDirty();
+    
+    PropellerRearLeft->bOnlyOwnerSee = false;
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerRearLeft->MarkRenderStateDirty();
+    
+    PropellerRearRight->bOnlyOwnerSee = false;
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+    PropellerRearRight->MarkRenderStateDirty();
+  }
+  else
+  {
+    // Visibility settings -- RL purpose, UAVs do not see each others
+    bCanSeeOtherDrone = false;
+    
+    RootMeshComponent->bOnlyOwnerSee = true;
+    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    RootMeshComponent->MarkRenderStateDirty();
+
+    PropellerFrontLeft->bOnlyOwnerSee = true;
+    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    PropellerFrontLeft->MarkRenderStateDirty();
+    
+    PropellerFrontRight->bOnlyOwnerSee = true;
+    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    PropellerFrontRight->MarkRenderStateDirty();
+    
+    PropellerRearLeft->bOnlyOwnerSee = true;
+    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    PropellerRearLeft->MarkRenderStateDirty();
+    
+    PropellerRearRight->bOnlyOwnerSee = true;
+    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    PropellerRearRight->MarkRenderStateDirty();
+  }
+}
+
+void ADronePawn::DisabledPhysics_StartRotatePropellers()
+{
   UE_LOG(LogTemp, Warning, TEXT("Disabled physics after a 3 second delay"));
 
   RootMeshComponent->SetSimulatePhysics(false);

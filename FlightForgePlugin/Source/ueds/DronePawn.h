@@ -284,8 +284,12 @@ public:
   void SetStaticMesh(const int &frame_id);
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
+
+  void SetVisibilityOtherDrones(bool bEnable);
   
 private:
+  bool bCanSeeOtherDrone = true;
+  
   void Tick(float DeltaSeconds) override;
 
   void UpdateLidar(bool isExternallyLocked);
