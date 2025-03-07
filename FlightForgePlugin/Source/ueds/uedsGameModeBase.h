@@ -347,7 +347,7 @@ public:
 			NameOfWorld = "Temesvar_annotated";
 			break;
 		case 7:
-			NameOfWorld = "EletricTowers";
+			NameOfWorld = "ElectricTowers";
 			break;
 		case 8:
 			NameOfWorld = "Race_1";
