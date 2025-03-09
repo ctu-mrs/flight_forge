@@ -392,8 +392,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
     if (bLivox) {
         // Livox Mode (CSV Data)
 
-        /* int pointsPerFrame = static_cast<int>(LidarConfig.Frequency * (static_cast<double>(LidarConfig.BeamHorRays) * LidarConfig.BeamVertRays)); */
-        int pointsPerFrame = 20000;
+        int pointsPerFrame = static_cast<int>(LidarConfig.Frequency * (static_cast<double>(LidarConfig.BeamHorRays) * LidarConfig.BeamVertRays));
 
         ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
             for (int32 col = 0; col < LidarConfig.BeamVertRays; ++col) {
@@ -405,7 +404,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
                 double azimuth = dataPoint.Azimuth;
                 double zenith = dataPoint.Zenith;
 
-                // Ray direction in *lidar's local frame*
+                // Ray direction in *lidar's local frame* - CORRECT.
                 FVector rayDirection_local(
                     FMath::Cos(zenith) * FMath::Cos(azimuth),
                     FMath::Cos(zenith) * FMath::Sin(azimuth),
@@ -415,40 +414,39 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
                 // Transform to *world* coordinates
                 FVector rayDirection_world = lidarGlobalTransform.TransformVector(rayDirection_local);
 
-
                 FHitResult HitResult;
                 auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-                // CORRECTED LINE TRACE: Use rayDirection_world directly, scaled by BeamLength.
-                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + rayDirection_world * LidarConfig.BeamLength, ECC_Visibility, CollisionParams))
-                {
+
+                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + rayDirection_world * LidarConfig.BeamLength, ECC_Visibility, CollisionParams)) {
                     if (HitResult.bBlockingHit) {
                         AActor* HitActor = HitResult.GetActor();
                         if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this) {
+                             // Store distance and *local* ray direction.
                             (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);
-                        } else {
-                             (*LidarHits)[i] = std::make_tuple(HitResult.Distance, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);
                         }
-                    }
-                    else {
-                        (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);  // No hit
+                        else{
+                            (*LidarHits)[i] = std::make_tuple(HitResult.Distance, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z); // CORRECTED
+                        }
+                    } else {
+                        // No hit. Store *local* ray direction.
+                        (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);
                     }
                 }
                 else{
                     (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);  // No hit
                 }
-
             }
         });
 
-        /* pointsPerFrame = static_cast<int>(LidarConfig.Frequency * (static_cast<double>(LidarConfig.BeamHorRays) * LidarConfig.BeamVertRays)); */
         StartIndex = (StartIndex + pointsPerFrame) % LivoxData.Num();
         LidarHitStart.reset(new FVector(lidarLocation));
 
     } else {
         // Original Raycast Mode (Corrected)
+
         FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
-        FVector rightVector = lidarQuat.RotateVector(FVector::RightVector);
-        FVector upVec = lidarQuat.RotateVector(FVector::UpVector);
+        FVector rightVector   = lidarQuat.RotateVector(FVector::RightVector);
+        FVector upVec        = lidarQuat.RotateVector(FVector::UpVector);
 
         double totalHorFov = LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight;
         double totalVertFov = LidarConfig.FOVVertUp + LidarConfig.FOVVertDown;
@@ -457,6 +455,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
             double horAngle = -LidarConfig.FOVHorLeft + (totalHorFov * (double)row / (double)(LidarConfig.BeamHorRays - 1.0));
             FVector rotatedForward = forwardVec.RotateAngleAxis(horAngle, upVec);
             FVector rotatedRight = rightVector.RotateAngleAxis(horAngle, upVec);
+
 
             ParallelFor(LidarConfig.BeamVertRays, [&](int32 col) {
                 auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
@@ -467,38 +466,34 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
 
                 double vertAngle = -LidarConfig.FOVVertDown + (totalVertFov * (double)col / (double)(LidarConfig.BeamVertRays - 1.0));
 
-                // Calculate ray direction in *world* coordinates
+                // Ray direction in *world* coordinates.
                 FVector raycastAngle_world = rotatedForward.RotateAngleAxis(-vertAngle, rotatedRight);
-                raycastAngle_world *= LidarConfig.BeamLength; //Scale it here
+                raycastAngle_world *= LidarConfig.BeamLength;
 
                 FHitResult HitResult;
                 int i = row * LidarConfig.BeamVertRays + col;
 
-                // CORRECTED LINE TRACE:
-                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastAngle_world, ECC_Visibility, CollisionParams)) {
-                    if (HitResult.bBlockingHit) {
+                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastAngle_world, ECC_Visibility, CollisionParams))
+                {
+                    // Get the ray direction in *lidar local coordinates*.  This is the KEY FIX.
+                    FVector ray_in_lidar_coord = lidarGlobalTransform.InverseTransformVector(raycastAngle_world);
+
+                     if (HitResult.bBlockingHit) {
                         AActor* HitActor = HitResult.GetActor();
-                        if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this) {
-                            std::get<0>((*LidarHits)[i]) = -1;
+                        if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this)
+                        {
+                            // skip
+                           (*LidarHits)[i] = std::make_tuple(HitResult.Distance, ray_in_lidar_coord.X, ray_in_lidar_coord.Y, ray_in_lidar_coord.Z); // CORRECTED
                         } else {
-                            std::get<0>((*LidarHits)[i]) = HitResult.Distance;
+                            (*LidarHits)[i] = std::make_tuple(HitResult.Distance, ray_in_lidar_coord.X, ray_in_lidar_coord.Y, ray_in_lidar_coord.Z); // CORRECTED
                         }
                     } else {
-                        std::get<0>((*LidarHits)[i]) = -1;
+                        (*LidarHits)[i] = std::make_tuple(-1.0, ray_in_lidar_coord.X, ray_in_lidar_coord.Y, ray_in_lidar_coord.Z); // CORRECTED
                     }
-                   FVector ray_in_lidar_coord = lidarGlobalTransform.InverseTransformVector(raycastAngle_world); //Consistent
-                    std::get<1>((*LidarHits)[i]) = ray_in_lidar_coord.X;
-                    std::get<2>((*LidarHits)[i]) = ray_in_lidar_coord.Y;
-                    std::get<3>((*LidarHits)[i]) = ray_in_lidar_coord.Z;
                 }
                 else {
-                    std::get<0>((*LidarHits)[i]) = -1;  // No hit, set distance to -1
-
-                    // Transform the ray direction into the lidar's local coordinate frame.
                     FVector ray_in_lidar_coord = lidarGlobalTransform.InverseTransformVector(raycastAngle_world);
-                    std::get<1>((*LidarHits)[i]) = ray_in_lidar_coord.X;
-                    std::get<2>((*LidarHits)[i]) = ray_in_lidar_coord.Y;
-                    std::get<3>((*LidarHits)[i]) = ray_in_lidar_coord.Z;
+                    (*LidarHits)[i] = std::make_tuple(-1.0, ray_in_lidar_coord.X, ray_in_lidar_coord.Y, ray_in_lidar_coord.Z);  // No hit, CORRECTED
                 }
             });
         });
