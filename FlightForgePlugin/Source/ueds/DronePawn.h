@@ -127,6 +127,13 @@ struct FStereoCameraConfig
   bool     enable_raytracing;
 };
 
+struct FLivoxDataPoint {
+    double Time;
+    double Azimuth; // in radians
+    double Zenith;  // in radians
+};
+
+
 using Serializable::GameMode::CameraCaptureModeEnum;
 
 UCLASS()
@@ -286,6 +293,14 @@ public:
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
   void SetVisibilityOtherDrones(bool bEnable);
+
+  bool LoadCSVData(const FString& FilePath);
+  TArray<FLivoxDataPoint> LivoxData;
+  bool bLivox;
+  int StartIndex;
+
+  
+  FString CSVFilePath;
   
 private:
   bool bCanSeeOtherDrone = true;
