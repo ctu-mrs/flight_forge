@@ -68,6 +68,7 @@ enum CameraMode
 struct FLidarConfig
 {
   bool   Enable;
+  bool Livox; 
   bool   ShowBeams;
   double BeamLength;
 
