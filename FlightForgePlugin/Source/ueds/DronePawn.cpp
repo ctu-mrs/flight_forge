@@ -217,7 +217,9 @@ ADronePawn::ADronePawn() {
   /* LidarConfig.horRayDif   = (double)LidarConfig.FOVHor / (double)LidarConfig.BeamHorRays; */
   LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
   LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
-  bLivox = true;
+
+  LidarConfig.Livox = false;
+
   StartIndex = 0;
   CSVFilePath = FString(TEXT("/home/david/mid360.csv"));
 
@@ -380,12 +382,9 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
 
     // --- Invert Roll ---
     FRotator correctedLidarOrientation = LidarConfig.Orientation;
-    if(!bLivox){
+    if(!LidarConfig.Livox){
     correctedLidarOrientation.Roll = -correctedLidarOrientation.Roll;
     }
-    /* if (bLivox) { */
-    /*     correctedLidarOrientation.Yaw += 180.0f; */
-    /* } */
 
     // Lidar's global transform
     FQuat lidarQuat = droneTransform.GetRotation() * correctedLidarOrientation.Quaternion();
@@ -394,7 +393,7 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
 
     LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
-    if (bLivox) {
+    if (LidarConfig.Livox) {
         // Livox Mode (CSV Data)
         int pointsPerFrame = 20000;
 
@@ -1264,6 +1263,7 @@ bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
   LidarSegHitsCriticalSection->Lock();
 
   LidarConfig.Enable     = Config.Enable;
+  LidarConfig.Livox     = Config.Livox;
   LidarConfig.ShowBeams  = Config.ShowBeams;
   LidarConfig.BeamLength = Config.BeamLength;
 
