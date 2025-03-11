@@ -20,6 +20,9 @@
 
 #include "NaniteSceneProxy.h"
 #include "Kismet/BlueprintTypeConversions.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
 
 //}
 
@@ -217,7 +220,28 @@ ADronePawn::ADronePawn() {
   LidarConfig.Livox = false;
 
   StartIndex = 0;
-  CSVFilePath = FString(TEXT("/home/david/mid360.csv"));
+
+
+  /* CSVFilePath = FString(TEXT("/home/david/mid360.csv")); */
+  /* CSVFilePath = FPaths::ProjectContentDir() + TEXT("mid360.csv"); */ 
+  /* CSVFilePath = FPaths::ProjectSavedDir() + TEXT("mid360.csv"); */
+  /* FString PluginContentDir = FString(TEXT("/Game/../Plugins/flight_forge/FlightForgePlugin/Content/")); */
+
+  /* CSVFilePath = PluginContentDir + TEXT("mid360.csv"); */
+
+    FString PluginName = TEXT("FlightForgePlugin");
+    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(PluginName);
+    if (Plugin.IsValid())
+    {
+        FString PluginContentDir = Plugin->GetContentDir();
+        FString CSVRelativePath = TEXT("Lidar/mid360.csv");
+        CSVFilePath = FPaths::Combine(PluginContentDir, CSVRelativePath);
+
+    }
+    else
+    {
+      UE_LOG(LogTemp, Error, TEXT("Plugin not found"));
+    }
 
   FTimerHandle OusterTimerHandle;
 
