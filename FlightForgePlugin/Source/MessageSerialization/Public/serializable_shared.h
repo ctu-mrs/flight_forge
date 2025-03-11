@@ -113,7 +113,6 @@ enum MessageType : unsigned short
 struct LidarConfig
 {
   bool   Enable;
-  bool Livox;
   bool   ShowBeams;
   double BeamLength;
 
@@ -134,11 +133,12 @@ struct LidarConfig
   double FOVHorRight;
   double FOVVertUp;
   double FOVVertDown;
+  bool Livox;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(Enable, Livox, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown); 
+    archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox); 
   }
 };
 

@@ -207,14 +207,10 @@ ADronePawn::ADronePawn() {
   LidarConfig.BeamLength  = DEFAULT_LIDAR_BEAM_LENGTH;
   LidarConfig.Offset      = FVector(0, 0, 0);
   LidarConfig.Orientation = FRotator(0, 0, 0);
-  /* LidarConfig.FOVVert     = 45.0; */
   LidarConfig.FOVVertUp   = 52.0;
   LidarConfig.FOVVertDown = 7.0;
-  /* LidarConfig.FOVHor      = 360.0; */
   LidarConfig.FOVHorLeft  = 180.0;
   LidarConfig.FOVHorRight = 180.0;
-  /* LidarConfig.vertRayDiff = (double)LidarConfig.FOVVert / (double)(LidarConfig.BeamVertRays - 1.0); */
-  /* LidarConfig.horRayDif   = (double)LidarConfig.FOVHor / (double)LidarConfig.BeamHorRays; */
   LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
   LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
 
