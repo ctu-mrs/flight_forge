@@ -129,19 +129,16 @@ struct LidarConfig
   double OrientationYaw;
   double OrientationRoll;
 
-  /* double FOVHor; */
-  /* double FOVVert; */
   double FOVHorLeft;
   double FOVHorRight;
   double FOVVertUp;
   double FOVVertDown;
-  //  double vertRayDiff;
-  //  double horRayDif;
+  bool Livox;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown); 
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox); 
   }
 };
 
