@@ -54,7 +54,7 @@ bool ADronePawn::LoadCSVData(const FString& FilePath)
             dataPoint.Time = std::stod(value);
         }
         catch (const std::invalid_argument& e) {
-            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Time): %s"), UTF8_TO_TCHAR(value.c_str()));
+            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Time): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
             file.close(); // Close file on read error
             return false;
         }
@@ -64,7 +64,7 @@ bool ADronePawn::LoadCSVData(const FString& FilePath)
             dataPoint.Azimuth = FMath::DegreesToRadians(std::stod(value));  // Convert to radians
         }
         catch (const std::invalid_argument& e) {
-           UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Azimuth): %s"), UTF8_TO_TCHAR(value.c_str()));
+           UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Azimuth): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
            file.close();
            return false;
         }
@@ -73,7 +73,7 @@ bool ADronePawn::LoadCSVData(const FString& FilePath)
         try {
             dataPoint.Zenith = FMath::DegreesToRadians(std::stod(value));  // Convert to radians
         } catch (const std::invalid_argument& e) {
-            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Zenith): %s"), UTF8_TO_TCHAR(value.c_str()));
+            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Zenith): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
             file.close();
             return false;
         }
