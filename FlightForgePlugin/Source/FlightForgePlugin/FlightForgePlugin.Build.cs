@@ -1,11 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class FlightForgePlugin : ModuleRules
 {
 	public FlightForgePlugin(ReadOnlyTargetRules Target) : base(Target)
 	{
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "Lidar/mid360.csv"));
+		
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
 		//bUseRTTI = true;
