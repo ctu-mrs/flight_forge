@@ -129,19 +129,16 @@ struct LidarConfig
   double OrientationYaw;
   double OrientationRoll;
 
-  /* double FOVHor; */
-  /* double FOVVert; */
   double FOVHorLeft;
   double FOVHorRight;
   double FOVVertUp;
   double FOVVertDown;
-  //  double vertRayDiff;
-  //  double horRayDif;
+  bool Livox;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown); 
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox); 
   }
 };
 
@@ -961,7 +958,8 @@ enum MessageType : unsigned short
   get_world_origin        = 14,
   spawn_drone_at_location = 15,
   set_weather             = 16,
-  set_daytime             = 17
+  set_daytime             = 17,
+  set_mutual_visibility   = 18
 };
 
 namespace GetDrones
@@ -1301,11 +1299,12 @@ struct Response : public Common::NetworkResponse
   Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_api_version)){};
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_api_version, _status){};
 
-  int api_version;
+  int api_version_major;
+  int api_version_minor;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), api_version);
+    archive(cereal::base_class<Common::NetworkResponse>(this), api_version_major, api_version_minor);
   }
 };
 }  // namespace GetApiVersion
@@ -1354,6 +1353,28 @@ namespace GetWorldOrigin
   };
 }  // namespace GetWorldOrigin
 
+namespace SetMutualVisibility
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::set_mutual_visibility){};
+
+    bool mutual_visibiliti_enabled;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), mutual_visibiliti_enabled);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_mutual_visibility)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_mutual_visibility, _status){};
+  };
+}
+
+  
 }  // namespace GameMode
 
 }  // namespace Serializable

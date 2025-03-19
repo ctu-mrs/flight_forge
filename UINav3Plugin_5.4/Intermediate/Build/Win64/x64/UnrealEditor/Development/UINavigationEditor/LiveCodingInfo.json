@@ -1,0 +1,8 @@
+{
+	"RemapUnityFiles": 
+	{
+		"Module.UINavigationEditor.cpp.obj": [
+			"UINavigationEditor.cpp.obj"
+		]
+	}
+}

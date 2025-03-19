@@ -740,8 +740,7 @@ bool DroneServer::GetLidarConfig(const FTCPClient& Client, Serializable::Drone::
   Response.config.FOVHorRight = LidarConfig.FOVHorRight;
   Response.config.FOVVertUp = LidarConfig.FOVVertUp;
   Response.config.FOVVertDown = LidarConfig.FOVVertDown;
-	/* Response.config.FOVHor = LidarConfig.FOVHor; */
-	/* Response.config.FOVVert = LidarConfig.FOVVert; */
+  Response.config.Livox = LidarConfig.Livox;
 
 
 	Serialization::DeserializeResponse(Response, OutputStream);
@@ -774,9 +773,8 @@ bool DroneServer::SetLidarConfig(const FTCPClient& Client, Serializable::Drone::
   Config.FOVHorRight = Request.config.FOVHorRight;
   Config.FOVVertUp = Request.config.FOVVertUp;
   Config.FOVVertDown = Request.config.FOVVertDown;
-	/* Config.FOVHor = Request.config.FOVHor; */
-	/* Config.FOVVert = Request.config.FOVVert; */
-
+  Config.Livox = Request.config.Livox;
+  
 	const auto Status = DronePawn->SetLidarConfig(Config);
 
 	std::stringstream OutputStream;
