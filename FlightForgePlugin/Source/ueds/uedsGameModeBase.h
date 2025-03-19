@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "DronePawn.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Server/UedsGameModeServer.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
@@ -228,6 +229,12 @@ public:
 		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
 		DronePawnsCriticalSection->Unlock();
 
+		if(!bMutualDroneVisibilityEnabled_)
+		{
+			PlayerPawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
+			UpdateMutualVisibility();
+		}
+
 		return PlayerPawn->droneServer->GetPort();
 	}
 
@@ -340,7 +347,7 @@ public:
 			NameOfWorld = "Temesvar_annotated";
 			break;
 		case 7:
-			NameOfWorld = "EletricTowers";
+			NameOfWorld = "ElectricTowers";
 			break;
 		case 8:
 			NameOfWorld = "Race_1";
@@ -373,6 +380,32 @@ public:
 		return PlayerStart->GetActorLocation();
 	}
 
+	bool bMutualDroneVisibilityEnabled_ = true;
+
+	void SetMutualVisibility(bool bMutualDroneVisibilityEnabled)
+	{
+		bMutualDroneVisibilityEnabled_ = bMutualDroneVisibilityEnabled;
+	}
+
+	void UpdateMutualVisibility()
+	{
+		for (auto DroneToUpdate : DronePawns)
+		{
+			TArray<AActor*> DronesToBeHidden;
+			for (auto DronePawn : DronePawns)
+			{
+				if(DroneToUpdate != DronePawn)
+				{
+					DronesToBeHidden.Add(DronePawn.Value.first);
+				}
+			}
+			DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Empty();
+			DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Append(DronesToBeHidden);
+
+			// UE_LOG(LogTemp, Error, TEXT("hidden actors count is %d"), DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Num());
+		}
+	}
+		
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
 	bool SetWeather(int TypeId);
 
