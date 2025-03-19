@@ -344,7 +344,7 @@ public:
 			NameOfWorld = "ErdingAirBase";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
-			NameOfWorld = "Temesvar_annotated";
+			NameOfWorld = "Temesvar";
 			break;
 		case 7:
 			NameOfWorld = "ElectricTowers";
@@ -356,7 +356,7 @@ public:
 			NameOfWorld = "Race_2";
 			break;
 	    case 10:
-	      NameOfWorld = "IndustialWarehouse";
+	      NameOfWorld = "IndustrialWarehouse";
 	      break;
 	    case 11:
 	      NameOfWorld = "ServiceTunnel";
@@ -364,6 +364,9 @@ public:
 	    case 12:
 	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
 	      break;
+		case 13:
+			NameOfWorld = "Race_3";
+			break;
 		default:
 			NameOfWorld = "InfiniteForest";
 			break;
