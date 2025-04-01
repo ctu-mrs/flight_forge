@@ -17,8 +17,8 @@ public class ueds : ModuleRules
 		bEnableUndefinedIdentifierWarnings = false;
     bEnableExceptions = true;
     //bUseRTTI = true;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent", "UnrealYAML" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects"});
+		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent" });
 
 		string thirdPartyIncludePath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/include"));
 		PublicIncludePaths.AddRange(new string[] {thirdPartyIncludePath});

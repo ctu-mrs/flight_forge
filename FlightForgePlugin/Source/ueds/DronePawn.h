@@ -22,7 +22,7 @@ class UTextureRenderTarget2D;
 #define DEFAULT_LIDAR_BEAM_LENGTH 1000
 /* #define DEFAULT_LIDAR_BEAM_HOR 2048 */
 /* #define DEFAULT_LIDAR_BEAM_VER 128 */
-#define DEFAULT_LIDAR_SHOW_BEAMS false
+#define DEFAULT_LIDAR_SHOW_BEAMS false 
 
 #define DEFAULT_RANGEFINDER_BEAM_LENGTH 3000
 
@@ -68,6 +68,7 @@ enum CameraMode
 struct FLidarConfig
 {
   bool   Enable;
+  bool Livox; 
   bool   ShowBeams;
   double BeamLength;
 
@@ -77,8 +78,12 @@ struct FLidarConfig
   double   Frequency;
   FVector  Offset;
   FRotator Orientation;
-  double   FOVHor;
-  double   FOVVert;
+  /* double   FOVHor; */
+  double  FOVHorLeft;
+  double  FOVHorRight;
+  /* double   FOVVert; */
+  double   FOVVertUp;
+  double   FOVVertDown;
   double   vertRayDiff;
   double   horRayDif;
 
@@ -122,6 +127,13 @@ struct FStereoCameraConfig
   bool     enable_hdr;
   bool     enable_raytracing;
 };
+
+struct FLivoxDataPoint {
+    double Time;
+    double Azimuth; // in radians
+    double Zenith;  // in radians
+};
+
 
 using Serializable::GameMode::CameraCaptureModeEnum;
 
@@ -280,8 +292,20 @@ public:
   void SetStaticMesh(const int &frame_id);
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
+
+  void SetVisibilityOtherDrones(bool bEnable);
+
+  bool LoadCSVData(const FString& FilePath);
+  TArray<FLivoxDataPoint> LivoxData;
+  bool bLivox;
+  int StartIndex;
+
+  
+  FString CSVFilePath;
   
 private:
+  bool bCanSeeOtherDrone = true;
+  
   void Tick(float DeltaSeconds) override;
 
   void UpdateLidar(bool isExternallyLocked);
