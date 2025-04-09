@@ -18,10 +18,17 @@ public:
 	// Sets default values for this actor's properties
 	ASpawningObjectManager();
 
-	
+	UPROPERTY(EditAnywhere)
 	FString GatesYamlConfigPath = "gate_config_abu_january_full.yaml";
-	
-	FString FullPathToActorsFolder_ = "/Game/Blueprints/";
+
+	UPROPERTY(EditAnywhere)
+	FString FullPathToActorsFolder_ = "/Game/Worlds/Warehouse/Blueprints/";
+
+	UPROPERTY(EditAnywhere)
+	FString SlimGateName = "BP_a2rl_gate_slim";
+
+	UPROPERTY(EditAnywhere)
+	bool bCollisionFree = false;
 
 	UPROPERTY()
 	AuedsGameModeBase* GameMode;

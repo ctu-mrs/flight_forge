@@ -41,13 +41,23 @@ void ASpawningObjectManager::BeginPlay()
 		FTransform TransformUE;
 		UBlueprintUtils::TransformToUECoord(Location, Orientation, WorldOrigin, TransformUE);
 
-		FString SlimGateName = "BP_a2rl_gate_slim";
-		if(Gate.Position.Z > 1.35)
+		FString ObjectName = SlimGateName;
+		if(bCollisionFree)
 		{
-			SlimGateName = "BP_a2rl_gate_slim_core";
+			ObjectName = SlimGateName + "_collisionfree";
 		}
 		
-		this->SpawnActorByName(SlimGateName, FullPathToActorsFolder_, TransformUE, StencilValue++);
+		if(Gate.Position.Z > 1.35)
+		{
+			// SlimGateName = "BP_a2rl_gate_slim_core";
+			ObjectName = SlimGateName + "_core";
+			if(bCollisionFree)
+			{
+				ObjectName = SlimGateName + "_core" + "_collisionfree";
+			}
+		}
+		
+		this->SpawnActorByName(ObjectName, FullPathToActorsFolder_, TransformUE, StencilValue++);
 	}
 	
 }

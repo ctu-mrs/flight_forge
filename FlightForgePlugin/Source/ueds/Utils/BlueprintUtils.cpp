@@ -131,9 +131,9 @@ void UBlueprintUtils::TransformToUECoord(const FVector& RightHandLocation, const
 	LocationUE.Z = WorldOrigin.Z + RightHandLocation.Z * 100 - PlayerStartOffset;
 	
 	FRotator OrientationUE;
-	OrientationUE.Roll = 180 * (-RightHandOrientation.X / PI);
-	OrientationUE.Pitch = 180 * (RightHandOrientation.Y / PI);
-	OrientationUE.Yaw = 180 * (-RightHandOrientation.Z / PI);
+	OrientationUE.Roll = RightHandOrientation.X; //180 * (RightHandOrientation.X / PI);
+	OrientationUE.Pitch = -RightHandOrientation.Y; //180 * (-RightHandOrientation.Y / PI);
+	OrientationUE.Yaw = -RightHandOrientation.Z; //180 * (-RightHandOrientation.Z / PI);
 
 	// UE_LOG(LogTemp, Warning, TEXT("Heading: %lf [right hand], %lf [UE]"), RightHandOrientation.Z, OrientationUE.Yaw);
 
