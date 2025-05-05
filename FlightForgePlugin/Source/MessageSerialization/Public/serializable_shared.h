@@ -547,6 +547,8 @@ struct Response : public Common::NetworkResponse
 
 //}
 
+/*GetRangefinderData//{*/
+
 namespace GetRangefinderData
 {
   struct Request : public Common::NetworkRequest
@@ -567,6 +569,7 @@ namespace GetRangefinderData
     }
   };
 }  // namespace GetRangefinderData
+   /*//}*/
 
 /* GetLidarData //{ */
 
