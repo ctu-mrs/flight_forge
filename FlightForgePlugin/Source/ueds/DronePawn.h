@@ -9,12 +9,24 @@
 
 #include "GameFramework/Actor.h"
 
-#include "DronePawn.generated.h"
+
+#include "CoreMinimal.h" 
+#include "Misc/Paths.h"
+#include "HAL/PlatformFileManager.h"
+#include "Misc/FileHelper.h"
 
 class USpringArmComponent;
 class UCameraComponent;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
+class UStaticMeshComponent;
+class UglTFRuntimeAsset;
+class UglTFRuntimeFunctionLibrary;
+class AGLBtoSM; 
+
+#include "GLBtoSM.h"
+
+#include "DronePawn.generated.h"
 
 #define DEFAULT_LIDAR_BEAM_HOR 256  // 100
 #define DEFAULT_LIDAR_BEAM_VER 32   // 15
@@ -33,6 +45,24 @@ enum DroneFrame
   Agile,
   Robofly
 };
+
+
+USTRUCT(BlueprintType)
+struct FExternalPropellerConfig
+{
+  GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model")
+    FTransform RelativeTransform;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model")
+    FString Name; // Optional name
+
+  FExternalPropellerConfig() : RelativeTransform(FTransform::Identity), Name(TEXT("Propeller")) {}
+  FExternalPropellerConfig(const FTransform& Transform, const FString& InName = TEXT("Propeller"))
+    : RelativeTransform(Transform), Name(InName) {}
+};
+
 
 class FramePropellersTransform
 {
@@ -196,17 +226,11 @@ public:
   UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* RootMeshComponent;
 
-  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
-  UStaticMeshComponent* PropellerRearLeft;
+  UPROPERTY(VisibleAnywhere, Category = "Rigid Body")
+  TArray<UStaticMeshComponent*> DynamicPropellers;
 
-  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
-  UStaticMeshComponent* PropellerRearRight;
-
-  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
-  UStaticMeshComponent* PropellerFrontLeft;
-
-  UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
-  UStaticMeshComponent* PropellerFrontRight;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model", meta = (AllowPrivateAccess = "true"))
+  TObjectPtr<AGLBtoSM> GltfLoaderActor; 
 
   // Sets default values for this character's properties
   ADronePawn();
@@ -288,8 +312,11 @@ public:
   bool propellers_rotate = false;
 
   FTimerHandle TimerHandle_Disabled_Physics;
+  
+  UFUNCTION(BlueprintCallable, Category = "DroneSetup")
+  void SetStaticMeshByName(const FString& ModelName);
 
-  void SetStaticMesh(const int &frame_id);
+  /* void SetStaticMesh(const int &frame_id); */
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
@@ -302,6 +329,25 @@ public:
 
   
   FString CSVFilePath;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model")
+  FString ExternalModelBasePath;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model")
+  TSoftObjectPtr<UStaticMesh> DefaultExternalPropellerMesh;
+
+  const TArray<FramePropellersTransform>& GetPredefinedFrameTransforms() const; 
+
+
+protected:
+
+  bool LoadExternalModel(const FString& ModelName);
+
+  bool ParsePropellerYAML(const FString& YamlPath, TArray<FExternalPropellerConfig>& OutPropConfigs, FString& OutPropellerMeshPath);
+
+  void ApplyExternalPropellerConfig(const TArray<FExternalPropellerConfig>& PropConfigs, const FString& PropellerMeshPath);
+
+  void ClearDynamicPropellers();
   
 private:
   bool bCanSeeOtherDrone = true;
@@ -315,8 +361,13 @@ private:
   void UpdateIntLidar(bool isExternallyLocked);
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
+  
+  void SetPredefinedPropellersTransform(const int &frame_id);
+  
+  TArray<FramePropellersTransform> FramePropellersTransforms;
 
-  void SetPropellersTransform(const int &frame_id);
+  /* UFUNCTION(BlueprintPure, Category = "DroneSetup") */
+  /* void SetPropellersTransform(const int &frame_id); */
   
   void DisabledPhysics_StartRotatePropellers();
 
@@ -360,5 +411,6 @@ private:
   bool RgbSegCameraRendered               = false;
   bool StereoCameraRendered               = false;
 
-  TArray<FramePropellersTransform> FramePropellersTransforms;
+  bool bIsExternalModelLoaded = false;
+
 };

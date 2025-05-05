@@ -35,6 +35,67 @@ private:
 
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND;
 
+  TMap<int32, FString> DroneModelIdMap;
+
+void InitializeModelIdMap()
+{
+    DroneModelIdMap.Empty(); 
+
+    UE_LOG(LogTemp, Log, TEXT("Initializing Drone Model ID Map..."));
+
+    if (!DronePawnClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("InitializeModelIdMap: DronePawnClass is not set in GameMode Defaults! Cannot map predefined models."));
+        DroneModelIdMap.Add(0, TEXT("x500")); 
+        return;
+    }
+
+    ADronePawn* DroneCDO = Cast<ADronePawn>(DronePawnClass->GetDefaultObject());
+    if (!DroneCDO)
+    {
+        UE_LOG(LogTemp, Error, TEXT("InitializeModelIdMap: Could not get Drone Pawn CDO! Cannot map predefined models."));
+        return;
+    }
+
+    const TArray<FramePropellersTransform>& PredefinedFrames = DroneCDO->GetPredefinedFrameTransforms(); 
+    for (int32 i = 0; i < PredefinedFrames.Num(); ++i)                                                 
+    {
+      const FString& FrameName = PredefinedFrames[i].FrameName;                                  
+      DroneModelIdMap.Add(i, FrameName);
+      const int32 CurrentId = i; 
+      UE_LOG(LogTemp, Log, TEXT("  Mapped ID %d -> Model Name '%s' (Predefined)"), CurrentId, *FrameName);
+    }
+
+    FString ConfigFilePath = FPaths::ProjectSavedDir() + TEXT("Config/Linux/MyDroneModels.ini");
+    if (FPaths::FileExists(ConfigFilePath))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Loading additional model mappings from %s"), *ConfigFilePath);
+        FConfigFile ModelConfigFile;
+        ModelConfigFile.Read(ConfigFilePath);
+        const FConfigSection* ExternalModelsSection = ModelConfigFile.FindSection(TEXT("ExternalModels"));
+        if (ExternalModelsSection)
+        {
+            for (const auto& Pair : *ExternalModelsSection)
+            {
+                int32 ExternalId = FCString::Atoi(*Pair.Key.ToString()); 
+                FString ExternalName = Pair.Value.GetValue();        
+                if (ExternalId >= 0 && !ExternalName.IsEmpty()) 
+                {
+                    DroneModelIdMap.Add(ExternalId, ExternalName);
+                     UE_LOG(LogTemp, Log, TEXT("  Mapped ID %d -> Model Name '%s' (From Config)"), ExternalId, *ExternalName);
+                }
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("Optional model config file not found: %s"), *ConfigFilePath);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Finished initializing Drone Model ID Map. Total Mappings: %d"), DroneModelIdMap.Num());
+}
+  
+
 #if PLATFORM_WINDOWS
 	std::unique_ptr<FWindowsCriticalSection> FPSCriticalSection = std::make_unique<FWindowsCriticalSection>();
 #else
@@ -67,6 +128,8 @@ private:
 
 	virtual void BeginPlay() override
 	{
+
+    InitializeModelIdMap();
 		UE_LOG(LogTemp, Warning, TEXT("Starting game mode server"));
 		Server->Run();
 		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
@@ -180,63 +243,83 @@ public:
 		return PlayerPawn->droneServer->GetPort();
 	}
 
-	UFUNCTION(BlueprintCallable)
-	int SpawnDroneAtLocation(FVector Location, int IdMesh)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
-		
-		ADronePawn* PlayerPawn = nullptr;
-		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+UFUNCTION(BlueprintCallable)
+int SpawnDroneAtLocation(FVector Location, int IdMesh)
+{
+    UE_LOG(LogTemp, Log, TEXT("AuedsGameModeBase::SpawnDroneAtLocation received request for ID: %d at location: %s"), IdMesh, *Location.ToString());
 
-		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS
-		
-		// if(UWorld* World = GetWorld())
-		// {
-		// 	FHitResult HitResult;
-		// 	FVector Start = Location;
-		// 	FVector End = Start + FVector::DownVector * 100000;
-		// 	FVector SpawnOffset = 300*FVector::UpVector;
-		// 	if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast DOWN"));
-		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// 	else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		
-		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast UP"));
-		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// }
-		
-		if(PlayerPawn == nullptr)
-		{
-			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(Location)));
-			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at defined Location"));
-		}
-		
-		const auto DronePort = GetAvailableDronePort();
-		PlayerPawn->droneServer->SetPort(DronePort);
-		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
-		PlayerPawn->StartServer();
-		PlayerPawn->SetStaticMesh(IdMesh);
-		PlayerPawn->Simulate_UE_Physics(3.0f);
-		
-		DronePawnsCriticalSection->Lock();
-		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
-		DronePawnsCriticalSection->Unlock();
+    FString ModelNameToLoad;
+    const FString* FoundNamePtr = DroneModelIdMap.Find(IdMesh);
 
-		if(!bMutualDroneVisibilityEnabled_)
-		{
-			PlayerPawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
-			UpdateMutualVisibility();
-		}
+    if (FoundNamePtr != nullptr)
+    {
+        ModelNameToLoad = *FoundNamePtr;
+        UE_LOG(LogTemp, Log, TEXT("Mapped ID %d to Model Name '%s'."), IdMesh, *ModelNameToLoad);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SpawnDroneAtLocation: ID %d not found in DroneModelIdMap. Using default model."), IdMesh);
+        const FString* DefaultNamePtr = DroneModelIdMap.Find(0); 
+        if (DefaultNamePtr) {
+            ModelNameToLoad = *DefaultNamePtr;
+        } else {
+             ModelNameToLoad = TEXT("x500");
+             UE_LOG(LogTemp, Error, TEXT("SpawnDroneAtLocation: ID 0 fallback model name not found in map! Using hardcoded 'x500'."));
+        }
+         UE_LOG(LogTemp, Warning, TEXT("Falling back to model name '%s'."), *ModelNameToLoad);
+    }
 
-		return PlayerPawn->droneServer->GetPort();
-	}
+
+    ADronePawn* PlayerPawn = nullptr;
+    APlayerController* PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString()); 
+
+
+    if(PlayerPawn == nullptr)
+    {
+        FActorSpawnParameters SpawnParams;
+        SpawnParams.Owner = PlayerController;
+        PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(Location)));
+        UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at defined Location: %s"), *Location.ToString());
+    }
+
+    if (!PlayerPawn) 
+    {
+         UE_LOG(LogTemp, Error, TEXT("Failed to spawn DronePawn!"));
+         if (PlayerController) PlayerController->Destroy();
+         return -1; 
+    }
+
+    const auto DronePort = GetAvailableDronePort();
+    PlayerPawn->droneServer->SetPort(DronePort);
+    PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
+
+
+
+
+    if (!ModelNameToLoad.IsEmpty())
+    {
+        PlayerPawn->SetStaticMeshByName(ModelNameToLoad);
+    }
+    else {
+        UE_LOG(LogTemp, Error, TEXT("ModelNameToLoad was empty after lookup/fallback! Cannot set mesh."));
+    }
+
+
+    PlayerPawn->StartServer();
+    PlayerPawn->Simulate_UE_Physics(3.0f);
+
+    DronePawnsCriticalSection->Lock();
+    DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
+    DronePawnsCriticalSection->Unlock();
+
+    if(!bMutualDroneVisibilityEnabled_)
+    {
+        PlayerPawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
+        UpdateMutualVisibility();
+    }
+
+    return PlayerPawn->droneServer->GetPort();
+}
 
 	bool RemoveDrone(int Port)
 	{

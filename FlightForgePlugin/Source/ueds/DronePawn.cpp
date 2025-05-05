@@ -24,7 +24,414 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 
+#include "glTFRuntimeFunctionLibrary.h"
+#include "glTFRuntimeAsset.h"
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "HAL/PlatformFileManager.h"
+#include "Node.h"
+#include "Parsing.h"
+#include "yaml.h"
+#include "glTFRuntimeFunctionLibrary.h"
+#include "glTFRuntimeAsset.h"
+
+#include <fstream>
+#include <sstream>
+#include <string> 
 //}
+
+/*ApplyExternalPropellerConfig()//{*/
+
+void ADronePawn::ApplyExternalPropellerConfig(const TArray<FExternalPropellerConfig>& PropConfigs, const FString& PropellerMeshPath)
+{
+    ClearDynamicPropellers(); 
+
+    UStaticMesh* PropMesh = nullptr;
+    if (!PropellerMeshPath.IsEmpty())
+    {
+        PropMesh = LoadObject<UStaticMesh>(nullptr, *PropellerMeshPath);
+         if (!PropMesh) UE_LOG(LogTemp, Warning, TEXT("Could not load propeller mesh specified in YAML: %s. Falling back to default."), *PropellerMeshPath);
+    }
+    if (!PropMesh)
+    {
+         PropMesh = DefaultExternalPropellerMesh.LoadSynchronous();
+         if (!PropMesh) UE_LOG(LogTemp, Error, TEXT("Failed to load default external propeller mesh! Cannot create propellers."));
+         if (!PropMesh) return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Applying external config for %d propellers."), PropConfigs.Num());
+
+    for (int i = 0; i < PropConfigs.Num(); ++i)
+    {
+        const FExternalPropellerConfig& Config = PropConfigs[i];
+
+        FName CompName = MakeUniqueObjectName(this, UStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("DynamicPropeller_%s_%d"), *Config.Name, i)));
+        UStaticMeshComponent* CurrentPropComp = NewObject<UStaticMeshComponent>(this, CompName);
+
+        if (CurrentPropComp)
+        {
+            CurrentPropComp->SetupAttachment(RootMeshComponent);
+            CurrentPropComp->RegisterComponent(); 
+            CurrentPropComp->SetRelativeTransform(Config.RelativeTransform);
+            CurrentPropComp->SetStaticMesh(PropMesh);
+            CurrentPropComp->SetVisibility(true);
+            DynamicPropellers.Add(CurrentPropComp); 
+
+             CurrentPropComp->SetCollisionProfileName(FName(TEXT("NoCollision"))); 
+             CurrentPropComp->SetCollisionEnabled(ECollisionEnabled::NoCollision); 
+
+             UE_LOG(LogTemp, Verbose, TEXT("Created dynamic propeller component %d: %s"), i, *CompName.ToString());
+        }
+        else
+        {
+             UE_LOG(LogTemp, Error, TEXT("Failed to create dynamic propeller component %d!"), i);
+        }
+    }
+     bIsExternalModelLoaded = true; 
+}
+
+/*//}*/
+
+/*LoadExternalModel()//{*/
+
+bool ADronePawn::LoadExternalModel(const FString& ModelName)
+{
+    FString ModelFolderPath = FPaths::Combine(ExternalModelBasePath, ModelName);
+    FString GltfPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT(".glb")); 
+    FString YamlPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT("_props.yaml"));
+
+    UE_LOG(LogTemp, Log, TEXT("Attempting to load external model: %s"), *ModelName);
+    UE_LOG(LogTemp, Log, TEXT("  Checking GLB Path: %s"), *GltfPath);
+    UE_LOG(LogTemp, Log, TEXT("  YAML Path: %s"), *YamlPath);
+
+    if (!FPaths::FileExists(GltfPath))
+    {
+        UE_LOG(LogTemp, Log, TEXT("GLB file not found, checking for .gltf: %s"), *GltfPath);
+        GltfPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT(".gltf"));
+        UE_LOG(LogTemp, Log, TEXT("  Checking glTF Path: %s"), *GltfPath);
+        if (!FPaths::FileExists(GltfPath))
+        {
+             UE_LOG(LogTemp, Warning, TEXT("External model file not found (tried .glb and .gltf): %s"), *FPaths::Combine(ModelFolderPath, ModelName));
+             return false;
+        }
+    }
+
+    if (!GltfLoaderActor)
+    {
+        UE_LOG(LogTemp, Error, TEXT("LoadExternalModel: GltfLoaderActor is not assigned in DronePawn for model '%s'. Cannot load mesh."), *ModelName);
+        return false;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("LoadExternalModel: Calling Blueprint GLBtoSM for path: %s"), *GltfPath);
+
+    UStaticMesh* LoadedMesh = GltfLoaderActor->GLBtoSM(GltfPath);
+
+    if (LoadedMesh)
+    {
+        RootMeshComponent->SetStaticMesh(LoadedMesh);
+        UE_LOG(LogTemp, Log, TEXT("LoadExternalModel: Blueprint GLBtoSM returned VALID mesh for '%s'."), *ModelName);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("LoadExternalModel: Blueprint GLBtoSM returned NULL mesh for path: %s. Check Blueprint implementation."), *GltfPath);
+        ClearDynamicPropellers(); 
+        return false;
+    }
+
+    TArray<FExternalPropellerConfig> PropConfigs;
+    FString PropellerMeshPathFromYaml;
+    if (ParsePropellerYAML(YamlPath, PropConfigs, PropellerMeshPathFromYaml))
+    {
+        UE_LOG(LogTemp, Log, TEXT("LoadExternalModel: Successfully parsed propeller config: %s"), *YamlPath);
+        ApplyExternalPropellerConfig(PropConfigs, PropellerMeshPathFromYaml);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("LoadExternalModel: Failed to parse or apply propeller config '%s'. Model loaded without external propellers OR config is missing/invalid."), *YamlPath);
+        ClearDynamicPropellers(); 
+    }
+
+    bIsExternalModelLoaded = true;
+    return true;
+}
+
+/*//}*/
+
+/*SetStaticMeshByName()//{*/
+
+void ADronePawn::SetStaticMeshByName(const FString& ModelName)
+{
+    UE_LOG(LogTemp, Log, TEXT("SetStaticMeshByName called with: %s"), *ModelName);
+
+    ClearDynamicPropellers(); 
+    RootMeshComponent->SetStaticMesh(nullptr);
+
+    int PredefinedFrameId = -1;
+    const FramePropellersTransform* TransformsData = FramePropellersTransforms.GetData();
+    for (int i = 0; i < FramePropellersTransforms.Num(); ++i)
+    {
+        if (TransformsData[i].FrameName.Equals(ModelName, ESearchCase::IgnoreCase))
+        {
+            PredefinedFrameId = i;
+            break; 
+        }
+    }
+
+    if (PredefinedFrameId != -1)
+    {
+         UE_LOG(LogTemp, Log, TEXT("Model name '%s' matches predefined frame index %d. Attempting to load baked-in mesh."), *ModelName, PredefinedFrameId);
+
+         FString MeshPath = FString::Printf(TEXT("/FlightForgePlugin/Meshes/_Drones_/%s/%s.%s"),
+            *TransformsData[PredefinedFrameId].FrameName,
+            *TransformsData[PredefinedFrameId].FrameName,
+            *TransformsData[PredefinedFrameId].FrameName);
+
+         UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *MeshPath);
+
+         if (FrameMesh) 
+         {
+             RootMeshComponent->SetStaticMesh(FrameMesh);
+             UE_LOG(LogTemp, Log, TEXT("Successfully loaded predefined mesh: %s"), *MeshPath);
+
+             if (!ModelName.Contains("wing", ESearchCase::IgnoreCase))
+             {
+                SetPredefinedPropellersTransform(PredefinedFrameId);
+             }
+             else {
+                 UE_LOG(LogTemp, Log, TEXT("Predefined model '%s' identified as wing type, skipping default propeller setup."), *ModelName);
+             }
+
+             bIsExternalModelLoaded = false; 
+             return; 
+         }
+         else 
+         {
+              UE_LOG(LogTemp, Error, TEXT("Found predefined frame name '%s', but FAILED to load mesh at path: %s. Check asset existence and path."), *ModelName, *MeshPath);
+              RootMeshComponent->SetStaticMesh(nullptr);
+              ClearDynamicPropellers();
+              return;
+         }
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Model name '%s' not found in predefined list or failed to load. Attempting external load."), *ModelName);
+
+    if (LoadExternalModel(ModelName))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Successfully loaded external model '%s'."), *ModelName);
+        return; 
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to load model '%s' from both predefined and external sources."), *ModelName);
+        RootMeshComponent->SetStaticMesh(nullptr);
+        ClearDynamicPropellers();
+        return;
+    }
+}
+
+/*//}*/
+
+/*SetPredefinedPropellersTransform()//{*/
+
+void ADronePawn::SetPredefinedPropellersTransform(const int& frame_id)
+{
+    if (bIsExternalModelLoaded)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Attempted to SetPredefinedPropellersTransform on an externally loaded model. Skipping."));
+        return;
+    }
+
+     ClearDynamicPropellers();
+
+    if (!FramePropellersTransforms.IsValidIndex(frame_id)) {
+        UE_LOG(LogTemp, Error, TEXT("Invalid frame_id %d for SetPredefinedPropellersTransform"), frame_id);
+        return;
+    }
+
+    const FramePropellersTransform& Transforms = FramePropellersTransforms[frame_id];
+
+    FString MeshPath = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms.PropellerType + ".propeller_" + Transforms.PropellerType;
+    UStaticMesh* PropellerMesh = LoadObject<UStaticMesh>(nullptr, *MeshPath);
+
+    if (!PropellerMesh) {
+        UE_LOG(LogTemp, Error, TEXT("Predefined propeller mesh not loaded! Path: %s. Cannot create propellers."), *MeshPath);
+        return; 
+    }
+
+    TArray<FTransform> PredefinedTransforms = {
+        Transforms.FrontLeft,
+        Transforms.FrontRight,
+        Transforms.RearLeft,
+        Transforms.RearRight
+    };
+     TArray<FString> PredefinedNames = { TEXT("FL"), TEXT("FR"), TEXT("RL"), TEXT("RR") }; // Optional names
+
+    UE_LOG(LogTemp, Log, TEXT("Applying predefined config for 4 propellers (frame: %s)."), *Transforms.FrameName);
+
+    for(int i = 0; i < PredefinedTransforms.Num(); ++i)
+    {
+        FName CompName = MakeUniqueObjectName(this, UStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("PredefPropeller_%s_%d"), *PredefinedNames[i], i)));
+        UStaticMeshComponent* CurrentPropComp = NewObject<UStaticMeshComponent>(this, CompName);
+
+         if (CurrentPropComp)
+        {
+            CurrentPropComp->SetupAttachment(RootMeshComponent);
+            CurrentPropComp->RegisterComponent();
+            CurrentPropComp->SetRelativeTransform(PredefinedTransforms[i]);
+            CurrentPropComp->SetStaticMesh(PropellerMesh);
+            CurrentPropComp->SetVisibility(true);
+            CurrentPropComp->SetCollisionProfileName(FName(TEXT("NoCollision")));
+            CurrentPropComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+            DynamicPropellers.Add(CurrentPropComp); // Add to the dynamic list
+            UE_LOG(LogTemp, Verbose, TEXT("Created predefined propeller component %d: %s"), i, *CompName.ToString());
+        }
+        else
+        {
+             UE_LOG(LogTemp, Error, TEXT("Failed to create predefined propeller component %d!"), i);
+        }
+    }
+
+}
+
+/*//}*/
+
+/*ParsePropellerYAML()//{*/
+
+bool ADronePawn::ParsePropellerYAML(const FString& YamlPath, TArray<FExternalPropellerConfig>& OutPropConfigs, FString& OutPropellerMeshPath)
+{
+    OutPropConfigs.Empty();
+    OutPropellerMeshPath.Empty();
+
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+    if (!PlatformFile.FileExists(*YamlPath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Config file not found: %s"), *YamlPath);
+        return false;
+    }
+
+    FString FileContent;
+    if (!FFileHelper::LoadFileToString(FileContent, *YamlPath))
+    {
+        UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Failed to read propeller config file: %s"), *YamlPath);
+        return false;
+    }
+
+    try
+    {
+        std::string FileContentStd = TCHAR_TO_UTF8(*FileContent); 
+        YAML::Node RootNode = YAML::Load(FileContentStd);      
+
+        if (!RootNode.IsMap()) {
+             UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Root node in '%s' is not a Map."), *YamlPath);
+             return false;
+        }
+
+        if (RootNode["propeller_mesh"] && RootNode["propeller_mesh"].IsScalar()) {
+             OutPropellerMeshPath = UTF8_TO_TCHAR(RootNode["propeller_mesh"].as<std::string>().c_str());
+             UE_LOG(LogTemp, Log, TEXT("ParsePropellerYAML: Found propeller_mesh path: %s"), *OutPropellerMeshPath);
+        } else if (RootNode["propeller_mesh"]) {
+             UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: 'propeller_mesh' key found in '%s', but it's not a scalar string. Ignoring."), *YamlPath);
+        }
+
+        if (RootNode["propellers"] && RootNode["propellers"].IsSequence())
+        {
+          const YAML::Node& PropellerNodes = RootNode["propellers"];
+          const int32 NumPropellerNodes = PropellerNodes.size();
+          UE_LOG(LogTemp, Log, TEXT("ParsePropellerYAML: Found %d entries under 'propellers' key."), NumPropellerNodes);
+
+          int32 CurrentIndex = 0;
+          for (YAML::const_iterator it = PropellerNodes.begin(); it != PropellerNodes.end(); ++it, ++CurrentIndex) 
+          {
+            const YAML::Node& PropNode = *it;
+            if (!PropNode.IsMap())
+            {
+              UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Item %d in 'propellers' sequence (in '%s') is not a valid Map. Skipping."), CurrentIndex, *YamlPath);
+              continue;
+            }
+
+            FString PropName = FString::Printf(TEXT("Propeller_%d"), CurrentIndex);
+            bool bParsedNameFromYaml = false;
+
+            FVector PropLocation = FVector::ZeroVector;
+            FRotator PropRotation = FRotator::ZeroRotator;
+            FVector PropScale = FVector::OneVector;
+            bool bParsedLocation = false;
+            bool bParsedRotation = false;
+            bool bParsedScale = false;
+
+            if (PropNode["name"] && PropNode["name"].IsScalar()) {
+              PropName = UTF8_TO_TCHAR(PropNode["name"].as<std::string>().c_str());
+              bParsedNameFromYaml = true;
+            }
+
+            UE_LOG(LogTemp, Verbose, TEXT("Processing Propeller Index %d, Final Name: %s (From YAML: %s)"),
+                CurrentIndex, *PropName, bParsedNameFromYaml ? TEXT("Yes") : TEXT("No"));
+
+                if (PropNode["location"] && PropNode["location"].IsSequence() && PropNode["location"].size() == 3) {
+                    try {
+                        PropLocation.X = PropNode["location"][0].as<double>();
+                        PropLocation.Y = PropNode["location"][1].as<double>();
+                        PropLocation.Z = PropNode["location"][2].as<double>();
+                        bParsedLocation = true;
+                    } catch (const YAML::BadConversion& e) {
+                        UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Bad conversion for 'location'. Error: %s. Skipping."), *PropName, UTF8_TO_TCHAR(e.what())); continue;
+                    }
+                } else { UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': 'location' key is missing, not a sequence, or wrong size. Skipping."), *PropName); continue; }
+
+
+                if (PropNode["orientation"] && PropNode["orientation"].IsMap()) 
+                {
+                     try {
+                        PropRotation.Roll = PropNode["orientation"]["roll"].as<double>();
+                        PropRotation.Pitch = PropNode["orientation"]["pitch"].as<double>();
+                        PropRotation.Yaw = PropNode["orientation"]["yaw"].as<double>();
+                         bParsedRotation = true;
+                     } catch (const YAML::Exception& e) { 
+                        UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Error parsing 'orientation'. Error: %s. Skipping."), *PropName, UTF8_TO_TCHAR(e.what())); continue;
+                    }
+                }
+                else { UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Neither 'orientation' map nor 'rotation' sequence found/valid. Skipping."), *PropName); continue; }
+
+
+                if (PropNode["scale"] && PropNode["scale"].IsSequence() && PropNode["scale"].size() == 3) {
+                     try {
+                        PropScale.X = PropNode["scale"][0].as<double>();
+                        PropScale.Y = PropNode["scale"][1].as<double>();
+                        PropScale.Z = PropNode["scale"][2].as<double>();
+                        bParsedScale = true;
+                     } catch (const YAML::BadConversion& e) {
+                        UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Bad conversion for 'scale'. Error: %s. Skipping."), *PropName, UTF8_TO_TCHAR(e.what())); continue;
+                    }
+                } else { UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': 'scale' key is missing, not a sequence, or wrong size. Skipping."), *PropName); continue; }
+
+
+                if (bParsedLocation && bParsedRotation && bParsedScale) {
+                    OutPropConfigs.Add(FExternalPropellerConfig(FTransform(PropRotation, PropLocation, PropScale), PropName));
+                    UE_LOG(LogTemp, Verbose, TEXT("ParsePropellerYAML: Successfully parsed config for propeller '%s'"), *PropName);
+                }
+            } 
+        }
+        else {
+             UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Required key 'propellers' not found or not a sequence in '%s'."), *YamlPath);
+        }
+    }
+    catch (const YAML::Exception& e) {
+        UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Failed to parse YAML file '%s'. Error: %s"), *YamlPath, UTF8_TO_TCHAR(e.what()));
+        return false; 
+    }
+
+
+    if (OutPropConfigs.Num() == 0 && OutPropellerMeshPath.IsEmpty())
+    {
+         UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: File '%s' parsed, but no valid propeller configurations OR propeller_mesh were found."), *YamlPath);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("ParsePropellerYAML: Finished parsing '%s'. Found %d valid propeller configs."), *YamlPath, OutPropConfigs.Num());
+    return true; 
+}
+
+/*//}*/
 
 /*LoadCSVData()//{*/
 bool ADronePawn::LoadCSVData(const FString& FilePath)
@@ -116,18 +523,10 @@ ADronePawn::ADronePawn() {
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
+  
+  SetRootComponent(RootMeshComponent); 
 
-  PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
-  PropellerFrontLeft->SetupAttachment(RootMeshComponent);
-
-  PropellerFrontRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontRight"));
-  PropellerFrontRight->SetupAttachment(RootMeshComponent);
-
-  PropellerRearLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearLeft"));
-  PropellerRearLeft->SetupAttachment(RootMeshComponent);
-
-  PropellerRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearRight"));
-  PropellerRearRight->SetupAttachment(RootMeshComponent);
+  FramePropellersTransforms.Empty();
 
   // X500
   FramePropellersTransforms.Add(FramePropellersTransform(FString(TEXT("x500")), FString(TEXT("x500")),
@@ -248,6 +647,15 @@ ADronePawn::ADronePawn() {
   RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
   RangefinderConfig.Offset     = FVector(0, 0, -10);
 
+
+
+
+  ExternalModelBasePath = FPaths::ProjectSavedDir() + TEXT("ExternalModels/");
+
+  DefaultExternalPropellerMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Path/To/Your/DefaultPropellerMesh.DefaultPropellerMesh")));
+
+
+
 #if PLATFORM_WINDOWS
   LidarHitsCriticalSection       = std::make_unique<FWindowsCriticalSection>();
   LidarSegHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
@@ -360,6 +768,26 @@ void ADronePawn::BeginPlay() {
 }
 
 //}
+
+/*ClearDynamicPropellers()//{*/
+
+void ADronePawn::ClearDynamicPropellers()
+{
+    UE_LOG(LogTemp, Log, TEXT("Clearing %d dynamic propellers."), DynamicPropellers.Num());
+    for (UStaticMeshComponent* Comp : DynamicPropellers)
+    {
+        if (Comp && Comp->IsValidLowLevel() && !Comp->IsBeingDestroyed()) 
+        {
+            Comp->UnregisterComponent(); 
+            Comp->DestroyComponent();
+        }
+    }
+    DynamicPropellers.Empty(); 
+
+    bIsExternalModelLoaded = false; 
+}
+
+/*//}*/
 
 /* startServer() //{ */
 
@@ -1162,53 +1590,58 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
   }
 }
 
-void ADronePawn::SetPropellersTransform(const int& frame_id) {
-  const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData();
-
-  FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType;
-
-  if (UStaticMesh* PropellerMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) {
-    PropellerFrontLeft->SetStaticMesh(PropellerMesh);
-    PropellerFrontRight->SetStaticMesh(PropellerMesh);
-    PropellerRearLeft->SetStaticMesh(PropellerMesh);
-    PropellerRearRight->SetStaticMesh(PropellerMesh);
-  } else {
-    UE_LOG(LogTemp, Error, TEXT("The Propeller was not loaded!"));
-  }
-
-  PropellerFrontLeft->SetRelativeTransform(Transforms[frame_id].FrontLeft);
-  PropellerFrontRight->SetRelativeTransform(Transforms[frame_id].FrontRight);
-  PropellerRearLeft->SetRelativeTransform(Transforms[frame_id].RearLeft);
-  PropellerRearRight->SetRelativeTransform(Transforms[frame_id].RearRight);
+const TArray<FramePropellersTransform>& ADronePawn::GetPredefinedFrameTransforms() const
+{
+    return FramePropellersTransforms;
 }
 
-void ADronePawn::SetStaticMesh(const int& frame_id) {
-  FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
+/* void ADronePawn::SetPropellersTransform(const int& frame_id) { */
+/*   const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData(); */
 
-  int predefined_frame_count = FramePropellersTransforms.Num();
+/*   FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType; */
 
-  // last "empty" frame is not included in "FramePropellersTransforms"
-  if (predefined_frame_count == frame_id) {
-    return;
-  }
+/*   if (UStaticMesh* PropellerMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) { */
+/*     PropellerFrontLeft->SetStaticMesh(PropellerMesh); */
+/*     PropellerFrontRight->SetStaticMesh(PropellerMesh); */
+/*     PropellerRearLeft->SetStaticMesh(PropellerMesh); */
+/*     PropellerRearRight->SetStaticMesh(PropellerMesh); */
+/*   } else { */
+/*     UE_LOG(LogTemp, Error, TEXT("The Propeller was not loaded!")); */
+/*   } */
 
-  FString frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
+/*   PropellerFrontLeft->SetRelativeTransform(Transforms[frame_id].FrontLeft); */
+/*   PropellerFrontRight->SetRelativeTransform(Transforms[frame_id].FrontRight); */
+/*   PropellerRearLeft->SetRelativeTransform(Transforms[frame_id].RearLeft); */
+/*   PropellerRearRight->SetRelativeTransform(Transforms[frame_id].RearRight); */
+/* } */
 
-  mesh_path += frame_name + "/" + frame_name + "." + frame_name;
+/* void ADronePawn::SetStaticMesh(const int& frame_id) { */
+/*   FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/"; */
 
-  if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) {
-    RootMeshComponent->SetStaticMesh(FrameMesh);
-  } else {
-    UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded!"));
-  }
+/*   int predefined_frame_count = FramePropellersTransforms.Num(); */
 
-  // wing has not propellers
-  if (frame_name.Contains("wing")) {
-    return;
-  }
+/*   // last "empty" frame is not included in "FramePropellersTransforms" */
+/*   if (predefined_frame_count == frame_id) { */
+/*     return; */
+/*   } */
 
-  SetPropellersTransform(frame_id);
-}
+/*   FString frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName; */
+
+/*   mesh_path += frame_name + "/" + frame_name + "." + frame_name; */
+
+/*   if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) { */
+/*     RootMeshComponent->SetStaticMesh(FrameMesh); */
+/*   } else { */
+/*     UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded!")); */
+/*   } */
+
+/*   // wing has not propellers */
+/*   if (frame_name.Contains("wing")) { */
+/*     return; */
+/*   } */
+
+/*   SetPropellersTransform(frame_id); */
+/* } */
 
 void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
   // RootMeshComponent->SetSimulatePhysics(true);
@@ -1226,46 +1659,25 @@ void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
  */
 void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
 {
-  if (bEnable)
-  {
-    // Visibility settings default -- UAVs see each others
-    bCanSeeOtherDrone = true;
-    
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-    RootMeshComponent->MarkRenderStateDirty();
-    
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-    PropellerFrontLeft->MarkRenderStateDirty();
-    
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-    PropellerFrontRight->MarkRenderStateDirty();
-    
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-    PropellerRearLeft->MarkRenderStateDirty();
-    
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-    PropellerRearRight->MarkRenderStateDirty();
-  }
-  else
-  {
-    // Visibility settings -- RL purpose, UAVs do not see each others
-    bCanSeeOtherDrone = false;
-    
-    RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    RootMeshComponent->MarkRenderStateDirty();
+    ECollisionResponse NewResponse = bEnable ? ECR_Block : ECR_Ignore;
+    bCanSeeOtherDrone = bEnable; // Update the flag used by Lidar
 
-    PropellerFrontLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    PropellerFrontLeft->MarkRenderStateDirty();
-    
-    PropellerFrontRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    PropellerFrontRight->MarkRenderStateDirty();
-   
-    PropellerRearLeft->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    PropellerRearLeft->MarkRenderStateDirty();
-    
-    PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-    PropellerRearRight->MarkRenderStateDirty();
-  }
+    // Set collision for the root body
+    if (RootMeshComponent) // Always check pointers
+    {
+        RootMeshComponent->SetCollisionResponseToChannel(ECC_Pawn, NewResponse);
+        RootMeshComponent->MarkRenderStateDirty();
+    }
+
+    // --- FIX: Iterate through dynamic propellers ---
+    for (UStaticMeshComponent* PropComp : DynamicPropellers)
+    {
+        if (PropComp) // Check pointer
+        {
+            PropComp->SetCollisionResponseToChannel(ECC_Pawn, NewResponse);
+            PropComp->MarkRenderStateDirty();
+        }
+    }
 }
 
 void ADronePawn::DisabledPhysics_StartRotatePropellers()
@@ -1661,6 +2073,20 @@ void ADronePawn::Tick(float DeltaSeconds) {
     Instruction->Finished = true;
   }
 
+  if (propellers_rotate) 
+  {
+      float RotationSpeed = 2000.0f * DeltaSeconds; 
+
+      for (int i = 0; i < DynamicPropellers.Num(); ++i)
+      {
+          UStaticMeshComponent* Prop = DynamicPropellers[i];
+          if(Prop && Prop->IsVisible() && !Prop->IsBeingDestroyed()) 
+          {
+              float CurrentRotationSpeed = (i % 2 == 0) ? RotationSpeed : -RotationSpeed; 
+               Prop->AddLocalRotation(FRotator(0, CurrentRotationSpeed, 0), false, nullptr, ETeleportType::None); 
+          }
+      }
+  }
   {
     RgbCameraBufferCriticalSection->Lock();
 
