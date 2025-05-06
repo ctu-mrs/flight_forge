@@ -652,7 +652,8 @@ ADronePawn::ADronePawn() {
 
   ExternalModelBasePath = FPaths::ProjectSavedDir() + TEXT("ExternalModels/");
 
-  DefaultExternalPropellerMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Path/To/Your/DefaultPropellerMesh.DefaultPropellerMesh")));
+  /* TODO: proper path to the propeller */  
+  DefaultExternalPropellerMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT(".DefaultPropellerMesh")));
 
 
 
