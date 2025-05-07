@@ -66,7 +66,7 @@ void InitializeModelIdMap()
       UE_LOG(LogTemp, Log, TEXT("  Mapped ID %d -> Model Name '%s' (Predefined)"), CurrentId, *FrameName);
     }
 
-    FString ConfigFilePath = FPaths::ProjectSavedDir() + TEXT("Config/Linux/MyDroneModels.ini");
+    FString ConfigFilePath = FPaths::ProjectSavedDir() + TEXT("Config/MyDroneModels.ini");
     if (FPaths::FileExists(ConfigFilePath))
     {
         UE_LOG(LogTemp, Log, TEXT("Loading additional model mappings from %s"), *ConfigFilePath);
@@ -291,10 +291,11 @@ int SpawnDroneAtLocation(FVector Location, int IdMesh)
 
     const auto DronePort = GetAvailableDronePort();
     PlayerPawn->droneServer->SetPort(DronePort);
+
+	PlayerPawn->RootMeshComponent->bRenderCustomDepth = true;	
+	PlayerPawn->RootMeshComponent->CustomDepthStencilValue = DronePort - 4000 + 200;
+		
     PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
-
-
-
 
     if (!ModelNameToLoad.IsEmpty())
     {
