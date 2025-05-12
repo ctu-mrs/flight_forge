@@ -336,10 +336,15 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "External Model")
   TSoftObjectPtr<UStaticMesh> DefaultExternalPropellerMesh;
 
+  FString DefaultExternalPropellerMeshPath;
+
   const TArray<FramePropellersTransform>& GetPredefinedFrameTransforms() const; 
 
 
 protected:
+
+  UFUNCTION(BlueprintImplementableEvent)
+  UStaticMesh* LoadGLBtoSMs_BlueprintEvent(const FString& AbsPathToFile);
 
   bool LoadExternalModel(const FString& ModelName);
 

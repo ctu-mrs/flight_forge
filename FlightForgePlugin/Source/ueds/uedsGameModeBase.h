@@ -65,8 +65,8 @@ void InitializeModelIdMap()
       const int32 CurrentId = i; 
       UE_LOG(LogTemp, Log, TEXT("  Mapped ID %d -> Model Name '%s' (Predefined)"), CurrentId, *FrameName);
     }
-
-    FString ConfigFilePath = FPaths::ProjectSavedDir() + TEXT("Config/MyDroneModels.ini");
+	
+	FString ConfigFilePath = FPaths::ProjectPluginsDir() + TEXT("flight_forge/FlightForgePlugin/Content/ExternalModels/MyDroneModels.ini");
     if (FPaths::FileExists(ConfigFilePath))
     {
         UE_LOG(LogTemp, Log, TEXT("Loading additional model mappings from %s"), *ConfigFilePath);
