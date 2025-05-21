@@ -30,6 +30,8 @@ private:
   bool GetStereoCameraData(const FTCPClient& Client, Serializable::Drone::GetStereoCameraData::Request& Request);
   
   bool GetRgbSegCameraData(const FTCPClient& Client, Serializable::Drone::GetRgbSegCameraData::Request& Request);
+
+  bool GetDepthCameraData(const FTCPClient& Client, Serializable::Drone::GetDepthCameraData::Request& Request);
   
   bool GetRotation(const FTCPClient& Client, Serializable::Drone::GetRotation::Request& Request);
 
