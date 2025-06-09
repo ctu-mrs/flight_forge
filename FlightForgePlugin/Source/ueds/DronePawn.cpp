@@ -307,7 +307,8 @@ void ADronePawn::BeginPlay() {
   RenderTarget2DRgbSeg->bGPUSharedFlag     = true;
 
   RenderTarget2DDepth = NewObject<UTextureRenderTarget2D>();
-  RenderTarget2DDepth->InitCustomFormat(640, 480, EPixelFormat::PF_R16F, false);
+  // RenderTarget2DDepth->InitCustomFormat(640, 480, EPixelFormat::PF_R16F, false);
+	RenderTarget2DDepth->InitCustomFormat(100, 100, EPixelFormat::PF_R16F, false);
   RenderTarget2DDepth->RenderTargetFormat = RTF_R16f; //RTF_RGBA8; //RTF_R16f;
   RenderTarget2DDepth->bGPUSharedFlag = true;
 	// RenderTarget2DDepth->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
@@ -1187,15 +1188,24 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
 
       // ResourceDepth->ReadPixels(DepthCameraBuffer);
       ResourceDepth->ReadFloat16Pixels(DepthCameraBuffer);
+    		
 
-
-      int i = 0;
-      FFloat16Color* ptr = DepthCameraBuffer.GetData();
-      while (i < 10)
+    		FFloat16Color* ptr = DepthCameraBuffer.GetData();
+      for (int i = 0; i < 100; i++)
       {
-      	UE_LOG(LogTemp, Warning, TEXT("Depth[%i] = %f"), i, ptr[i].R.GetFloat());
-      	i++;
-      }
+	      for (int j = 0; j < 100; j++)
+	      {
+	      	UE_LOG(LogTemp, Warning, TEXT("Depth[%i][%i] = %f"), i, j, ptr[i*100+j].R.GetFloat());
+	      }
+      	UE_LOG(LogTemp, Warning, TEXT("\n"));
+      }		
+      // int i = 0;
+      // FFloat16Color* ptr = DepthCameraBuffer.GetData();
+      // while (i < 10)
+      // {
+      // 	UE_LOG(LogTemp, Warning, TEXT("Depth[%i] = %f"), i, ptr[i].R.GetFloat());
+      // 	i++;
+      // }
 
       // DepthCameraDataNeedsCompress = false; TO BE IMPLEMENTED
 
@@ -1485,11 +1495,7 @@ bool ADronePawn::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double
   return true;
 }
 
-void TransformImageArrayToUint16(
-	int32 Width,
-	int32 Height,
-	const TArray<FFloat16Color>& DepthCameraBuffer,
-	std::vector<uint16_t>& OutArray)
+void TransformImageArrayToUint16(int32 Width, int32 Height, const TArray<FFloat16Color>& DepthCameraBuffer, std::vector<uint16_t>& OutArray)
 {
 	const int32 PixelCount = Width * Height;
 	OutArray.resize(PixelCount);
