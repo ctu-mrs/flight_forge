@@ -308,8 +308,8 @@ void ADronePawn::BeginPlay() {
 
   RenderTarget2DDepth = NewObject<UTextureRenderTarget2D>();
   // RenderTarget2DDepth->InitCustomFormat(640, 480, EPixelFormat::PF_R16F, false);
-	RenderTarget2DDepth->InitCustomFormat(100, 100, EPixelFormat::PF_R16F, false);
-  RenderTarget2DDepth->RenderTargetFormat = RTF_R16f; //RTF_RGBA8; //RTF_R16f;
+	RenderTarget2DDepth->InitCustomFormat(640, 480, EPixelFormat::PF_FloatRGBA, false);
+  RenderTarget2DDepth->RenderTargetFormat = RTF_RGBA16f; //RTF_RGBA8; //RTF_R16f;
   RenderTarget2DDepth->bGPUSharedFlag = true;
 	// RenderTarget2DDepth->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
 	// RenderTarget2DDepth->InitAutoFormat(16, 16);
@@ -335,14 +335,14 @@ void ADronePawn::BeginPlay() {
   SceneCaptureComponent2DRgbSeg->bUseRayTracingIfEnabled      = false;
   SceneCaptureComponent2DRgbSeg->AddOrUpdateBlendable(PostProcessMaterialSegmentation, 1);
 
-  SceneCaptureComponent2DDepth->CaptureSource = SCS_FinalColorLDR;
+  SceneCaptureComponent2DDepth->CaptureSource = SCS_SceneDepth;
   SceneCaptureComponent2DDepth->TextureTarget = RenderTarget2DDepth;
   SceneCaptureComponent2DDepth->ShowFlags.SetTemporalAA(true);
   SceneCaptureComponent2DDepth->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DDepth->bCaptureEveryFrame           = true;
   SceneCaptureComponent2DDepth->bCaptureOnMovement           = false;
   SceneCaptureComponent2DDepth->bUseRayTracingIfEnabled      = false;
-  SceneCaptureComponent2DDepth->AddOrUpdateBlendable(PostProcessMaterialDepth, 1);
+  //SceneCaptureComponent2DDepth->AddOrUpdateBlendable(PostProcessMaterialDepth, 1);
 
   SceneCaptureComponent2DStereoLeft->CaptureSource = SCS_FinalColorHDR;
   SceneCaptureComponent2DStereoLeft->TextureTarget = RenderTarget2DStereoLeft;
@@ -1190,15 +1190,15 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
       ResourceDepth->ReadFloat16Pixels(DepthCameraBuffer);
     		
 
-    		FFloat16Color* ptr = DepthCameraBuffer.GetData();
-      for (int i = 0; i < 100; i++)
-      {
-	      for (int j = 0; j < 100; j++)
-	      {
-	      	UE_LOG(LogTemp, Warning, TEXT("Depth[%i][%i] = %f"), i, j, ptr[i*100+j].R.GetFloat());
-	      }
-      	UE_LOG(LogTemp, Warning, TEXT("\n"));
-      }		
+    		// FFloat16Color* ptr = DepthCameraBuffer.GetData();
+      // for (int i = 0; i < 100; i++)
+      // {
+	     //  for (int j = 0; j < 100; j++)
+	     //  {
+	     //  	UE_LOG(LogTemp, Warning, TEXT("Depth[%i][%i] = %f"), i, j, ptr[i*100+j].R.GetFloat());
+	     //  }
+      // 	UE_LOG(LogTemp, Warning, TEXT("\n"));
+      // }		
       // int i = 0;
       // FFloat16Color* ptr = DepthCameraBuffer.GetData();
       // while (i < 10)
@@ -1659,6 +1659,8 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
 
   SceneCaptureComponent2DRgbSeg->FOVAngle = Config.FOVAngle;
 
+	SceneCaptureComponent2DDepth->FOVAngle = Config.FOVAngle;
+
   if (Config.enable_hdr) {
     SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorHDR;
   } else {
@@ -1666,7 +1668,9 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   }
 
   SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-
+	SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+	SceneCaptureComponent2DDepth->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+	
   SceneCaptureComponent2DRgb->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
   SceneCaptureComponent2DRgb->TextureTarget                        = RenderTarget2DRgb;
@@ -1681,12 +1685,11 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DRgbSeg->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgbSeg->bCaptureOnMovement           = false;
-  SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-
 
   if (Config.Width > 0 && Config.Height > 0) {
     RenderTarget2DRgb->ResizeTarget(Config.Width, Config.Height);
     RenderTarget2DRgbSeg->ResizeTarget(Config.Width, Config.Height);
+  	RenderTarget2DDepth->ResizeTarget(Config.Width, Config.Height);
   } else {
     UE_LOG(LogTemp, Warning, TEXT("Invalid dimensions for RenderTarget2D. Width and Height should be greater than 0."));
   }
