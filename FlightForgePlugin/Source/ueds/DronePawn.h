@@ -4,7 +4,10 @@
 
 #include "Server/DroneServer.h"
 #include "Instruction.h"
-#include "LidarComponent.h"
+#include "Sensor.h"
+#include "Lidar.h"
+#include "Camera.h"
+#include "RangeFinder.h"
 
 #include "GameFramework/Pawn.h"
 
@@ -58,82 +61,82 @@ public:
 };
 
 /* Enum for the camera capture type */
-enum CameraMode
-{
-  CAMERA_MODE_NONE         = 0,
-  CAMERA_MODE_RGB          = 1,
-  CAMERA_MODE_STEREO       = 2,
-  CAMERA_MODE_RGB_SEG      = 3,
-};
-
-struct FLidarConfig
-{
-  bool   Enable;
-  bool Livox; 
-  bool   ShowBeams;
-  double BeamLength;
-
-  int BeamHorRays;
-  int BeamVertRays;
-
-  double   Frequency;
-  FVector  Offset;
-  FRotator Orientation;
-  /* double   FOVHor; */
-  double  FOVHorLeft;
-  double  FOVHorRight;
-  /* double   FOVVert; */
-  double   FOVVertUp;
-  double   FOVVertDown;
-  double   vertRayDiff;
-  double   horRayDif;
-
-  bool SemanticSegmentation;
-};
-
-struct FRangefinderConfig
-{
-  double BeamLength;
-  FVector Offset;
-};
-
-struct FRgbCameraConfig
-{
-  bool ShowCameraComponent;
-
-  FVector  Offset;
-  FRotator Orientation;
-  double   FOVAngle;
-  int      Width;
-  int      Height;
-  bool     enable_temporal_aa;
-  bool     enable_hdr;
-  bool     enable_raytracing;
-  bool     enable_motion_blur;
-  double   motion_blur_amount;
-  double   motion_blur_distortion;
-};
-
-struct FStereoCameraConfig
-{
-  bool ShowCameraComponent;
-
-  FVector  Offset;
-  FRotator Orientation;
-  double   FOVAngle;
-  int      Width;
-  int      Height;
-  double   baseline;
-  bool     enable_temporal_aa;
-  bool     enable_hdr;
-  bool     enable_raytracing;
-};
-
-struct FLivoxDataPoint {
-    double Time;
-    double Azimuth; // in radians
-    double Zenith;  // in radians
-};
+// enum CameraMode
+// {
+//   CAMERA_MODE_NONE         = 0,
+//   CAMERA_MODE_RGB          = 1,
+//   CAMERA_MODE_STEREO       = 2,
+//   CAMERA_MODE_RGB_SEG      = 3,
+// };
+//
+// struct FLidarConfig
+// {
+//   bool   Enable;
+//   bool Livox; 
+//   bool   ShowBeams;
+//   double BeamLength;
+//
+//   int BeamHorRays;
+//   int BeamVertRays;
+//
+//   double   Frequency;
+//   FVector  Offset;
+//   FRotator Orientation;
+//   /* double   FOVHor; */
+//   double  FOVHorLeft;
+//   double  FOVHorRight;
+//   /* double   FOVVert; */
+//   double   FOVVertUp;
+//   double   FOVVertDown;
+//   double   vertRayDiff;
+//   double   horRayDif;
+//
+//   bool SemanticSegmentation;
+// };
+//
+// struct FRangefinderConfig
+// {
+//   double BeamLength;
+//   FVector Offset;
+// };
+//
+// struct FRgbCameraConfig
+// {
+//   bool ShowCameraComponent;
+//
+//   FVector  Offset;
+//   FRotator Orientation;
+//   double   FOVAngle;
+//   int      Width;
+//   int      Height;
+//   bool     enable_temporal_aa;
+//   bool     enable_hdr;
+//   bool     enable_raytracing;
+//   bool     enable_motion_blur;
+//   double   motion_blur_amount;
+//   double   motion_blur_distortion;
+// };
+//
+// struct FStereoCameraConfig
+// {
+//   bool ShowCameraComponent;
+//
+//   FVector  Offset;
+//   FRotator Orientation;
+//   double   FOVAngle;
+//   int      Width;
+//   int      Height;
+//   double   baseline;
+//   bool     enable_temporal_aa;
+//   bool     enable_hdr;
+//   bool     enable_raytracing;
+// };
+//
+// struct FLivoxDataPoint {
+//     double Time;
+//     double Azimuth; // in radians
+//     double Zenith;  // in radians
+// };
 
 
 using Serializable::GameMode::CameraCaptureModeEnum;
@@ -148,8 +151,8 @@ public:
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = "Components")
   USpringArmComponent* ThirdPersonCameraSpringArm;
 
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  ULidarComponent* lidar;
+  // UPROPERTY(VisibleAnywhere, Category = "Components")
+  // ULidar* lidar;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
   UTextureRenderTarget2D* RenderTarget2DRgb;
