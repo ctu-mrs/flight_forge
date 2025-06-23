@@ -1,27 +1,26 @@
 #include "Sensor.h"
+#include "DronePawn.h"
 
-
-// Sets default values for this component's properties
 USensor::USensor()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
-// Called when the game starts
 void USensor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ...
-	
+	Owner = Cast<ADronePawn>(GetOwner());
+
+	if (!Owner)
+	{
+		UE_LOG(LogTemp, Error, TEXT("USensor::BeginPlay - Owner is not a valid ADronePawn"));
+	}
 }
 
 
-// Called every frame
 void USensor::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
 }
 

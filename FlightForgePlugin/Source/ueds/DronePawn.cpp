@@ -120,6 +120,8 @@ ADronePawn::ADronePawn() {
 
   // lidar = CreateDefaultSubobject<ULidar>(TEXT("LidarComponent"));
   // lidar->SetupAttachment(RootMeshComponent);
+	RangeFinder = CreateDefaultSubobject<URangeFinder>(TEXT("RangeFinder"));
+	RangeFinder->SetupAttachment(RootMeshComponent);
 	
   PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
   PropellerFrontLeft->SetupAttachment(RootMeshComponent);
@@ -249,19 +251,15 @@ ADronePawn::ADronePawn() {
 
   FTimerHandle OusterTimerHandle;
 
-  RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
-  RangefinderConfig.Offset     = FVector(0, 0, -10);
 
 #if PLATFORM_WINDOWS
   LidarHitsCriticalSection       = std::make_unique<FWindowsCriticalSection>();
   LidarSegHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
   LidarIntHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-  RangefinderHitsCriticalSection = std::make_unique<FWindowsCriticalSection>();
 #else
   LidarHitsCriticalSection          = std::make_unique<FPThreadsCriticalSection>();
   LidarSegHitsCriticalSection       = std::make_unique<FPThreadsCriticalSection>();
   LidarIntHitsCriticalSection       = std::make_unique<FPThreadsCriticalSection>();
-  RangefinderHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
 #endif
 
   LidarHits     = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -970,24 +968,8 @@ bool ADronePawn::GetCrashState(void) {
 
 /*GetRangefinderData()//{*/
 void ADronePawn::GetRangefinderData(double& range) {
-  RangefinderHitsCriticalSection->Lock();
 
-  FVector Start                = GetActorLocation() + GetActorRotation().RotateVector(RangefinderConfig.Offset);
-  FVector RangefinderDirection = -GetActorUpVector();
-
-  if (UWorld* World = GetWorld()) {
-    FHitResult HitResult;
-    if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility)) {
-      if (HitResult.bBlockingHit) {
-        range = HitResult.Distance;
-      } else {
-        range = -1;
-      }
-      // UE_LOG(LogTemp, Warning, TEXT("Rangefinder range = %lf"), range);
-    }
-  }
-
-  RangefinderHitsCriticalSection->Unlock();
+	RangeFinder->GetRangefinderData(range);
 }
 /*//}*/
 

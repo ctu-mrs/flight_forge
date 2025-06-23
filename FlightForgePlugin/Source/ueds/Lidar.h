@@ -12,8 +12,6 @@
 /* #define DEFAULT_LIDAR_BEAM_VER 128 */
 #define DEFAULT_LIDAR_SHOW_BEAMS false 
 
-#define DEFAULT_RANGEFINDER_BEAM_LENGTH 3000
-
 struct FLidarConfig
 {
 	bool   Enable;

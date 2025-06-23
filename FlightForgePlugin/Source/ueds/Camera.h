@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Sensor.h"
+#include "Server/UedsGameModeServer.h"
 #include "Camera.generated.h"
 
 enum CameraMode
@@ -43,6 +44,8 @@ struct FStereoCameraConfig
 	bool     enable_hdr;
 	bool     enable_raytracing;
 };
+
+using Serializable::GameMode::CameraCaptureModeEnum;
 
 UCLASS()
 class UEDS_API UCamera : public USensor

@@ -28,8 +28,6 @@ class UTextureRenderTarget2D;
 /* #define DEFAULT_LIDAR_BEAM_VER 128 */
 #define DEFAULT_LIDAR_SHOW_BEAMS false 
 
-#define DEFAULT_RANGEFINDER_BEAM_LENGTH 3000
-
 enum DroneFrame
 {
   X500,
@@ -153,6 +151,9 @@ public:
 
   // UPROPERTY(VisibleAnywhere, Category = "Components")
   // ULidar* lidar;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components")
+  URangeFinder* RangeFinder;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
   UTextureRenderTarget2D* RenderTarget2DRgb;
@@ -331,14 +332,11 @@ private:
   std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> LidarIntHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> RangefinderHitsCriticalSection;
-
 
 #else
   std::unique_ptr<FPThreadsCriticalSection> LidarHitsCriticalSection;
   std::unique_ptr<FPThreadsCriticalSection> LidarSegHitsCriticalSection;
   std::unique_ptr<FPThreadsCriticalSection> LidarIntHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> RangefinderHitsCriticalSection;
 #endif
   std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
   std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
@@ -347,7 +345,6 @@ private:
 
   CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 
-  FRangefinderConfig RangefinderConfig;
   FLidarConfig LidarConfig;
   bool         CameraNeedsRefresh = false;
 

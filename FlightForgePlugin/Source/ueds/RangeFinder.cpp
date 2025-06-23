@@ -1,35 +1,53 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "RangeFinder.h"
+#include "DronePawn.h"
 
 
-// Sets default values for this component's properties
 URangeFinder::URangeFinder()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bCanEverTick = false;
+	
+	RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
+	RangefinderConfig.Offset     = FVector(0, 0, -10);
 
-	// ...
+#if PLATFORM_WINDOWS
+	RangefinderHitsCriticalSection = std::make_unique<FWindowsCriticalSection>();
+#else
+	RangefinderHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
+#endif
 }
 
 
-// Called when the game starts
 void URangeFinder::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// ...
-	
 }
 
 
-// Called every frame
 void URangeFinder::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+}
 
-	// ...
+void URangeFinder::GetRangefinderData(double& range) {
+	RangefinderHitsCriticalSection->Lock();
+	// FVector Start                = GetActorLocation() + GetActorRotation().RotateVector(RangefinderConfig.Offset);
+	// FVector RangefinderDirection = -GetActorUpVector();
+
+	FVector Start                = Owner->GetActorLocation() + Owner->GetActorRotation().RotateVector(RangefinderConfig.Offset);
+	FVector RangefinderDirection = Owner->GetActorUpVector() * -1;
+	
+	if (UWorld* World = GetWorld()) {
+		FHitResult HitResult;
+		if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility)) {
+			if (HitResult.bBlockingHit) {
+				range = HitResult.Distance;
+			} else {
+				range = -1;
+			}
+			// UE_LOG(LogTemp, Warning, TEXT("Rangefinder range = %lf"), range);
+		}
+	}
+
+	RangefinderHitsCriticalSection->Unlock();
 }
 
