@@ -113,10 +113,14 @@ ADronePawn::ADronePawn() {
   RgbSegCameraBufferCriticalSection = std::make_unique<FPThreadsCriticalSection>();
 #endif
 
+
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
 
+  lidar = CreateDefaultSubobject<ULidarComponent>(TEXT("LidarComponent"));
+  lidar->SetupAttachment(RootMeshComponent);
+	
   PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
   PropellerFrontLeft->SetupAttachment(RootMeshComponent);
 

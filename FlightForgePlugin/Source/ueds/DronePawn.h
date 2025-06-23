@@ -4,6 +4,7 @@
 
 #include "Server/DroneServer.h"
 #include "Instruction.h"
+#include "LidarComponent.h"
 
 #include "GameFramework/Pawn.h"
 
@@ -146,6 +147,9 @@ public:
 
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = "Components")
   USpringArmComponent* ThirdPersonCameraSpringArm;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components")
+  ULidarComponent* lidar;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
   UTextureRenderTarget2D* RenderTarget2DRgb;
