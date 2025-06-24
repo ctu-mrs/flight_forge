@@ -1,7 +1,12 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "CoreMinimal.h"
 #include "Sensor.h"
+//#include "serializable_shared.h"
+#include "MessageSerialization/Public/serializable_shared.h"
 #include "Lidar.generated.h"
 
 #define DEFAULT_LIDAR_BEAM_HOR 256  // 100
@@ -50,11 +55,50 @@ class UEDS_API ULidar : public USensor
 
 public:
 	ULidar();
+	
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+	                           FActorComponentTickFunction* ThisTickFunction) override;
+
+	void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
+
+	void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
+
+	void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
+
+	FLidarConfig GetLidarConfig();
+	bool         SetLidarConfig(const FLidarConfig& Config);
+	
+	bool LoadCSVData(const FString& FilePath);
+	
+	TArray<FLivoxDataPoint> LivoxData;
+	//bool bLivox;
+	int StartIndex;
+	
+	FString CSVFilePath;
 
 protected:
 	virtual void BeginPlay() override;
+	
+private:
+	void UpdateLidar(bool isExternallyLocked);
 
-public:
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-	                           FActorComponentTickFunction* ThisTickFunction) override;
+	void UpdateSegLidar(bool isExternallyLocked);
+
+	void UpdateIntLidar(bool isExternallyLocked);
+
+	#if PLATFORM_WINDOWS
+		std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
+		std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
+		std::unique_ptr<FWindowsCriticalSection> LidarIntHitsCriticalSection;
+	#else
+		std::unique_ptr<FPThreadsCriticalSection> LidarHitsCriticalSection;
+		std::unique_ptr<FPThreadsCriticalSection> LidarSegHitsCriticalSection;
+		std::unique_ptr<FPThreadsCriticalSection> LidarIntHitsCriticalSection;
+	#endif
+	std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
+	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
+	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarIntHits;
+	std::unique_ptr<FVector>                                                      LidarHitStart;
+
+	FLidarConfig LidarConfig;
 };

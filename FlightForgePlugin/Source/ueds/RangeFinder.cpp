@@ -22,7 +22,6 @@ void URangeFinder::BeginPlay()
 	Super::BeginPlay();
 }
 
-
 void URangeFinder::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);

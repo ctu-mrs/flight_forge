@@ -20,14 +20,6 @@ class UCameraComponent;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
 
-#define DEFAULT_LIDAR_BEAM_HOR 256  // 100
-#define DEFAULT_LIDAR_BEAM_VER 32   // 15
-
-#define DEFAULT_LIDAR_BEAM_LENGTH 1000
-/* #define DEFAULT_LIDAR_BEAM_HOR 2048 */
-/* #define DEFAULT_LIDAR_BEAM_VER 128 */
-#define DEFAULT_LIDAR_SHOW_BEAMS false 
-
 enum DroneFrame
 {
   X500,
@@ -58,84 +50,6 @@ public:
   FTransform FrontRight;
 };
 
-/* Enum for the camera capture type */
-// enum CameraMode
-// {
-//   CAMERA_MODE_NONE         = 0,
-//   CAMERA_MODE_RGB          = 1,
-//   CAMERA_MODE_STEREO       = 2,
-//   CAMERA_MODE_RGB_SEG      = 3,
-// };
-//
-// struct FLidarConfig
-// {
-//   bool   Enable;
-//   bool Livox; 
-//   bool   ShowBeams;
-//   double BeamLength;
-//
-//   int BeamHorRays;
-//   int BeamVertRays;
-//
-//   double   Frequency;
-//   FVector  Offset;
-//   FRotator Orientation;
-//   /* double   FOVHor; */
-//   double  FOVHorLeft;
-//   double  FOVHorRight;
-//   /* double   FOVVert; */
-//   double   FOVVertUp;
-//   double   FOVVertDown;
-//   double   vertRayDiff;
-//   double   horRayDif;
-//
-//   bool SemanticSegmentation;
-// };
-//
-// struct FRangefinderConfig
-// {
-//   double BeamLength;
-//   FVector Offset;
-// };
-//
-// struct FRgbCameraConfig
-// {
-//   bool ShowCameraComponent;
-//
-//   FVector  Offset;
-//   FRotator Orientation;
-//   double   FOVAngle;
-//   int      Width;
-//   int      Height;
-//   bool     enable_temporal_aa;
-//   bool     enable_hdr;
-//   bool     enable_raytracing;
-//   bool     enable_motion_blur;
-//   double   motion_blur_amount;
-//   double   motion_blur_distortion;
-// };
-//
-// struct FStereoCameraConfig
-// {
-//   bool ShowCameraComponent;
-//
-//   FVector  Offset;
-//   FRotator Orientation;
-//   double   FOVAngle;
-//   int      Width;
-//   int      Height;
-//   double   baseline;
-//   bool     enable_temporal_aa;
-//   bool     enable_hdr;
-//   bool     enable_raytracing;
-// };
-//
-// struct FLivoxDataPoint {
-//     double Time;
-//     double Azimuth; // in radians
-//     double Zenith;  // in radians
-// };
-
 
 using Serializable::GameMode::CameraCaptureModeEnum;
 
@@ -149,8 +63,8 @@ public:
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = "Components")
   USpringArmComponent* ThirdPersonCameraSpringArm;
 
-  // UPROPERTY(VisibleAnywhere, Category = "Components")
-  // ULidar* lidar;
+  UPROPERTY(VisibleAnywhere, Category = "Components")
+  ULidar* Lidar;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
   URangeFinder* RangeFinder;
@@ -302,12 +216,8 @@ public:
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
   void SetVisibilityOtherDrones(bool bEnable);
-
-  bool LoadCSVData(const FString& FilePath);
-  TArray<FLivoxDataPoint> LivoxData;
-  bool bLivox;
-  int StartIndex;
-
+  
+  bool GetVisibilityOtherDrones();
   
   FString CSVFilePath;
   
@@ -316,36 +226,14 @@ private:
   
   void Tick(float DeltaSeconds) override;
 
-  void UpdateLidar(bool isExternallyLocked);
-
-  void UpdateSegLidar(bool isExternallyLocked);
-
-  void UpdateIntLidar(bool isExternallyLocked);
-
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
   void SetPropellersTransform(const int &frame_id);
   
   void DisabledPhysics_StartRotatePropellers();
 
-#if PLATFORM_WINDOWS
-  std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> LidarIntHitsCriticalSection;
-
-#else
-  std::unique_ptr<FPThreadsCriticalSection> LidarHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> LidarSegHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> LidarIntHitsCriticalSection;
-#endif
-  std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
-  std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
-  std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarIntHits;
-  std::unique_ptr<FVector>                                                      LidarHitStart;
-
   CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
-
-  FLidarConfig LidarConfig;
+  
   bool         CameraNeedsRefresh = false;
 
   FRgbCameraConfig rgb_camera_config_;
