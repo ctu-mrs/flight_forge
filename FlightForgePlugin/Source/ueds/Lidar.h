@@ -5,7 +5,6 @@
 
 #include "CoreMinimal.h"
 #include "Sensor.h"
-//#include "serializable_shared.h"
 #include "MessageSerialization/Public/serializable_shared.h"
 #include "Lidar.generated.h"
 

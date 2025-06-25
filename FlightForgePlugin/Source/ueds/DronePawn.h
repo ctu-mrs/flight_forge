@@ -28,6 +28,13 @@ enum DroneFrame
   Robofly
 };
 
+enum SensorType
+{
+  CAMERA,
+  LIDAR,
+  RANGEFINDER,
+};
+
 class FramePropellersTransform
 {
 public:
@@ -70,50 +77,16 @@ public:
   URangeFinder* RangeFinder;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
-  UTextureRenderTarget2D* RenderTarget2DRgb;
+  UCamera* CameraSensor;
 
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  UTextureRenderTarget2D* RenderTarget2DStereoLeft;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  UTextureRenderTarget2D* RenderTarget2DStereoRight;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  UTextureRenderTarget2D* RenderTarget2DRgbSeg;
+  UPROPERTY(VisibleAnywhere, Category = "Sensors")
+  TArray<TObjectPtr<USensor>> Sensors;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UCameraComponent* ThirdPersonCamera;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UCameraComponent* DroneCamera;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  UStaticMeshComponent* SceneCaptureMeshHolderRgb;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  UStaticMeshComponent* SceneCaptureMeshHolderRgbSeg;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  UStaticMeshComponent* SceneCaptureMeshHolderStereoLeft;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  UStaticMeshComponent* SceneCaptureMeshHolderStereoRight;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  USceneCaptureComponent2D* SceneCaptureComponent2DRgb;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  USceneCaptureComponent2D* SceneCaptureComponent2DRgbSeg;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  USceneCaptureComponent2D* SceneCaptureComponent2DStereoLeft;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
-  USceneCaptureComponent2D* SceneCaptureComponent2DStereoRight;
-
-  // PostProcessMaterial used for segmentation
-  UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
-  UMaterial* PostProcessMaterial = nullptr;
 
   UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* RootMeshComponent;
@@ -132,30 +105,6 @@ public:
 
   // Sets default values for this character's properties
   ADronePawn();
-
-#if PLATFORM_WINDOWS
-  std::unique_ptr<FWindowsCriticalSection> RgbCameraBufferCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> StereoCameraBufferCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> RgbSegCameraBufferCriticalSection;
-#else
-  std::unique_ptr<FPThreadsCriticalSection> RgbCameraBufferCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> StereoCameraBufferCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> RgbSegCameraBufferCriticalSection;
-#endif
-
-  TArray<FColor>                                                     RgbCameraBuffer;
-  TArray<FColor>                                                     StereoLeftCameraBuffer;
-  TArray<FColor>                                                     StereoRightCameraBuffer;
-  TArray<FColor>                                                     SemanticBuffer;
-  TArray<FColor>                                                     RgbSegCameraBuffer;
-
-  double rgb_camera_last_request_time_ = 0;
-  double rgb_seg_camera_last_request_time_ = 0;
-  double stereo_camera_last_request_time_ = 0;
-
-  double rgb_stamp_ = 0;
-  double rgb_seg_stamp_ = 0;
-  double stereo_stamp_ = 0;
 
   std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>> InstructionQueue;
 
@@ -182,8 +131,6 @@ public:
   bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
   bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
-
-  void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
 
   bool GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
@@ -221,36 +168,22 @@ public:
   
   FString CSVFilePath;
   
+  void UpdateCamera(bool isExternallyLocked, int type, double stamp);
+
+  void UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden);
+  
 private:
+  int nextSensorID;
+  
   bool bCanSeeOtherDrone = true;
   
   void Tick(float DeltaSeconds) override;
-
-  void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
   void SetPropellersTransform(const int &frame_id);
   
   void DisabledPhysics_StartRotatePropellers();
 
-  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
-  
-  bool         CameraNeedsRefresh = false;
-
-  FRgbCameraConfig rgb_camera_config_;
-  FStereoCameraConfig stereo_camera_config_;
-
-  std::unique_ptr<TArray<uint8>> CompressedRgbCameraData         = std::make_unique<TArray<uint8>>();
-  std::unique_ptr<TArray<uint8>> CompressedStereoLeftCameraData  = std::make_unique<TArray<uint8>>();
-  std::unique_ptr<TArray<uint8>> CompressedStereoRightCameraData = std::make_unique<TArray<uint8>>();
-  std::unique_ptr<TArray<uint8>> CompressedRgbSegCameraData      = std::make_unique<TArray<uint8>>();
-
-  bool RgbCameraDataNeedsCompress         = false;
-  bool StereoCameraDataNeedsCompress      = false;
-  bool RgbSegCameraDataNeedsCompress      = false;
-
-  bool RgbCameraRendered                  = false;
-  bool RgbSegCameraRendered               = false;
-  bool StereoCameraRendered               = false;
+//  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 
   TArray<FramePropellersTransform> FramePropellersTransforms;
 };

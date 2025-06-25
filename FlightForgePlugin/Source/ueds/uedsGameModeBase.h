@@ -399,9 +399,9 @@ public:
 					DronesToBeHidden.Add(DronePawn.Value.first);
 				}
 			}
-			DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Empty();
-			DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Append(DronesToBeHidden);
-
+			// DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Empty();
+			// DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Append(DronesToBeHidden);
+			DroneToUpdate.Value.first->UpdateCameraSensorsMutualVisibility(DronesToBeHidden);
 			// UE_LOG(LogTemp, Error, TEXT("hidden actors count is %d"), DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Num());
 		}
 	}

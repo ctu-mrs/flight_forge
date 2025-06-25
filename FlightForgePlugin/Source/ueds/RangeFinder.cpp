@@ -4,6 +4,9 @@
 
 URangeFinder::URangeFinder()
 {
+	SensorType = SensorType::RANGEFINDER;
+	Name = TEXT("RangeFinder");
+	
 	PrimaryComponentTick.bCanEverTick = false;
 	
 	RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;

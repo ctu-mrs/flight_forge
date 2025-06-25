@@ -6,6 +6,9 @@
 
 ULidar::ULidar()
 {
+    SensorType = SensorType::LIDAR;
+    Name = TEXT("Lidar");
+    
 	PrimaryComponentTick.bCanEverTick = false;
 
 	LidarConfig.ShowBeams = DEFAULT_LIDAR_SHOW_BEAMS;
