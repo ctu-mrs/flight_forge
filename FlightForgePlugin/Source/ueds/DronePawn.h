@@ -33,6 +33,8 @@ enum SensorType
   CAMERA,
   LIDAR,
   RANGEFINDER,
+
+  MAX_SENSOR_TYPE
 };
 
 class FramePropellersTransform
@@ -171,8 +173,16 @@ public:
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
   void UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden);
+
+  USensor* AddSensor(int SensorTypeNum);
+
+  USensor* RemoveSensor(int sensorID);
   
 private:
+  // double startTime; //debugging
+  // bool added = false;
+  // bool removed = false;
+  
   int nextSensorID;
   
   bool bCanSeeOtherDrone = true;

@@ -37,6 +37,7 @@ ADronePawn::ADronePawn() {
 
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
 
+  
   nextSensorID = 0;
   Lidar = CreateDefaultSubobject<ULidar>(TEXT("Lidar"));
   Lidar->Initialize(nextSensorID++);
@@ -45,14 +46,15 @@ ADronePawn::ADronePawn() {
   RangeFinder = CreateDefaultSubobject<URangeFinder>(TEXT("RangeFinder"));
   RangeFinder->Initialize(nextSensorID++);
   RangeFinder->SetupAttachment(RootMeshComponent);
-
+  
   CameraSensor = CreateDefaultSubobject<UCamera>(TEXT("CameraSensor"));
   CameraSensor->Initialize(nextSensorID++);
   CameraSensor->SetupAttachment(RootMeshComponent);
-
+  
   Sensors.Add(Lidar);
   Sensors.Add(RangeFinder);
   Sensors.Add(CameraSensor);
+
   
   PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
   PropellerFrontLeft->SetupAttachment(RootMeshComponent);
@@ -151,6 +153,12 @@ ADronePawn::ADronePawn() {
 // Called when the game starts or when spawned
 void ADronePawn::BeginPlay() {
 
+  //startTime = FPlatformTime::Seconds();
+  
+  // CameraSensor = Cast<UCamera>(AddSensor(0));
+  // Lidar = Cast<ULidar>(AddSensor(1));
+  // RangeFinder = Cast<URangeFinder>(AddSensor(2));
+  
   Super::BeginPlay();
 }
 
@@ -195,10 +203,6 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
 void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
 	Lidar->GetIntLidarHits(OutLidarIntData, OutStart);
 }
-
-//}
-
-/* updateCamera() //{ */
 
 void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stamp = 0.0) {
 
@@ -398,8 +402,19 @@ void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, b
 
 void ADronePawn::Tick(float DeltaSeconds) {
 
-  auto start = FPlatformTime::Seconds();
+  //debugging
+  // if (added == false && FPlatformTime::Seconds() - startTime > 5)
+  // {
+  //   AddSensor(2);
+  //   added = true;
+  // }
+  // if (removed == false && FPlatformTime::Seconds() - startTime > 20)
+  // {
+  //   RemoveSensor(3);
+  //   removed = true;
+  // }
 
+  
   std::shared_ptr<FInstruction<ADronePawn>> Instruction;
 
   while (InstructionQueue->Dequeue(Instruction)) {
@@ -407,8 +422,94 @@ void ADronePawn::Tick(float DeltaSeconds) {
     Instruction->Finished = true;
   }
 
+  
   Super::Tick(DeltaSeconds);
 
   // UE_LOG(LogTemp, Warning, TEXT("Tick(), delta %f, took %f s"), DeltaSeconds, FPlatformTime::Seconds() - start);
+}
+
+USensor* ADronePawn::AddSensor(int SensorTypeNum){
+  if (SensorTypeNum < 0 || SensorTypeNum >= SensorType::MAX_SENSOR_TYPE)
+  {
+    UE_LOG(LogTemp, Error, TEXT("Invalid sensor type index"));
+    return nullptr;
+  }
+  
+  USensor* NewSensor = nullptr;
+  SensorType Type = static_cast<SensorType>(SensorTypeNum);
+
+  switch (Type)
+  {
+  case CAMERA:
+    {
+      UCamera* NewCam = NewObject<UCamera>(this, UCamera::StaticClass(), NAME_None, RF_Transient);
+      NewCam->Initialize(nextSensorID++);
+      NewSensor = NewCam;
+      break;
+    }
+
+  case LIDAR:
+    {
+      ULidar* newLidar = NewObject<ULidar>(this, ULidar::StaticClass(), NAME_None, RF_Transient);
+      newLidar->Initialize(nextSensorID++);
+      NewSensor = newLidar;
+      break;
+    }
+
+  case RANGEFINDER:
+    {
+      URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_Transient);
+      RF->Initialize(nextSensorID++);
+      NewSensor = RF;
+      break;
+    }
+
+  default:
+    UE_LOG(LogTemp, Error, TEXT("Unhandled sensor type: %d"), SensorTypeNum);
+    return nullptr;
+  }
+
+  if (NewSensor)
+  {
+    NewSensor->RegisterComponent();
+    NewSensor->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
+    AddInstanceComponent(NewSensor);
+
+    Sensors.Add(NewSensor);
+
+    UE_LOG(LogTemp, Log, TEXT("Added sensor %s with ID %d"),
+        *NewSensor->GetName(), nextSensorID);
+  }
+
+  return NewSensor;
+}
+
+USensor* ADronePawn::RemoveSensor(int sensorID)
+{
+  USensor* deletedSensor = nullptr;
+  
+  for (int i = 0; i < Sensors.Num(); i++)
+  {
+    TObjectPtr<USensor> Sensor = Sensors[i];
+    if (Sensor && Sensor->GetSensorID() == sensorID)
+    {
+      deletedSensor = Sensor;
+
+      Sensor->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
+      Sensors.RemoveAt(i);
+      Sensor->DestroyComponent();
+
+      UE_LOG(LogTemp, Log, TEXT("Removed sensor with ID %d (%s)"), 
+                   sensorID, *Sensor->GetName());
+      break;
+    }
+  }
+
+  if (!deletedSensor)
+  {
+    UE_LOG(LogTemp, Warning, TEXT("Sensor with ID %d not found"), sensorID);
+  }
+  
+  return deletedSensor;
 }
 
