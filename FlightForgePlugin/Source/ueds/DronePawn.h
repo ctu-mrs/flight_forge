@@ -28,15 +28,6 @@ enum DroneFrame
   Robofly
 };
 
-enum SensorType
-{
-  CAMERA,
-  LIDAR,
-  RANGEFINDER,
-
-  MAX_SENSOR_TYPE
-};
-
 class FramePropellersTransform
 {
 public:

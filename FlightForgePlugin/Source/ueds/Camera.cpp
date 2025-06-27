@@ -237,7 +237,7 @@ void UCamera::UpdateCamera(bool isExternallyLocked, int type = 1, double stamp =
       UE_LOG(LogTemp, Warning, TEXT("resource"));
 
 
-      Resource->ReadPixels(RgbCameraBuffer); //this crashes
+      Resource->ReadPixels(RgbCameraBuffer); //this probably crashes
       UE_LOG(LogTemp, Warning, TEXT("read pixels"));
     
         

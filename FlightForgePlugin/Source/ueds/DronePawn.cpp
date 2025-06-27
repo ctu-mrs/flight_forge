@@ -429,7 +429,7 @@ void ADronePawn::Tick(float DeltaSeconds) {
 }
 
 USensor* ADronePawn::AddSensor(int SensorTypeNum){
-  if (SensorTypeNum < 0 || SensorTypeNum >= SensorType::MAX_SENSOR_TYPE)
+  if (SensorTypeNum < 0 || SensorTypeNum >= static_cast<int>(SensorType::MAX_SENSOR_TYPE))
   {
     UE_LOG(LogTemp, Error, TEXT("Invalid sensor type index"));
     return nullptr;
@@ -440,7 +440,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
 
   switch (Type)
   {
-  case CAMERA:
+  case SensorType::CAMERA:
     {
       UCamera* NewCam = NewObject<UCamera>(this, UCamera::StaticClass(), NAME_None, RF_Transient);
       NewCam->Initialize(nextSensorID++);
@@ -448,7 +448,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
       break;
     }
 
-  case LIDAR:
+  case SensorType::LIDAR:
     {
       ULidar* newLidar = NewObject<ULidar>(this, ULidar::StaticClass(), NAME_None, RF_Transient);
       newLidar->Initialize(nextSensorID++);
@@ -456,7 +456,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
       break;
     }
 
-  case RANGEFINDER:
+  case SensorType::RANGEFINDER:
     {
       URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_Transient);
       RF->Initialize(nextSensorID++);

@@ -5,7 +5,16 @@
 #include "Sensor.generated.h"
 
 
-enum SensorType : int;
+//enum SensorType : int;
+
+enum class SensorType : int
+{
+	CAMERA = 0,
+	LIDAR = 1,
+	RANGEFINDER = 2,
+	MAX_SENSOR_TYPE
+};
+
 class ADronePawn;
 
 UCLASS()
@@ -20,7 +29,11 @@ public:
 	void Initialize(int InSensorID);
 	
 	int GetSensorID();
-	
+
+	// virtual void GetData();
+	// virtual void GetConfig();
+	// virtual void SetConfig();
+		
 protected:
 	virtual void BeginPlay() override;
 
