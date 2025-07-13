@@ -62,5 +62,10 @@ private:
   bool GetMoveLineVisible(const FTCPClient& Client, Serializable::Drone::GetMoveLineVisible::Request& Request);
 
   bool SetMoveLineVisible(const FTCPClient& Client, Serializable::Drone::SetMoveLineVisible::Request& Request);
-  
+
+  //new functions - need to add selecting sensors by request ID
+  bool GetSensorConfig(const FTCPClient& Client);
+
+  bool SetSensorConfig(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream);
+    
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Instruction.h"
 #include "Sensor.h"
 #include "Server/UedsGameModeServer.h"
 #include "Camera.generated.h"
@@ -94,6 +95,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
 	UMaterial* PostProcessMaterial = nullptr;
 
+  std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UCamera>>>> InstructionQueue;
+
 #if PLATFORM_WINDOWS
 	std::unique_ptr<FWindowsCriticalSection> RgbCameraBufferCriticalSection;
 	std::unique_ptr<FWindowsCriticalSection> StereoCameraBufferCriticalSection;
@@ -129,6 +132,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
+
 	bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
 	bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
@@ -136,7 +140,8 @@ public:
 	bool GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
 	void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
-
+	
+	
 	FRgbCameraConfig GetRgbCameraConfig();
 	bool             SetRgbCameraConfig(const FRgbCameraConfig& Config);
 
@@ -145,7 +150,10 @@ public:
 
 	void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 	
+	void GetConfig(std::stringstream& OutputStream) override;
+	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
 private:
+	CameraMode camera_mode_ = CameraMode::CAMERA_MODE_RGB;
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 	bool CameraNeedsRefresh = false;
 	FRgbCameraConfig rgb_camera_config_;

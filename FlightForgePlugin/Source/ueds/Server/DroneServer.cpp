@@ -19,10 +19,9 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	Serialization::SerializeRequest<Serializable::Common::NetworkRequest>(Request, *InputStream);
 
 	if(Request.type == Serializable::Drone::MessageType::get_location) {
-
 		Serializable::Drone::GetLocation::Request CustomRequest;
 		Serialization::SerializeRequest<Serializable::Drone::GetLocation::Request>(CustomRequest, *InputStream);
-
+		
 		return GetLocation(Client, CustomRequest);
 	}
 
@@ -43,10 +42,9 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_data) {
-	
 		Serializable::Drone::GetRgbCameraData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
+		
 		return GetRgbCameraData(Client, CustomRequest);
 	}
 	
@@ -54,7 +52,7 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	
 		Serializable::Drone::GetStereoCameraData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
+		
 		return GetStereoCameraData(Client, CustomRequest);
 	}
 	
@@ -102,7 +100,7 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	
 		Serializable::Drone::GetLidarData::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
+		
 		return GetLidarData(Client, CustomRequest);
 	}
 	
@@ -122,43 +120,54 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_config) {
-	
 		Serializable::Drone::GetLidarConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
+		
 		return GetLidarConfig(Client, CustomRequest);
+
+		 //return GetSensorConfig(Client);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_lidar_config) {
 	
 		Serializable::Drone::SetLidarConfig::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
+		
 		return SetLidarConfig(Client, CustomRequest);
+
+		//return SetSensorConfig(Client, InputStream);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_config) {
 	
-		Serializable::Drone::GetRgbCameraConfig::Request CustomRequest;
-		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
-		return GetRgbCameraConfig(Client, CustomRequest);
+		// Serializable::Drone::GetRgbCameraConfig::Request CustomRequest;
+		// Serialization::SerializeRequest(CustomRequest, *InputStream);
+		//
+		// return GetRgbCameraConfig(Client, CustomRequest);
+
+		UE_LOG(LogTemp, Warning, TEXT("Get CameraRGB config"));
+
+		return GetSensorConfig(Client);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_rgb_camera_config) {
 	
-		Serializable::Drone::SetRgbCameraConfig::Request CustomRequest;
-		Serialization::SerializeRequest(CustomRequest, *InputStream);
+		// Serializable::Drone::SetRgbCameraConfig::Request CustomRequest;
+		// Serialization::SerializeRequest(CustomRequest, *InputStream);
 	
-		return SetRgbCameraConfig(Client, CustomRequest);
+		//return SetRgbCameraConfig(Client, CustomRequest);
+		return SetSensorConfig(Client, InputStream);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_stereo_camera_config) {
 	
-		Serializable::Drone::GetStereoCameraConfig::Request CustomRequest;
-		Serialization::SerializeRequest(CustomRequest, *InputStream);
-	
-		return GetStereoCameraConfig(Client, CustomRequest);
+		// Serializable::Drone::GetStereoCameraConfig::Request CustomRequest;
+		// Serialization::SerializeRequest(CustomRequest, *InputStream);
+		//
+		// return GetStereoCameraConfig(Client, CustomRequest);
+
+		UE_LOG(LogTemp, Warning, TEXT("Get CameraStereo config"));
+		return GetSensorConfig(Client);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_stereo_camera_config) {
@@ -1008,3 +1017,48 @@ bool DroneServer::SetMoveLineVisible(const FTCPClient& Client, Serializable::Dro
 }
 
 //}
+
+bool DroneServer::GetSensorConfig(const FTCPClient& Client)
+{
+	UE_LOG(LogTemp, Warning, TEXT("DroneServer::GetSensorConfig"));
+
+	if(!DronePawn) {
+		return false;
+	}
+
+	std::stringstream OutputStream;
+
+	//0 - camera, 1 - lidar, 2 - rangefinder 
+	if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(1))
+	{
+		USensor* Sensor = *SensorPtr;
+		Sensor->GetConfig(OutputStream);
+		//UE_LOG(LogTemp, Warning, TEXT("Serialized Sensor Config:\n%s"), *FString(OutputStream.str().c_str()));
+		UE_LOG(LogTemp, Warning, TEXT("Stream size: %d bytes"), OutputStream.str().size());
+		
+		return Respond(Client, OutputStream);
+	}
+	
+	return false;
+}
+
+bool DroneServer::SetSensorConfig(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream)
+{
+	UE_LOG(LogTemp, Warning, TEXT("DroneServer::SetSensorConfig"));
+
+	if(!DronePawn) {
+		return false;
+	}
+
+	std::stringstream OutputStream;
+	if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(1))
+	{
+		USensor* Sensor = *SensorPtr;
+		Sensor->SetConfig(OutputStream, InputStream);
+		
+		return Respond(Client, OutputStream);
+	}
+	
+	return false;
+}
+

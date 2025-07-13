@@ -2,10 +2,11 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
+//#include "MessageSerialization/Public/Serialize.h"
+#include "MessageSerialization/Public/serializable_shared.h"
+#include <fstream>
 #include "Sensor.generated.h"
 
-
-//enum SensorType : int;
 
 enum class SensorType : int
 {
@@ -31,8 +32,8 @@ public:
 	int GetSensorID();
 
 	// virtual void GetData();
-	// virtual void GetConfig();
-	// virtual void SetConfig();
+	 virtual void GetConfig(std::stringstream& OutputStream) {};
+	 virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
 		
 protected:
 	virtual void BeginPlay() override;

@@ -1,8 +1,9 @@
 #include "Lidar.h"
 
-#include <fstream>
+//#include <fstream>
 
 #include "DronePawn.h"
+#include "Serialize.h"
 
 ULidar::ULidar()
 {
@@ -799,5 +800,94 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
   if (!isExternallyLocked) {
     LidarIntHitsCriticalSection->Unlock();
   }
+}
+
+void ULidar::GetConfig(std::stringstream& OutputStream)
+{
+    Serializable::Drone::GetLidarConfig::Response Response(true);
+    Response.config = Serializable::Drone::LidarConfig{};
+
+    Response.config.Enable        = LidarConfig.Enable;
+    Response.config.ShowBeams     = LidarConfig.ShowBeams;
+    Response.config.BeamLength    = LidarConfig.BeamLength;
+    Response.config.BeamHorRays   = LidarConfig.BeamHorRays;
+    Response.config.BeamVertRays  = LidarConfig.BeamVertRays;
+    Response.config.Frequency     = LidarConfig.Frequency;
+    Response.config.OffsetX       = LidarConfig.Offset.X;
+    Response.config.OffsetY       = LidarConfig.Offset.Y;
+    Response.config.OffsetZ       = LidarConfig.Offset.Z;
+    Response.config.OrientationPitch = LidarConfig.Orientation.Pitch;
+    Response.config.OrientationYaw   = LidarConfig.Orientation.Yaw;
+    Response.config.OrientationRoll  = LidarConfig.Orientation.Roll;
+    Response.config.FOVHorLeft       = LidarConfig.FOVHorLeft;
+    Response.config.FOVHorRight      = LidarConfig.FOVHorRight;
+    Response.config.FOVVertUp        = LidarConfig.FOVVertUp;
+    Response.config.FOVVertDown      = LidarConfig.FOVVertDown;
+    Response.config.Livox            = LidarConfig.Livox;
+
+    Serialization::DeserializeResponse(Response, OutputStream);
+
+    UE_LOG(LogTemp, Log, TEXT("Got lidar config"));
+}
+
+void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+{
+    Serializable::Drone::SetLidarConfig::Request Request;
+    Serialization::SerializeRequest(Request, *InputStream);
+
+    bool Status;
+    
+    LidarHitsCriticalSection->Lock();
+    LidarSegHitsCriticalSection->Lock();
+
+    LidarConfig.Enable     = Request.config.Enable;
+    LidarConfig.Livox     = Request.config.Livox;
+    LidarConfig.ShowBeams  = Request.config.ShowBeams;
+    LidarConfig.BeamLength = Request.config.BeamLength;
+
+    if (Request.config.BeamHorRays > 0 && Request.config.BeamVertRays > 0) {
+        LidarConfig.BeamHorRays  = Request.config.BeamHorRays;
+        LidarConfig.BeamVertRays = Request.config.BeamVertRays;
+        UE_LOG(LogTemp, Warning, TEXT("Setting LiDAR with width = %d, height %d"), LidarConfig.BeamHorRays, LidarConfig.BeamVertRays);
+    } else {
+        UE_LOG(LogTemp, Error, TEXT("Invalid dimensions for Lidar. BeamHorRays and BeamVertRays should be greater than 0."));
+    }
+
+    LidarConfig.Frequency = Request.config.Frequency;
+    
+    LidarConfig.Offset = FVector(Request.config.OffsetX, Request.config.OffsetY, Request.config.OffsetZ);
+    
+    // LidarConfig.Offset.X = Config.Offset.X;
+    // LidarConfig.Offset.Y = Config.Offset.Y;
+    // LidarConfig.Offset.Z = Config.Offset.Z;
+
+    // LidarConfig.Orientation.Pitch = Config.Orientation.Pitch;
+    // LidarConfig.Orientation.Yaw   = -Config.Orientation.Yaw;
+    // LidarConfig.Orientation.Roll  = -Config.Orientation.Roll;
+
+    LidarConfig.Orientation = FRotator(Request.config.OrientationPitch, Request.config.OrientationYaw, Request.config.OrientationRoll);
+
+    /* LidarConfig.FOVHor  = Config.FOVHor; */
+    /* LidarConfig.FOVVert = Config.FOVVert; */
+    LidarConfig.FOVVertUp   = Request.config.FOVVertUp;
+    LidarConfig.FOVVertDown = Request.config.FOVVertDown;
+    LidarConfig.FOVHorLeft  = Request.config.FOVHorLeft;
+    LidarConfig.FOVHorRight = Request.config.FOVHorRight;
+    
+    LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
+    LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)(LidarConfig.BeamHorRays);
+
+    LidarHits->resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+    LidarSegHits->resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+    
+    LidarHitsCriticalSection->Unlock();
+    LidarSegHitsCriticalSection->Unlock();
+
+    Status = true;
+    
+    //const auto Status = SetLidarConfig(Config);
+    
+    Serializable::Drone::SetLidarConfig::Response Response(Status);
+    Serialization::DeserializeResponse(Response, OutputStream);
 }
 

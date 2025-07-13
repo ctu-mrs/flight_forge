@@ -6,14 +6,17 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 
+#include "Serialize.h"
 
 UCamera::UCamera()
 {
 	SensorType = SensorType::CAMERA;
 	Name = TEXT("Camera");
+
+	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UCamera>>>>();
 	
-	//maybe change
 	PrimaryComponentTick.bCanEverTick = true;
+	//maybe change
 	PrimaryComponentTick.TickGroup    = TG_PrePhysics;
 
 #if PLATFORM_WINDOWS
@@ -143,6 +146,14 @@ void UCamera::BeginDestroy()
 // Called every frame
 void UCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction){
 	auto start = FPlatformTime::Seconds();
+
+	std::shared_ptr<FInstruction<UCamera>> Instruction;
+
+	while (InstructionQueue->Dequeue(Instruction)) {
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
+
 	
 	{
     RgbCameraBufferCriticalSection->Lock();
@@ -322,10 +333,16 @@ bool UCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& 
 	rgb_camera_last_request_time_ = FPlatformTime::Seconds();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-		auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
-		Owner->InstructionQueue->Enqueue(Instruction);
+		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+		// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
+		// Owner->InstructionQueue->Enqueue(Instruction);
+		//
+		// FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 
+		auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+		Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
+		InstructionQueue->Enqueue(Instruction);
+		
 		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 	}
 
@@ -359,9 +376,14 @@ bool UCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TAr
 		stereo_camera_last_request_time_ = FPlatformTime::Seconds();
 
 		if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-			auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-			Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
-			Owner->InstructionQueue->Enqueue(Instruction);
+			// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+			// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
+			// Owner->InstructionQueue->Enqueue(Instruction);
+
+			auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+			Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
+			InstructionQueue->Enqueue(Instruction);
+			
 			FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 		}
 
@@ -407,9 +429,14 @@ bool UCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& s
 	rgb_seg_camera_last_request_time_ = FPlatformTime::Seconds();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-		auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
-		Owner->InstructionQueue->Enqueue(Instruction);
+		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+		// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
+		// Owner->InstructionQueue->Enqueue(Instruction);
+
+		auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+		Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
+		InstructionQueue->Enqueue(Instruction);
+		
 		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 	}
 
@@ -571,3 +598,175 @@ void UCamera::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TAr
 		DstDataPtr[Index * 3 + 2] = SrcDataPtr[Index].R;  // Blue channel
 	}
 }
+
+void UCamera::GetConfig(std::stringstream& OutputStream)
+{
+	switch (camera_mode_)
+	{
+		case CAMERA_MODE_NONE:
+			break;
+		
+		case CAMERA_MODE_RGB:
+		case CAMERA_MODE_RGB_SEG:
+		{
+			Serializable::Drone::GetRgbCameraConfig::Response ResponseRGB(true);
+			ResponseRGB.config = Serializable::Drone::RgbCameraConfig{};
+
+			ResponseRGB.config.show_debug_camera_= rgb_camera_config_.ShowCameraComponent;
+
+			ResponseRGB.config.offset_x_ = rgb_camera_config_.Offset.X;
+			ResponseRGB.config.offset_y_ = rgb_camera_config_.Offset.Y;
+			ResponseRGB.config.offset_z_ = rgb_camera_config_.Offset.Z;
+
+			ResponseRGB.config.rotation_pitch_ = rgb_camera_config_.Orientation.Pitch;
+			ResponseRGB.config.rotation_yaw_ = rgb_camera_config_.Orientation.Yaw;
+			ResponseRGB.config.rotation_roll_ = rgb_camera_config_.Orientation.Roll;
+
+			ResponseRGB.config.fov_ = rgb_camera_config_.FOVAngle;
+
+			ResponseRGB.config.width_ = rgb_camera_config_.Width;
+			ResponseRGB.config.height_ = rgb_camera_config_.Height;
+
+			ResponseRGB.config.enable_temporal_aa_ = rgb_camera_config_.enable_temporal_aa;
+			ResponseRGB.config.enable_hdr_ = rgb_camera_config_.enable_hdr;
+			ResponseRGB.config.enable_raytracing_ = rgb_camera_config_.enable_raytracing;
+
+			ResponseRGB.config.enable_motion_blur_ = rgb_camera_config_.enable_motion_blur;
+			ResponseRGB.config.motion_blur_distortion_ = rgb_camera_config_.motion_blur_distortion;
+			ResponseRGB.config.motion_blur_amount_ = rgb_camera_config_.motion_blur_amount;
+		
+			Serialization::DeserializeResponse(ResponseRGB, OutputStream);
+			UE_LOG(LogTemp, Warning, TEXT("Got CameraRGB config"));
+		
+			break;
+		}
+		case CAMERA_MODE_STEREO:
+		{
+			Serializable::Drone::GetStereoCameraConfig::Response ResponseStereo(true);
+			ResponseStereo.config = Serializable::Drone::StereoCameraConfig{};
+
+			ResponseStereo.config.show_debug_camera_= stereo_camera_config_.ShowCameraComponent;
+
+			ResponseStereo.config.offset_x_ = stereo_camera_config_.Offset.X;
+			ResponseStereo.config.offset_y_ = stereo_camera_config_.Offset.Y;
+			ResponseStereo.config.offset_z_ = stereo_camera_config_.Offset.Z;
+
+			ResponseStereo.config.rotation_pitch_ = stereo_camera_config_.Orientation.Pitch;
+			ResponseStereo.config.rotation_yaw_ = stereo_camera_config_.Orientation.Yaw;
+			ResponseStereo.config.rotation_roll_ = stereo_camera_config_.Orientation.Roll;
+
+			ResponseStereo.config.fov_ = stereo_camera_config_.FOVAngle;
+
+			ResponseStereo.config.width_ = stereo_camera_config_.Width;
+			ResponseStereo.config.height_ = stereo_camera_config_.Height;
+
+			ResponseStereo.config.baseline_ = stereo_camera_config_.baseline;
+
+			ResponseStereo.config.enable_temporal_aa_ = stereo_camera_config_.enable_temporal_aa;
+			ResponseStereo.config.enable_hdr_ = stereo_camera_config_.enable_hdr;
+			ResponseStereo.config.enable_raytracing_ = stereo_camera_config_.enable_raytracing;
+
+			Serialization::DeserializeResponse(ResponseStereo, OutputStream);
+			UE_LOG(LogTemp, Warning, TEXT("Got CameraStereo config"));
+	
+			break;
+		}
+
+		default:
+			break;
+	}
+}
+
+void UCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+{
+	switch (camera_mode_)
+	{
+		case CAMERA_MODE_NONE:
+			break;
+		
+		case CAMERA_MODE_RGB:
+		case CAMERA_MODE_RGB_SEG:
+		{
+			Serializable::Drone::SetRgbCameraConfig::Request Request;
+			Serialization::SerializeRequest(Request, *InputStream);
+			
+			FRgbCameraConfig Config;
+			Config.ShowCameraComponent = Request.config.show_debug_camera_;
+
+			Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
+			Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+
+			Config.FOVAngle = Request.config.fov_;
+
+			Config.Width = Request.config.width_;
+			Config.Height = Request.config.height_;
+
+			Config.enable_hdr = Request.config.enable_hdr_;
+			Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
+			Config.enable_raytracing = Request.config.enable_raytracing_;
+
+			Config.enable_motion_blur = Request.config.enable_motion_blur_;
+			Config.motion_blur_amount = Request.config.motion_blur_amount_;
+			Config.motion_blur_distortion = Request.config.motion_blur_distortion_;
+
+			bool Status = false;
+
+			auto Instruction = std::make_shared<FInstruction<UCamera>>();
+
+			Instruction->Function = [&Config, &Status](UCamera& _UCamera) {
+				Status = _UCamera.SetRgbCameraConfig(Config);
+			};
+
+			InstructionQueue->Enqueue(Instruction);
+			FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
+
+			Serializable::Drone::SetRgbCameraConfig::Response Response(Status);
+			Serialization::DeserializeResponse(Response, OutputStream);
+			UE_LOG(LogTemp, Warning, TEXT("Set RGBCamera config"));
+				
+			break;
+		}
+		case CAMERA_MODE_STEREO:
+		{
+			Serializable::Drone::SetStereoCameraConfig::Request Request;
+				
+			FStereoCameraConfig Config;
+			Config.ShowCameraComponent = Request.config.show_debug_camera_;
+
+			Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
+			Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+
+			Config.FOVAngle = Request.config.fov_;
+
+			Config.Width = Request.config.width_;
+			Config.Height = Request.config.height_;
+
+			Config.baseline = Request.config.baseline_;
+
+			Config.enable_hdr = Request.config.enable_hdr_;
+			Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
+			Config.enable_raytracing = Request.config.enable_raytracing_; 
+
+			bool Status = false;
+
+			auto Instruction = std::make_shared<FInstruction<UCamera>>();
+
+			Instruction->Function = [&Config, &Status](UCamera& _UCamera) {
+				Status = _UCamera.SetStereoCameraConfig(Config);
+			};
+
+			InstructionQueue->Enqueue(Instruction);
+			FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
+
+			Serializable::Drone::SetStereoCameraConfig::Response Response(Status);
+			Serialization::DeserializeResponse(Response, OutputStream);
+			UE_LOG(LogTemp, Warning, TEXT("Set Stereo Camera config"));
+	
+			break;
+		}
+
+		default:
+			break;
+	}
+}
+

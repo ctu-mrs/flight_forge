@@ -60,21 +60,21 @@ class UEDS_API ADronePawn : public APawn {
 public:
   std::shared_ptr<DroneServer> droneServer;
 
+  UPROPERTY(VisibleAnywhere, Category = "Sensors")
+  TMap<int, TObjectPtr<USensor>> Sensors;
+  
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = "Components")
   USpringArmComponent* ThirdPersonCameraSpringArm;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
   ULidar* Lidar;
-
+  
   UPROPERTY(VisibleAnywhere, Category = "Components")
   URangeFinder* RangeFinder;
-
+  
   UPROPERTY(VisibleAnywhere, Category = "Components")
   UCamera* CameraSensor;
-
-  UPROPERTY(VisibleAnywhere, Category = "Sensors")
-  TArray<TObjectPtr<USensor>> Sensors;
-
+  
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UCameraComponent* ThirdPersonCamera;
 

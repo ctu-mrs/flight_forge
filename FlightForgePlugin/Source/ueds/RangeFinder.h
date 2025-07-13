@@ -25,8 +25,11 @@ class UEDS_API URangeFinder : public USensor
 public:
 	URangeFinder();
 
+
 	void GetRangefinderData(double& range);
 
+	void GetConfig(std::stringstream& OutputStream) override;
+	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
 protected:
 	virtual void BeginPlay() override;
 

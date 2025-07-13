@@ -5,7 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "Sensor.h"
-#include "MessageSerialization/Public/serializable_shared.h"
+//#include "MessageSerialization/Public/serializable_shared.h"
 #include "Lidar.generated.h"
 
 #define DEFAULT_LIDAR_BEAM_HOR 256  // 100
@@ -58,6 +58,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
+
 	void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
 
 	void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
@@ -75,6 +76,9 @@ public:
 	
 	FString CSVFilePath;
 
+	void GetConfig(std::stringstream& OutputStream) override;
+	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
+	
 protected:
 	virtual void BeginPlay() override;
 	

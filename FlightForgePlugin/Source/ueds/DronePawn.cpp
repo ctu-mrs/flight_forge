@@ -39,21 +39,21 @@ ADronePawn::ADronePawn() {
 
   
   nextSensorID = 0;
-  Lidar = CreateDefaultSubobject<ULidar>(TEXT("Lidar"));
-  Lidar->Initialize(nextSensorID++);
-  Lidar->SetupAttachment(RootMeshComponent);
-  
-  RangeFinder = CreateDefaultSubobject<URangeFinder>(TEXT("RangeFinder"));
-  RangeFinder->Initialize(nextSensorID++);
-  RangeFinder->SetupAttachment(RootMeshComponent);
-  
-  CameraSensor = CreateDefaultSubobject<UCamera>(TEXT("CameraSensor"));
-  CameraSensor->Initialize(nextSensorID++);
-  CameraSensor->SetupAttachment(RootMeshComponent);
-  
-  Sensors.Add(Lidar);
-  Sensors.Add(RangeFinder);
-  Sensors.Add(CameraSensor);
+  // Lidar = CreateDefaultSubobject<ULidar>(TEXT("Lidar"));
+  // Lidar->Initialize(nextSensorID++);
+  // Lidar->SetupAttachment(RootMeshComponent);
+  //
+  // RangeFinder = CreateDefaultSubobject<URangeFinder>(TEXT("RangeFinder"));
+  // RangeFinder->Initialize(nextSensorID++);
+  // RangeFinder->SetupAttachment(RootMeshComponent);
+  //
+  // CameraSensor = CreateDefaultSubobject<UCamera>(TEXT("CameraSensor"));
+  // CameraSensor->Initialize(nextSensorID++);
+  // CameraSensor->SetupAttachment(RootMeshComponent);
+  //
+  // Sensors.Add(Lidar);
+  // Sensors.Add(RangeFinder);
+  // Sensors.Add(CameraSensor);
 
   
   PropellerFrontLeft = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerFrontLeft"));
@@ -155,9 +155,13 @@ void ADronePawn::BeginPlay() {
 
   //startTime = FPlatformTime::Seconds();
   
-  // CameraSensor = Cast<UCamera>(AddSensor(0));
-  // Lidar = Cast<ULidar>(AddSensor(1));
-  // RangeFinder = Cast<URangeFinder>(AddSensor(2));
+  CameraSensor = Cast<UCamera>(AddSensor(0));
+  Lidar = Cast<ULidar>(AddSensor(1));
+  RangeFinder = Cast<URangeFinder>(AddSensor(2));
+
+  // AddSensor(0); //camera
+  // AddSensor(1); //Lidar
+  // AddSensor(2); //RangeFinder
   
   Super::BeginPlay();
 }
@@ -188,38 +192,56 @@ bool ADronePawn::GetCrashState(void) {
 void ADronePawn::GetRangefinderData(double& range) {
 
 	RangeFinder->GetRangefinderData(range);
+
+  // URangeFinder* myRF = Cast<URangeFinder>(Sensors[2]);
+	// myRF->GetRangefinderData(range);
+  
 }
 
 void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
 	Lidar->GetLidarHits(OutLidarData, OutStart);
+
+  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+  // myLidar->GetLidarHits(OutLidarData, OutStart);
 }
 
 
 void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
 	Lidar->GetSegLidarHits(OutLidarSegData, OutStart);
+
+  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+	// myLidar->GetSegLidarHits(OutLidarSegData, OutStart);
 }
 
 
 void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
 	Lidar->GetIntLidarHits(OutLidarIntData, OutStart);
+
+  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+	// myLidar->GetIntLidarHits(OutLidarIntData, OutStart);
+    
 }
 
 void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stamp = 0.0) {
-
   CameraSensor->UpdateCamera(isExternallyLocked, type, stamp);
+  
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // myCam->UpdateCamera(isExternallyLocked, type, stamp);
 }
 
 void ADronePawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden)
 {
-  for (TObjectPtr<USensor> Sensor : Sensors)
+  for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
   {
-    if (UCamera* CamSensor = Cast<UCamera>(Sensor))
+    if (UCamera* CamSensor = Cast<UCamera>(Pair.Value))
     {
-      CamSensor->SceneCaptureComponent2DRgb->HiddenActors.Empty();
-      CamSensor->SceneCaptureComponent2DRgb->HiddenActors.Append(DronesToBeHidden);
+      if (CamSensor->SceneCaptureComponent2DRgb)
+      {
+        CamSensor->SceneCaptureComponent2DRgb->HiddenActors.Empty();
+        CamSensor->SceneCaptureComponent2DRgb->HiddenActors.Append(DronesToBeHidden);
+      }
     }
   }
-  
 }
 
 void ADronePawn::SetPropellersTransform(const int& frame_id) {
@@ -342,44 +364,82 @@ void ADronePawn::DisabledPhysics_StartRotatePropellers()
 
 bool ADronePawn::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp) {
   return CameraSensor->GetRgbCameraDataFromServerThread(OutArray, stamp);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->GetRgbCameraDataFromServerThread(OutArray, stamp);
 }
 
 bool ADronePawn::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double& stamp) {
   return CameraSensor->GetStereoCameraDataFromServerThread(image_left, image_right, stamp);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->GetStereoCameraDataFromServerThread(image_left, image_right, stamp);
+  
 }
 
 bool ADronePawn::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& stamp) {
   return CameraSensor->GetRgbSegCameraFromServerThread(OutArray, stamp);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->GetRgbSegCameraFromServerThread(OutArray, stamp);
 }
 
 void ADronePawn::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
   CameraSensor->SetCameraCaptureMode(CaptureMode);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // myCam->SetCameraCaptureMode(CaptureMode);
+  
 }
 
 FLidarConfig ADronePawn::GetLidarConfig() {
   return Lidar->GetLidarConfig();
+
+  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+  // return myLidar->GetLidarConfig();
+  
 }
 
 bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
   return Lidar->SetLidarConfig(Config);
+
+  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+  // return myLidar->SetLidarConfig(Config);
+  
 }
 
 FRgbCameraConfig ADronePawn::GetRgbCameraConfig() {
   return CameraSensor->GetRgbCameraConfig();
   //return rgb_camera_config_;
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->GetRgbCameraConfig();
+  
 }
 
 FStereoCameraConfig ADronePawn::GetStereoCameraConfig() {
   return CameraSensor->GetStereoCameraConfig();
   //return stereo_camera_config_;
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->GetStereoCameraConfig();
+  
 }
 
 bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   return CameraSensor->SetRgbCameraConfig(Config);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->SetRgbCameraConfig(Config);
+  
 }
 
 bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   return CameraSensor->SetStereoCameraConfig(Config);
+
+  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  // return myCam->SetStereoCameraConfig(Config);
+  
 }
 
 bool ADronePawn::GetVisibilityOtherDrones()
@@ -421,7 +481,6 @@ void ADronePawn::Tick(float DeltaSeconds) {
     Instruction->Function(*this);
     Instruction->Finished = true;
   }
-
   
   Super::Tick(DeltaSeconds);
 
@@ -443,7 +502,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
   case SensorType::CAMERA:
     {
       UCamera* NewCam = NewObject<UCamera>(this, UCamera::StaticClass(), NAME_None, RF_Transient);
-      NewCam->Initialize(nextSensorID++);
+      NewCam->Initialize(nextSensorID);
       NewSensor = NewCam;
       break;
     }
@@ -451,7 +510,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
   case SensorType::LIDAR:
     {
       ULidar* newLidar = NewObject<ULidar>(this, ULidar::StaticClass(), NAME_None, RF_Transient);
-      newLidar->Initialize(nextSensorID++);
+      newLidar->Initialize(nextSensorID);
       NewSensor = newLidar;
       break;
     }
@@ -459,7 +518,7 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
   case SensorType::RANGEFINDER:
     {
       URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_Transient);
-      RF->Initialize(nextSensorID++);
+      RF->Initialize(nextSensorID);
       NewSensor = RF;
       break;
     }
@@ -475,41 +534,34 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
     NewSensor->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
     AddInstanceComponent(NewSensor);
 
-    Sensors.Add(NewSensor);
-
+    Sensors.Add(nextSensorID, NewSensor);
     UE_LOG(LogTemp, Log, TEXT("Added sensor %s with ID %d"),
         *NewSensor->GetName(), nextSensorID);
+    
+    nextSensorID++;
   }
 
   return NewSensor;
 }
 
-USensor* ADronePawn::RemoveSensor(int sensorID)
+USensor* ADronePawn::RemoveSensor(int32 sensorID)
 {
-  USensor* deletedSensor = nullptr;
-  
-  for (int i = 0; i < Sensors.Num(); i++)
+  if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(sensorID))
   {
-    TObjectPtr<USensor> Sensor = Sensors[i];
-    if (Sensor && Sensor->GetSensorID() == sensorID)
+    USensor* Sensor = *SensorPtr;
+    if (Sensor)
     {
-      deletedSensor = Sensor;
-
       Sensor->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
-      Sensors.RemoveAt(i);
       Sensor->DestroyComponent();
+      Sensors.Remove(sensorID);
 
       UE_LOG(LogTemp, Log, TEXT("Removed sensor with ID %d (%s)"), 
-                   sensorID, *Sensor->GetName());
-      break;
+             sensorID, *Sensor->GetName());
+      return Sensor;
     }
   }
 
-  if (!deletedSensor)
-  {
-    UE_LOG(LogTemp, Warning, TEXT("Sensor with ID %d not found"), sensorID);
-  }
-  
-  return deletedSensor;
+  UE_LOG(LogTemp, Warning, TEXT("Sensor with ID %d not found"), sensorID);
+  return nullptr;
 }
 

@@ -53,3 +53,12 @@ void URangeFinder::GetRangefinderData(double& range) {
 	RangefinderHitsCriticalSection->Unlock();
 }
 
+void URangeFinder::GetConfig(std::stringstream& OutputStream)
+{
+	
+}
+
+void URangeFinder::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+{
+    
+}
