@@ -1,6 +1,7 @@
 #include "RangeFinder.h"
-#include "DronePawn.h"
+#include "ueds/DronePawn.h"
 
+#include "Serialize.h"
 
 URangeFinder::URangeFinder()
 {
@@ -53,12 +54,17 @@ void URangeFinder::GetRangefinderData(double& range) {
 	RangefinderHitsCriticalSection->Unlock();
 }
 
-void URangeFinder::GetConfig(std::stringstream& OutputStream)
-{
-	
-}
+void URangeFinder::GetConfig(std::stringstream& OutputStream){}
 
-void URangeFinder::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void URangeFinder::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream){}
+
+void URangeFinder::GetData(std::stringstream& OutputStream)
 {
-    
+	double range;
+	GetRangefinderData(range);
+	
+	Serializable::Drone::GetRangefinderData::Response Response(true);
+	Response.range = range;
+
+	Serialization::DeserializeResponse(Response, OutputStream);
 }

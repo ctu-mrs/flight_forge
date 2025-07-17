@@ -1,9 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Instruction.h"
+#include "ueds/Instruction.h"
 #include "Sensor.h"
-#include "Server/UedsGameModeServer.h"
+//#include "Server/UedsGameModeServer.h"
+
 #include "Camera.generated.h"
 
 enum CameraMode
@@ -95,7 +96,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
 	UMaterial* PostProcessMaterial = nullptr;
 
-  std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UCamera>>>> InstructionQueue;
+    std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UCamera>>>> InstructionQueue;
 
 #if PLATFORM_WINDOWS
 	std::unique_ptr<FWindowsCriticalSection> RgbCameraBufferCriticalSection;

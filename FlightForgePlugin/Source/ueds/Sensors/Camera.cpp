@@ -1,8 +1,8 @@
 #include "Camera.h"
 
-#include "DronePawn.h"
+#include "ueds/DronePawn.h"
 #include "ImageUtils.h"
-#include "Instruction.h"
+#include "ueds/Instruction.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 
@@ -58,79 +58,81 @@ void UCamera::BeginPlay()
 	Super::BeginPlay();
 
 	// TODO check https://github.com/TimmHess/UnrealImageCapture
-  RenderTarget2DRgb = NewObject<UTextureRenderTarget2D>();
-  RenderTarget2DRgb->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
-  RenderTarget2DRgb->RenderTargetFormat = RTF_RGBA8;
-  RenderTarget2DRgb->bGPUSharedFlag     = true;
+	RenderTarget2DRgb = NewObject<UTextureRenderTarget2D>();
+	RenderTarget2DRgb->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
+	RenderTarget2DRgb->RenderTargetFormat = RTF_RGBA8;
+	RenderTarget2DRgb->bGPUSharedFlag     = true;
 
-  RenderTarget2DStereoLeft = NewObject<UTextureRenderTarget2D>();
-  RenderTarget2DStereoLeft->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
-  RenderTarget2DStereoLeft->RenderTargetFormat = RTF_RGBA8;
-  RenderTarget2DStereoLeft->bGPUSharedFlag     = true;
+	RenderTarget2DStereoLeft = NewObject<UTextureRenderTarget2D>();
+	RenderTarget2DStereoLeft->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
+	RenderTarget2DStereoLeft->RenderTargetFormat = RTF_RGBA8;
+	RenderTarget2DStereoLeft->bGPUSharedFlag     = true;
 
-  RenderTarget2DStereoRight = NewObject<UTextureRenderTarget2D>();
-  RenderTarget2DStereoRight->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
-  RenderTarget2DStereoRight->RenderTargetFormat = RTF_RGBA8;
-  RenderTarget2DStereoRight->bGPUSharedFlag     = true;
+	RenderTarget2DStereoRight = NewObject<UTextureRenderTarget2D>();
+	RenderTarget2DStereoRight->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
+	RenderTarget2DStereoRight->RenderTargetFormat = RTF_RGBA8;
+	RenderTarget2DStereoRight->bGPUSharedFlag     = true;
 
-  RenderTarget2DRgbSeg = NewObject<UTextureRenderTarget2D>();
-  RenderTarget2DRgbSeg->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
-  RenderTarget2DRgbSeg->RenderTargetFormat = RTF_RGBA8;
-  RenderTarget2DRgbSeg->bGPUSharedFlag     = true;
-  
-  SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorHDR;
-  SceneCaptureComponent2DRgb->TextureTarget = RenderTarget2DRgb;
-  SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(true);
-  SceneCaptureComponent2DRgb->bAlwaysPersistRenderingState = true;
-  SceneCaptureComponent2DRgb->bCaptureEveryFrame           = false;
-  SceneCaptureComponent2DRgb->bCaptureOnMovement           = false;
-  SceneCaptureComponent2DRgb->bUseRayTracingIfEnabled      = true;
+	RenderTarget2DRgbSeg = NewObject<UTextureRenderTarget2D>();
+	RenderTarget2DRgbSeg->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
+	RenderTarget2DRgbSeg->RenderTargetFormat = RTF_RGBA8;
+	RenderTarget2DRgbSeg->bGPUSharedFlag     = true;
 
-  SceneCaptureComponent2DRgbSeg->CaptureSource = SCS_FinalColorHDR;
-  SceneCaptureComponent2DRgbSeg->TextureTarget = RenderTarget2DRgbSeg;
-  SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(true);
-  SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;
-  SceneCaptureComponent2DRgbSeg->bCaptureEveryFrame           = false;
-  SceneCaptureComponent2DRgbSeg->bCaptureOnMovement           = false;
-  SceneCaptureComponent2DRgbSeg->bUseRayTracingIfEnabled      = false;
-  SceneCaptureComponent2DRgbSeg->AddOrUpdateBlendable(PostProcessMaterial, 1);
+	SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorHDR;
+	SceneCaptureComponent2DRgb->TextureTarget = RenderTarget2DRgb;
+	SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(true);
+	SceneCaptureComponent2DRgb->bAlwaysPersistRenderingState = true;
+	SceneCaptureComponent2DRgb->bCaptureEveryFrame           = false;
+	SceneCaptureComponent2DRgb->bCaptureOnMovement           = false;
+	SceneCaptureComponent2DRgb->bUseRayTracingIfEnabled      = true;
 
-  SceneCaptureComponent2DStereoLeft->CaptureSource = SCS_FinalColorHDR;
-  SceneCaptureComponent2DStereoLeft->TextureTarget = RenderTarget2DStereoLeft;
-  SceneCaptureComponent2DStereoLeft->ShowFlags.SetTemporalAA(true);
-  SceneCaptureComponent2DStereoLeft->bAlwaysPersistRenderingState = true;
-  SceneCaptureComponent2DStereoLeft->bCaptureEveryFrame           = false;
-  SceneCaptureComponent2DStereoLeft->bCaptureOnMovement           = false;
-  SceneCaptureComponent2DStereoLeft->bUseRayTracingIfEnabled      = true;
+	SceneCaptureComponent2DRgbSeg->CaptureSource = SCS_FinalColorHDR;
+	SceneCaptureComponent2DRgbSeg->TextureTarget = RenderTarget2DRgbSeg;
+	SceneCaptureComponent2DRgbSeg->ShowFlags.SetTemporalAA(true);
+	SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;
+	SceneCaptureComponent2DRgbSeg->bCaptureEveryFrame           = false;
+	SceneCaptureComponent2DRgbSeg->bCaptureOnMovement           = false;
+	SceneCaptureComponent2DRgbSeg->bUseRayTracingIfEnabled      = false;
+	SceneCaptureComponent2DRgbSeg->AddOrUpdateBlendable(PostProcessMaterial, 1);
 
-  SceneCaptureComponent2DStereoRight->CaptureSource = SCS_FinalColorHDR;
-  SceneCaptureComponent2DStereoRight->TextureTarget = RenderTarget2DStereoRight;
-  SceneCaptureComponent2DStereoRight->ShowFlags.SetTemporalAA(true);
-  SceneCaptureComponent2DStereoRight->bAlwaysPersistRenderingState = true;
-  SceneCaptureComponent2DStereoRight->bCaptureEveryFrame           = false;
-  SceneCaptureComponent2DStereoRight->bCaptureOnMovement           = false;
-  SceneCaptureComponent2DStereoRight->bUseRayTracingIfEnabled      = true;
+	SceneCaptureComponent2DStereoLeft->CaptureSource = SCS_FinalColorHDR;
+	SceneCaptureComponent2DStereoLeft->TextureTarget = RenderTarget2DStereoLeft;
+	SceneCaptureComponent2DStereoLeft->ShowFlags.SetTemporalAA(true);
+	SceneCaptureComponent2DStereoLeft->bAlwaysPersistRenderingState = true;
+	SceneCaptureComponent2DStereoLeft->bCaptureEveryFrame           = false;
+	SceneCaptureComponent2DStereoLeft->bCaptureOnMovement           = false;
+	SceneCaptureComponent2DStereoLeft->bUseRayTracingIfEnabled      = true;
 
-  rgb_camera_config_.ShowCameraComponent    = false;
-  rgb_camera_config_.Offset                 = FVector(0, 0, 0);
-  rgb_camera_config_.Orientation            = FRotator(0, 0, 0);
-  rgb_camera_config_.FOVAngle               = 90;
-  rgb_camera_config_.Width                  = 640;
-  rgb_camera_config_.Height                 = 480;
-  rgb_camera_config_.enable_motion_blur     = true;
-  rgb_camera_config_.motion_blur_amount     = 1.0;
-  rgb_camera_config_.motion_blur_distortion = 50.0;
+	SceneCaptureComponent2DStereoRight->CaptureSource = SCS_FinalColorHDR;
+	SceneCaptureComponent2DStereoRight->TextureTarget = RenderTarget2DStereoRight;
+	SceneCaptureComponent2DStereoRight->ShowFlags.SetTemporalAA(true);
+	SceneCaptureComponent2DStereoRight->bAlwaysPersistRenderingState = true;
+	SceneCaptureComponent2DStereoRight->bCaptureEveryFrame           = false;
+	SceneCaptureComponent2DStereoRight->bCaptureOnMovement           = false;
+	SceneCaptureComponent2DStereoRight->bUseRayTracingIfEnabled      = true;
 
-  stereo_camera_config_.ShowCameraComponent = false;
-  stereo_camera_config_.Offset              = FVector(0, 0, 0);
-  stereo_camera_config_.Orientation         = FRotator(0, 0, 0);
-  stereo_camera_config_.FOVAngle            = 90;
-  stereo_camera_config_.Width               = 640;
-  stereo_camera_config_.Height              = 480;
-  stereo_camera_config_.baseline            = 0.1;
+	rgb_camera_config_.ShowCameraComponent    = false;
+	rgb_camera_config_.Offset                 = FVector(0, 0, 0);
+	rgb_camera_config_.Orientation            = FRotator(0, 0, 0);
+	rgb_camera_config_.FOVAngle               = 90;
+	rgb_camera_config_.Width                  = 640;
+	rgb_camera_config_.Height                 = 480;
+	rgb_camera_config_.enable_motion_blur     = true;
+	rgb_camera_config_.motion_blur_amount     = 1.0;
+	rgb_camera_config_.motion_blur_distortion = 50.0;
 
-  SetRgbCameraConfig(rgb_camera_config_);
-  SetStereoCameraConfig(stereo_camera_config_);
+	stereo_camera_config_.ShowCameraComponent = false;
+	stereo_camera_config_.Offset              = FVector(0, 0, 0);
+	stereo_camera_config_.Orientation         = FRotator(0, 0, 0);
+	stereo_camera_config_.FOVAngle            = 90;
+	stereo_camera_config_.Width               = 640;
+	stereo_camera_config_.Height              = 480;
+	stereo_camera_config_.baseline            = 0.1;
+	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
+	SetRgbCameraConfig(rgb_camera_config_);
+	
+	SetStereoCameraConfig(stereo_camera_config_);
+	
 }
 
 void UCamera::BeginDestroy()
@@ -333,15 +335,15 @@ bool UCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& 
 	rgb_camera_last_request_time_ = FPlatformTime::Seconds();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
-		// Owner->InstructionQueue->Enqueue(Instruction);
-		//
-		// FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+		auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+		Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
+		Owner->InstructionQueue->Enqueue(Instruction);
+		
+		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 
-		auto Instruction      = std::make_shared<FInstruction<UCamera>>();
-		Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
-		InstructionQueue->Enqueue(Instruction);
+		// auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+		// Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB, 0.0); };
+		// InstructionQueue->Enqueue(Instruction);
 		
 		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 	}
@@ -376,13 +378,13 @@ bool UCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TAr
 		stereo_camera_last_request_time_ = FPlatformTime::Seconds();
 
 		if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-			// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-			// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
-			// Owner->InstructionQueue->Enqueue(Instruction);
+			auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+			Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
+			Owner->InstructionQueue->Enqueue(Instruction);
 
-			auto Instruction      = std::make_shared<FInstruction<UCamera>>();
-			Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
-			InstructionQueue->Enqueue(Instruction);
+			// auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+			// Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_STEREO, 0.0); };
+			// InstructionQueue->Enqueue(Instruction);
 			
 			FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 		}
@@ -429,13 +431,13 @@ bool UCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& s
 	rgb_seg_camera_last_request_time_ = FPlatformTime::Seconds();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		// Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
-		// Owner->InstructionQueue->Enqueue(Instruction);
+		auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+		Instruction->Function = [](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
+		Owner->InstructionQueue->Enqueue(Instruction);
 
-		auto Instruction      = std::make_shared<FInstruction<UCamera>>();
-		Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
-		InstructionQueue->Enqueue(Instruction);
+		// auto Instruction      = std::make_shared<FInstruction<UCamera>>();
+		// Instruction->Function = [](UCamera& _UCamera) { _UCamera.UpdateCamera(true, CAMERA_MODE_RGB_SEG, 0.0); };
+		// InstructionQueue->Enqueue(Instruction);
 		
 		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 	}
@@ -718,6 +720,7 @@ void UCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::st
 			};
 
 			InstructionQueue->Enqueue(Instruction);
+				
 			FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
 
 			Serializable::Drone::SetRgbCameraConfig::Response Response(Status);
@@ -756,6 +759,7 @@ void UCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::st
 			};
 
 			InstructionQueue->Enqueue(Instruction);
+				
 			FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
 
 			Serializable::Drone::SetStereoCameraConfig::Response Response(Status);

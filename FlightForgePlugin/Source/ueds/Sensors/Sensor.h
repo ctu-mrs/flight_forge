@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
-//#include "MessageSerialization/Public/Serialize.h"
 #include "MessageSerialization/Public/serializable_shared.h"
 #include <fstream>
 #include "Sensor.generated.h"
@@ -13,6 +12,7 @@ enum class SensorType : int
 	CAMERA = 0,
 	LIDAR = 1,
 	RANGEFINDER = 2,
+	LIDAR_LIVOX = 3,
 	MAX_SENSOR_TYPE
 };
 
@@ -27,11 +27,11 @@ public:
 	USensor();
 	
 	UFUNCTION(BlueprintCallable)
-	void Initialize(int InSensorID);
+	virtual void Initialize(int InSensorID);
 	
 	int GetSensorID();
 
-	// virtual void GetData();
+	 virtual void GetData(std::stringstream& OutputStream) {};
 	 virtual void GetConfig(std::stringstream& OutputStream) {};
 	 virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
 		

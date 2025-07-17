@@ -16,10 +16,19 @@
 /* #define DEFAULT_LIDAR_BEAM_VER 128 */
 #define DEFAULT_LIDAR_SHOW_BEAMS false 
 
+enum class FLidarMode : int
+{
+	DEFAULT = 0,
+	SEG = 1,
+	INTE = 2, //INT is not allowed
+	MAX_MODE_TYPE
+};
+
+//add LidarMode
 struct FLidarConfig
 {
 	bool   Enable;
-	bool Livox; 
+	bool Livox; //delete
 	bool   ShowBeams;
 	double BeamLength;
 
@@ -41,11 +50,6 @@ struct FLidarConfig
 	bool SemanticSegmentation;
 };
 
-struct FLivoxDataPoint {
-	double Time;
-	double Azimuth; // in radians
-	double Zenith;  // in radians
-};
 
 UCLASS()
 class UEDS_API ULidar : public USensor
@@ -58,37 +62,33 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
+	FLidarConfig GetLidarConfig();
+	bool         SetLidarConfig(const FLidarConfig& Config);
+	
+
+	virtual void GetConfig(std::stringstream& OutputStream) override;
+	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
+	virtual void GetData(std::stringstream& OutputStream) override;
+
+	FLidarMode LidarMode = FLidarMode::DEFAULT;
+	
+	void SetLidarModeWithInt(int type); 
+	
+protected:
+	virtual void BeginPlay() override;
 
 	void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
 
 	void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
 
 	void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
-
-	FLidarConfig GetLidarConfig();
-	bool         SetLidarConfig(const FLidarConfig& Config);
 	
-	bool LoadCSVData(const FString& FilePath);
+	virtual void UpdateLidar(bool isExternallyLocked);
 	
-	TArray<FLivoxDataPoint> LivoxData;
-	//bool bLivox;
-	int StartIndex;
+	virtual void UpdateSegLidar(bool isExternallyLocked);
 	
-	FString CSVFilePath;
-
-	void GetConfig(std::stringstream& OutputStream) override;
-	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
+	virtual void UpdateIntLidar(bool isExternallyLocked);
 	
-protected:
-	virtual void BeginPlay() override;
-	
-private:
-	void UpdateLidar(bool isExternallyLocked);
-
-	void UpdateSegLidar(bool isExternallyLocked);
-
-	void UpdateIntLidar(bool isExternallyLocked);
-
 	#if PLATFORM_WINDOWS
 		std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
 		std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;

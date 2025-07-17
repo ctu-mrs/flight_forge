@@ -39,33 +39,37 @@ private:
 
   bool SetLocationAndRotationAsync(const FTCPClient& Client, Serializable::Drone::SetLocationAndRotationAsync::Request& Request);
 
-  bool GetRangeFinderData(const FTCPClient& Client, Serializable::Drone::GetRangefinderData::Request& Request);
+  //bool GetRangeFinderData(const FTCPClient& Client, Serializable::Drone::GetRangefinderData::Request& Request);
 
-  bool GetLidarData(const FTCPClient& Client, Serializable::Drone::GetLidarData::Request& Request);
-  
-  bool GetLidarSegData(const FTCPClient& Client, Serializable::Drone::GetLidarSegData::Request& Request);
-  
-  bool GetLidarIntData(const FTCPClient& Client, Serializable::Drone::GetLidarIntData::Request& Request);
+  // bool GetLidarData(const FTCPClient& Client, Serializable::Drone::GetLidarData::Request& Request);
+  //
+  // bool GetLidarSegData(const FTCPClient& Client, Serializable::Drone::GetLidarSegData::Request& Request);
+  //
+  // bool GetLidarIntData(const FTCPClient& Client, Serializable::Drone::GetLidarIntData::Request& Request);
 
-  bool GetLidarConfig(const FTCPClient& Client, Serializable::Drone::GetLidarConfig::Request& Request);
-
-  bool SetLidarConfig(const FTCPClient& Client, Serializable::Drone::SetLidarConfig::Request& Request);
-
-  bool GetRgbCameraConfig(const FTCPClient& Client, Serializable::Drone::GetRgbCameraConfig::Request& Request);
-
-  bool SetRgbCameraConfig(const FTCPClient& Client, Serializable::Drone::SetRgbCameraConfig::Request& Request);
-
-  bool GetStereoCameraConfig(const FTCPClient& Client, Serializable::Drone::GetStereoCameraConfig::Request& Request);
-
-  bool SetStereoCameraConfig(const FTCPClient& Client, Serializable::Drone::SetStereoCameraConfig::Request& Request);
+  // bool GetLidarConfig(const FTCPClient& Client, Serializable::Drone::GetLidarConfig::Request& Request);
+  //
+  // bool SetLidarConfig(const FTCPClient& Client, Serializable::Drone::SetLidarConfig::Request& Request);
+  //
+  // bool GetRgbCameraConfig(const FTCPClient& Client, Serializable::Drone::GetRgbCameraConfig::Request& Request);
+  //
+  // bool SetRgbCameraConfig(const FTCPClient& Client, Serializable::Drone::SetRgbCameraConfig::Request& Request);
+  //
+  // bool GetStereoCameraConfig(const FTCPClient& Client, Serializable::Drone::GetStereoCameraConfig::Request& Request);
+  //
+  // bool SetStereoCameraConfig(const FTCPClient& Client, Serializable::Drone::SetStereoCameraConfig::Request& Request);
 
   bool GetMoveLineVisible(const FTCPClient& Client, Serializable::Drone::GetMoveLineVisible::Request& Request);
 
   bool SetMoveLineVisible(const FTCPClient& Client, Serializable::Drone::SetMoveLineVisible::Request& Request);
 
   //new functions - need to add selecting sensors by request ID
-  bool GetSensorConfig(const FTCPClient& Client);
+  bool GetSensorConfig(const FTCPClient& Client, int SensorID);
+  bool SetSensorConfig(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream, int SensorID);
+  bool GetSensorData(const FTCPClient& Client, int SensorID);
 
-  bool SetSensorConfig(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream);
-    
+  //TODO complete these functions
+  bool GetAllSensors(const FTCPClient& Client);
+  bool AddSensor(const FTCPClient& Client, int SensorType);
+  bool RemoveSensor(const FTCPClient& Client, int RemoveSensorID);
 };

@@ -26,8 +26,7 @@ public:
 	URangeFinder();
 
 
-	void GetRangefinderData(double& range);
-
+	void GetData(std::stringstream& OutputStream) override;
 	void GetConfig(std::stringstream& OutputStream) override;
 	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
 protected:
@@ -38,6 +37,7 @@ public:
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 private:
 	FRangefinderConfig RangefinderConfig;
+	void GetRangefinderData(double& range);
 
 #if PLATFORM_WINDOWS
   std::unique_ptr<FWindowsCriticalSection> RangefinderHitsCriticalSection;

@@ -170,7 +170,7 @@ public:
 
 		const auto DronePort = GetAvailableDronePort();
 		PlayerPawn->droneServer->SetPort(DronePort);
-		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		//PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		PlayerPawn->StartServer();
 
 		DronePawnsCriticalSection->Lock();
@@ -220,7 +220,7 @@ public:
 		
 		const auto DronePort = GetAvailableDronePort();
 		PlayerPawn->droneServer->SetPort(DronePort);
-		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		//PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		PlayerPawn->StartServer();
 		PlayerPawn->SetStaticMesh(IdMesh);
 		PlayerPawn->Simulate_UE_Physics(3.0f);

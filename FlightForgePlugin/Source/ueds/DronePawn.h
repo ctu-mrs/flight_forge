@@ -2,12 +2,14 @@
 
 #pragma once
 
+//#include "ueds/Server/DroneServer.h"
 #include "Server/DroneServer.h"
 #include "Instruction.h"
-#include "Sensor.h"
-#include "Lidar.h"
-#include "Camera.h"
-#include "RangeFinder.h"
+#include "Sensors/Sensor.h"
+#include "Sensors/Lidar.h"
+#include "Sensors/Camera.h"
+#include "Sensors/RangeFinder.h"
+#include "Sensors/LidarLivox.h"
 
 #include "GameFramework/Pawn.h"
 
@@ -74,6 +76,9 @@ public:
   
   UPROPERTY(VisibleAnywhere, Category = "Components")
   UCamera* CameraSensor;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components")
+  ULidarLivox* LidarLivox;
   
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UCameraComponent* ThirdPersonCamera;
@@ -112,14 +117,14 @@ public:
 
   void StartServer();
 
-  UFUNCTION(BlueprintCallable)
-  void GetRangefinderData(double& range);
+  //UFUNCTION(BlueprintCallable)
+  //void GetRangefinderData(double& range);
 
-  void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
+  //void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
 
-  void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
-
-  void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
+  // void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
+  //
+  // void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
 
   bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
@@ -129,14 +134,16 @@ public:
 
   void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
 
-  FLidarConfig GetLidarConfig();
-  bool         SetLidarConfig(const FLidarConfig& Config);
+  CameraCaptureModeEnum GetCameraCaptureMode();
 
-  FRgbCameraConfig GetRgbCameraConfig();
-  bool             SetRgbCameraConfig(const FRgbCameraConfig& Config);
-
-  FStereoCameraConfig GetStereoCameraConfig();
-  bool                SetStereoCameraConfig(const FStereoCameraConfig& Config);
+  // FLidarConfig GetLidarConfig();
+  // bool         SetLidarConfig(const FLidarConfig& Config);
+  //
+  // FRgbCameraConfig GetRgbCameraConfig();
+  // bool             SetRgbCameraConfig(const FRgbCameraConfig& Config);
+  //
+  // FStereoCameraConfig GetStereoCameraConfig();
+  // bool                SetStereoCameraConfig(const FStereoCameraConfig& Config);
 
   void SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult);
 
@@ -184,7 +191,7 @@ private:
   
   void DisabledPhysics_StartRotatePropellers();
 
-//  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
+  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 
   TArray<FramePropellersTransform> FramePropellersTransforms;
 };

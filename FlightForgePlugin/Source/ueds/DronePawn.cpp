@@ -155,13 +155,15 @@ void ADronePawn::BeginPlay() {
 
   //startTime = FPlatformTime::Seconds();
   
-  CameraSensor = Cast<UCamera>(AddSensor(0));
-  Lidar = Cast<ULidar>(AddSensor(1));
-  RangeFinder = Cast<URangeFinder>(AddSensor(2));
-
-  // AddSensor(0); //camera
-  // AddSensor(1); //Lidar
-  // AddSensor(2); //RangeFinder
+  // CameraSensor = Cast<UCamera>(AddSensor(0));
+  // Lidar = Cast<ULidar>(AddSensor(1));
+  // RangeFinder = Cast<URangeFinder>(AddSensor(2));
+  // LidarLivox = Cast<ULidarLivox>(AddSensor(3));
+  
+  AddSensor(0); //camera
+  AddSensor(1); //Lidar
+  AddSensor(2); //RangeFinder
+  AddSensor(3); //Lidar Livox
   
   Super::BeginPlay();
 }
@@ -189,44 +191,44 @@ bool ADronePawn::GetCrashState(void) {
   return uav_crashed_;
 }
 
-void ADronePawn::GetRangefinderData(double& range) {
+// void ADronePawn::GetRangefinderData(double& range) {
+//
+// 	RangeFinder->GetRangefinderData(range);
+//
+//   // URangeFinder* myRF = Cast<URangeFinder>(Sensors[2]);
+// 	// myRF->GetRangefinderData(range);
+//   
+// }
 
-	RangeFinder->GetRangefinderData(range);
-
-  // URangeFinder* myRF = Cast<URangeFinder>(Sensors[2]);
-	// myRF->GetRangefinderData(range);
-  
-}
-
-void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
-	Lidar->GetLidarHits(OutLidarData, OutStart);
-
-  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
-  // myLidar->GetLidarHits(OutLidarData, OutStart);
-}
-
-
-void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
-	Lidar->GetSegLidarHits(OutLidarSegData, OutStart);
-
-  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
-	// myLidar->GetSegLidarHits(OutLidarSegData, OutStart);
-}
+// void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
+// 	Lidar->GetLidarHits(OutLidarData, OutStart);
+//
+//   // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+//   // myLidar->GetLidarHits(OutLidarData, OutStart);
+// }
 
 
-void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
-	Lidar->GetIntLidarHits(OutLidarIntData, OutStart);
-
-  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
-	// myLidar->GetIntLidarHits(OutLidarIntData, OutStart);
-    
-}
+// void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
+// 	Lidar->GetSegLidarHits(OutLidarSegData, OutStart);
+//
+//   // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+// 	// myLidar->GetSegLidarHits(OutLidarSegData, OutStart);
+// }
+//
+//
+// void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
+// 	Lidar->GetIntLidarHits(OutLidarIntData, OutStart);
+//
+//   // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+// 	// myLidar->GetIntLidarHits(OutLidarIntData, OutStart);
+//     
+// }
 
 void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stamp = 0.0) {
-  CameraSensor->UpdateCamera(isExternallyLocked, type, stamp);
+  //CameraSensor->UpdateCamera(isExternallyLocked, type, stamp);
   
-  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
-  // myCam->UpdateCamera(isExternallyLocked, type, stamp);
+  UCamera* myCam = Cast<UCamera>(Sensors[1]);
+  myCam->UpdateCamera(isExternallyLocked, type, stamp);
 }
 
 void ADronePawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden)
@@ -385,62 +387,76 @@ bool ADronePawn::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double
 }
 
 void ADronePawn::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
-  CameraSensor->SetCameraCaptureMode(CaptureMode);
+  CameraCaptureMode = CaptureMode;
+
+  for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
+  {
+    if (UCamera* CamSensor = Cast<UCamera>(Pair.Value))
+    {
+      CamSensor->SetCameraCaptureMode(CameraCaptureMode);
+    }
+  }
+  
 
   // UCamera* myCam = Cast<UCamera>(Sensors[1]);
   // myCam->SetCameraCaptureMode(CaptureMode);
   
 }
 
-FLidarConfig ADronePawn::GetLidarConfig() {
-  return Lidar->GetLidarConfig();
-
-  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
-  // return myLidar->GetLidarConfig();
-  
+CameraCaptureModeEnum ADronePawn::GetCameraCaptureMode()
+{
+  return CameraCaptureMode;
 }
 
-bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
-  return Lidar->SetLidarConfig(Config);
-
-  // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
-  // return myLidar->SetLidarConfig(Config);
-  
-}
-
-FRgbCameraConfig ADronePawn::GetRgbCameraConfig() {
-  return CameraSensor->GetRgbCameraConfig();
-  //return rgb_camera_config_;
-
-  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
-  // return myCam->GetRgbCameraConfig();
-  
-}
-
-FStereoCameraConfig ADronePawn::GetStereoCameraConfig() {
-  return CameraSensor->GetStereoCameraConfig();
-  //return stereo_camera_config_;
-
-  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
-  // return myCam->GetStereoCameraConfig();
-  
-}
-
-bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
-  return CameraSensor->SetRgbCameraConfig(Config);
-
-  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
-  // return myCam->SetRgbCameraConfig(Config);
-  
-}
-
-bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
-  return CameraSensor->SetStereoCameraConfig(Config);
-
-  // UCamera* myCam = Cast<UCamera>(Sensors[1]);
-  // return myCam->SetStereoCameraConfig(Config);
-  
-}
+// FLidarConfig ADronePawn::GetLidarConfig() {
+//   return Lidar->GetLidarConfig();
+//
+//   // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+//   // return myLidar->GetLidarConfig();
+//   
+// }
+//
+// bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
+//   return Lidar->SetLidarConfig(Config);
+//
+//   // ULidar* myLidar = Cast<ULidar>(Sensors[0]);
+//   // return myLidar->SetLidarConfig(Config);
+//   
+// }
+//
+// FRgbCameraConfig ADronePawn::GetRgbCameraConfig() {
+//   return CameraSensor->GetRgbCameraConfig();
+//   //return rgb_camera_config_;
+//
+//   // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+//   // return myCam->GetRgbCameraConfig();
+//   
+// }
+//
+// FStereoCameraConfig ADronePawn::GetStereoCameraConfig() {
+//   return CameraSensor->GetStereoCameraConfig();
+//   //return stereo_camera_config_;
+//
+//   // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+//   // return myCam->GetStereoCameraConfig();
+//   
+// }
+//
+// bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
+//   return CameraSensor->SetRgbCameraConfig(Config);
+//
+//   // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+//   // return myCam->SetRgbCameraConfig(Config);
+//   
+// }
+//
+// bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
+//   return CameraSensor->SetStereoCameraConfig(Config);
+//
+//   // UCamera* myCam = Cast<UCamera>(Sensors[1]);
+//   // return myCam->SetStereoCameraConfig(Config);
+//   
+// }
 
 bool ADronePawn::GetVisibilityOtherDrones()
 {
@@ -520,6 +536,13 @@ USensor* ADronePawn::AddSensor(int SensorTypeNum){
       URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_Transient);
       RF->Initialize(nextSensorID);
       NewSensor = RF;
+      break;
+    }
+  case SensorType::LIDAR_LIVOX:
+    {
+      ULidarLivox* LidarLiv = NewObject<ULidarLivox>(this, ULidarLivox::StaticClass(), NAME_None, RF_Transient);
+      LidarLiv->Initialize(nextSensorID);
+      NewSensor = LidarLiv;
       break;
     }
 
