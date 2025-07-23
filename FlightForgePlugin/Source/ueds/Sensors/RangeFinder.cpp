@@ -1,6 +1,5 @@
 #include "RangeFinder.h"
 #include "ueds/DronePawn.h"
-
 #include "Serialize.h"
 
 URangeFinder::URangeFinder()

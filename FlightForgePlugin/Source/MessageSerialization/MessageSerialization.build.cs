@@ -20,6 +20,7 @@ public class MessageSerialization : ModuleRules
 		string thirdPartyIncludePath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/include"));
 		PrivateIncludePaths.AddRange(new string[] {thirdPartyIncludePath, "MessageSerialization/Private"});
 		
-		PublicIncludePaths.Add("MessageSerialization/Public");
+		//PublicIncludePaths.Add("MessageSerialization/Public");
+		PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
 	}
 }

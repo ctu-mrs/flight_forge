@@ -8,6 +8,9 @@
 #include "Sensors/Sensor.h"
 #include "Sensors/Lidar.h"
 #include "Sensors/Camera.h"
+#include "Sensors/RgbCamera.h"
+#include "Sensors/RgbSegCamera.h"
+#include "Sensors/StereoCamera.h"
 #include "Sensors/RangeFinder.h"
 #include "Sensors/LidarLivox.h"
 
@@ -67,18 +70,6 @@ public:
   
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite ,Category = "Components")
   USpringArmComponent* ThirdPersonCameraSpringArm;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  ULidar* Lidar;
-  
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  URangeFinder* RangeFinder;
-  
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  UCamera* CameraSensor;
-
-  UPROPERTY(VisibleAnywhere, Category = "Components")
-  ULidarLivox* LidarLivox;
   
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UCameraComponent* ThirdPersonCamera;
@@ -117,33 +108,13 @@ public:
 
   void StartServer();
 
-  //UFUNCTION(BlueprintCallable)
-  //void GetRangefinderData(double& range);
-
-  //void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
-
-  // void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
-  //
-  // void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
-
-  bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
-
-  bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
-
-  bool GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double &stamp);
-
   void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
 
   CameraCaptureModeEnum GetCameraCaptureMode();
-
-  // FLidarConfig GetLidarConfig();
-  // bool         SetLidarConfig(const FLidarConfig& Config);
-  //
-  // FRgbCameraConfig GetRgbCameraConfig();
-  // bool             SetRgbCameraConfig(const FRgbCameraConfig& Config);
-  //
-  // FStereoCameraConfig GetStereoCameraConfig();
-  // bool                SetStereoCameraConfig(const FStereoCameraConfig& Config);
+  
+  bool SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID);
+  
+  bool SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID);
 
   void SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult);
 
@@ -168,18 +139,15 @@ public:
   
   FString CSVFilePath;
   
-  void UpdateCamera(bool isExternallyLocked, int type, double stamp);
+  void UpdateCamera(int ID, bool isExternallyLocked, double stamp);
 
   void UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden);
 
-  USensor* AddSensor(int SensorTypeNum);
+  int AddSensor(int SensorTypeNum);
 
-  USensor* RemoveSensor(int sensorID);
+  bool RemoveSensor(int sensorID);
   
 private:
-  // double startTime; //debugging
-  // bool added = false;
-  // bool removed = false;
   
   int nextSensorID;
   
@@ -191,7 +159,7 @@ private:
   
   void DisabledPhysics_StartRotatePropellers();
 
-  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
+  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND;
 
   TArray<FramePropellersTransform> FramePropellersTransforms;
 };
