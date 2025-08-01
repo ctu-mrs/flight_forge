@@ -182,23 +182,23 @@ bool ADronePawn::GetCrashState(void) {
   return uav_crashed_;
 }
 
-void ADronePawn::UpdateCamera(int ID, bool isExternallyLocked, double stamp = 0.0)
-{
-  if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
-  {
-    USensor* Sensor = *SensorPtr;
-    if (UCamera* CamSensor = Cast<UCamera>(Sensor))
-    {
-      CamSensor->UpdateCamera(isExternallyLocked, stamp);
-    }
-  }
-}
+// void ADronePawn::UpdateCamera(int ID, bool isExternallyLocked, double stamp = 0.0)
+// {
+//   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
+//   {
+//     USensor* Sensor = *SensorPtr;
+//     if (UCamera* CamSensor = Cast<UCamera>(Sensor))
+//     {
+//       CamSensor->UpdateCamera(isExternallyLocked, stamp);
+//     }
+//   }
+// }
 
 void ADronePawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden)
 {
   for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
   {
-    if (URgbCamera* CamSensor = Cast<URgbCamera>(Pair.Value)) //was only for RGB camera
+    if (URgbCamera* CamSensor = Cast<URgbCamera>(Pair.Value)) //used to be only for RGB camera
     {
       if (CamSensor->SceneCaptureComponent2D)
       {
@@ -341,35 +341,35 @@ CameraCaptureModeEnum ADronePawn::GetCameraCaptureMode()
   return CameraCaptureMode;
 }
 
-bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID)
-{
-  bool ret = false;
-  if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
-  {
-    USensor* Sensor = *SensorPtr;
-    if (URgbCamera* CamSensor = Cast<URgbCamera>(Sensor))
-    {
-      ret = CamSensor->SetRgbCameraConfig(Config);
-    }
-  }
-
-  return ret;
-}
-
-bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID)
-{
-  bool ret = false;
-  if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
-  {
-    USensor* Sensor = *SensorPtr;
-    if (UStereoCamera* CamSensor = Cast<UStereoCamera>(Sensor))
-    {
-      ret = CamSensor->SetStereoCameraConfig(Config);
-    }
-  }
-
-  return ret;
-}
+// bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID)
+// {
+//   bool ret = false;
+//   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
+//   {
+//     USensor* Sensor = *SensorPtr;
+//     if (URgbCamera* CamSensor = Cast<URgbCamera>(Sensor))
+//     {
+//       ret = CamSensor->SetRgbCameraConfig(Config);
+//     }
+//   }
+//
+//   return ret;
+// }
+//
+// bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID)
+// {
+//   bool ret = false;
+//   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
+//   {
+//     USensor* Sensor = *SensorPtr;
+//     if (UStereoCamera* CamSensor = Cast<UStereoCamera>(Sensor))
+//     {
+//       ret = CamSensor->SetStereoCameraConfig(Config);
+//     }
+//   }
+//
+//   return ret;
+// }
 
 bool ADronePawn::GetVisibilityOtherDrones()
 {

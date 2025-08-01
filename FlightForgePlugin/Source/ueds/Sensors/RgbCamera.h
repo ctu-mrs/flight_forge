@@ -31,6 +31,8 @@ class UEDS_API URgbCamera : public UCamera
 
 public:
 	URgbCamera();
+
+	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<URgbCamera>>>> InstructionQueue;
 	
 protected:
 	virtual void BeginPlay() override;

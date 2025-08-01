@@ -63,6 +63,8 @@ class UEDS_API ADronePawn : public APawn {
   GENERATED_BODY()
 
 public:
+  ADronePawn();
+  
   std::shared_ptr<DroneServer> droneServer;
 
   UPROPERTY(VisibleAnywhere, Category = "Sensors")
@@ -92,13 +94,9 @@ public:
   UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* PropellerFrontRight;
 
-  // Sets default values for this character's properties
-  ADronePawn();
-
   std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>> InstructionQueue;
 
 protected:
-  // Called when the game starts or when spawned
   virtual void BeginPlay() override;
   virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -112,9 +110,9 @@ public:
 
   CameraCaptureModeEnum GetCameraCaptureMode();
   
-  bool SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID);
-  
-  bool SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID);
+  // bool SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID);
+  //
+  // bool SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID);
 
   void SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult);
 
@@ -139,12 +137,12 @@ public:
   
   FString CSVFilePath;
   
-  void UpdateCamera(int ID, bool isExternallyLocked, double stamp);
+  //void UpdateCamera(int ID, bool isExternallyLocked, double stamp);
 
   void UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden);
 
+  //should be called from game thread
   int AddSensor(int SensorTypeNum);
-
   bool RemoveSensor(int sensorID);
   
 private:
@@ -159,7 +157,7 @@ private:
   
   void DisabledPhysics_StartRotatePropellers();
 
-  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND;
+  CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND; //initialized by GameModeBase
 
   TArray<FramePropellersTransform> FramePropellersTransforms;
 };

@@ -30,13 +30,12 @@ public:
 	
 	UFUNCTION(BlueprintCallable)
 	virtual void Initialize(int InSensorID);
-	
-	int GetSensorID();
 	FName Name;
-
-	virtual void GetData(std::stringstream& OutputStream) {};
-	virtual void GetConfig(std::stringstream& OutputStream) {};
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
+    
+    virtual void GetData(std::stringstream& OutputStream) {};
+    virtual void GetConfig(std::stringstream& OutputStream) {};
+    virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
+	int GetSensorID();
 		
 protected:
 	virtual void BeginPlay() override;

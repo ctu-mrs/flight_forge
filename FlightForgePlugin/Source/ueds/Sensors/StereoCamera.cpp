@@ -13,6 +13,8 @@ UStereoCamera::UStereoCamera() : UCamera()
 
 	SceneCaptureComponent2DStereoRight = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2DStereoRight"));
 	SceneCaptureComponent2DStereoRight->SetupAttachment(SceneCaptureMeshHolderStereoRight);
+
+	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UStereoCamera>>>>();
 }
 
 
@@ -63,6 +65,12 @@ void UStereoCamera::BeginPlay()
 void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	auto start = FPlatformTime::Seconds();
+
+	std::shared_ptr<FInstruction<UStereoCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction)) {
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
@@ -151,6 +159,12 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	if (!isExternallyLocked) {
 	  CameraBufferCriticalSection->Lock();
 	}
+
+	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
+	{
+		SceneCaptureComponent2D->CaptureScene();
+		SceneCaptureComponent2DStereoRight->CaptureScene();
+	}
 	
 	const auto ResourceLeft = RenderTarget2D->GameThread_GetRenderTargetResource();
 	
@@ -177,10 +191,14 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 
 		camera_last_request_time_ = FPlatformTime::Seconds();
 
-		if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-			auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-			Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
-			Owner->InstructionQueue->Enqueue(Instruction);
+		if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !CameraRendered)) {
+			// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+			// Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
+			// Owner->InstructionQueue->Enqueue(Instruction);
+
+			auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
+			Instruction->Function = [ID = this->SensorID](UStereoCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, 0.0); };
+			InstructionQueue->Enqueue(Instruction);
 			
 			FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 		}
@@ -273,13 +291,20 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 
 	bool Status = false;
 
-	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
-
-	Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
-		Status = _ADronePawn.SetStereoCameraConfig(Config, ID);
+	// auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
+	//
+	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
+	// 	Status = _ADronePawn.SetStereoCameraConfig(Config, ID);
+	// };
+	//
+	// Owner->InstructionQueue->Enqueue(Instruction);
+	
+	auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
+	Instruction->Function = [&Config, &Status](UStereoCamera& _UStereoCamera)
+	{
+		Status = _UStereoCamera.SetStereoCameraConfig(Config);
 	};
-
-	Owner->InstructionQueue->Enqueue(Instruction);
+	InstructionQueue->Enqueue(Instruction);
 		
 	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
 

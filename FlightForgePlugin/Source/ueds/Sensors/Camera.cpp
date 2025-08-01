@@ -1,10 +1,6 @@
 #include "Camera.h"
 
 #include "ueds/DronePawn.h"
-// #include "ImageUtils.h"
-// #include "ueds/Instruction.h"
-// #include "Components/SceneCaptureComponent2D.h"
-// #include "Engine/TextureRenderTarget2D.h"
 
 #include "Serialize.h"
 
@@ -27,12 +23,11 @@ UCamera::UCamera()
 }
 
 
-// Called when the game starts
 void UCamera::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//Tick must be called after DronePawn empties InstructionQueue
+	//Tick should be called after DronePawn empties InstructionQueue
 	PrimaryComponentTick.AddPrerequisite(Owner, Owner->PrimaryActorTick);
 
 	// TODO check https://github.com/TimmHess/UnrealImageCapture
@@ -56,10 +51,10 @@ void UCamera::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
 
 	CameraCaptureMode = CaptureMode;
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES || CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_MOVEMENT) {
-		UE_LOG(LogTemp, Log, TEXT("Camera updating after capture mode change"));
-	    UpdateCamera(false, 0.0); //used to update only in rgb mode
-	}
+	// if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES || CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_MOVEMENT) {
+	// 	//UE_LOG(LogTemp, Log, TEXT("Camera updating after capture mode change"));
+	//     UpdateCamera(false, 0.0); //used to update only in rgb mode
+	// }
 }
 
 void UCamera::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor>& SrcData, TArray<uint8>& DstData) {

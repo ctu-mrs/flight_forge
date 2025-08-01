@@ -24,11 +24,11 @@ enum class FLidarMode : int
 	MAX_MODE_TYPE
 };
 
-//add LidarMode
+//add LidarMode, delete Livox
 struct FLidarConfig
 {
 	bool   Enable;
-	bool Livox; //delete
+	bool Livox;
 	bool   ShowBeams;
 	double BeamLength;
 

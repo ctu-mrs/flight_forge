@@ -44,6 +44,8 @@ public:
 	TArray<FColor> StereoRightCameraBuffer;
 	
 	//FStereoCameraConfig GetStereoCameraConfig();
+
+	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UStereoCamera>>>> InstructionQueue;
 	
 	virtual void BeginDestroy() override;
 	

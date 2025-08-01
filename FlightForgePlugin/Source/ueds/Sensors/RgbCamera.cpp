@@ -8,6 +8,8 @@ URgbCamera::URgbCamera() : UCamera()
 {
 	SensorType = SensorType::RGB_CAMERA;
 	Name = TEXT("RGB_CAMERA");
+
+	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<URgbCamera>>>>();
 }
 
 
@@ -47,6 +49,12 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 {
 	auto start = FPlatformTime::Seconds();
 
+	std::shared_ptr<FInstruction<URgbCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction)) {
+	Instruction->Function(*this);
+	Instruction->Finished = true;
+	}
+	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
 		CameraBufferCriticalSection->Lock();
@@ -123,8 +131,12 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	if (!isExternallyLocked) {
 	  CameraBufferCriticalSection->Lock();
 	}
+
+	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	{
+		SceneCaptureComponent2D->CaptureScene();
+	}
 	
-	//SceneCaptureComponent2D->CaptureScene();
 	const auto Resource = RenderTarget2D->GameThread_GetRenderTargetResource();
 	Resource->ReadPixels(CameraBuffer);
 	  
@@ -145,10 +157,14 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND) {
-		auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
-		Owner->InstructionQueue->Enqueue(Instruction);
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !CameraRendered) ) {
+		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+		// Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
+		// Owner->InstructionQueue->Enqueue(Instruction);
+
+		auto Instruction      = std::make_shared<FInstruction<URgbCamera>>();
+		Instruction->Function = [ID = this->SensorID](URgbCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, 0.0); };
+		InstructionQueue->Enqueue(Instruction);
 
 		//UE_LOG(LogTemp, Log, TEXT("Rgb camera locked and asleep"));
 		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
@@ -236,13 +252,20 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 
 	bool Status = false;
 
-	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
-	
-	Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
-		Status = _ADronePawn.SetRgbCameraConfig(Config, ID);
+	// auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
+	//
+	//  Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
+	//  	Status = _ADronePawn.SetRgbCameraConfig(Config, ID);
+	//  };
+	//
+	//  Owner->InstructionQueue->Enqueue(Instruction);
+
+	auto Instruction      = std::make_shared<FInstruction<URgbCamera>>();
+	Instruction->Function = [&Config, &Status](URgbCamera& _URgbCamera)
+	{
+		Status = _URgbCamera.SetRgbCameraConfig(Config);
 	};
-	
-	Owner->InstructionQueue->Enqueue(Instruction);
+	InstructionQueue->Enqueue(Instruction);
 		
 	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
 

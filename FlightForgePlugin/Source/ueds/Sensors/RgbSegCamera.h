@@ -16,6 +16,8 @@ class UEDS_API URgbSegCamera : public UCamera
 public:
 	URgbSegCamera();
 
+	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<URgbSegCamera>>>> InstructionQueue;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -27,11 +29,10 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
-	bool SetRgbSegCameraConfig(const FRgbCameraConfig& Config); //dedit a override
+	bool SetRgbSegCameraConfig(const FRgbCameraConfig& Config);
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
-
-	//budou stejny
+	
 	virtual void GetConfig(std::stringstream& OutputStream) override;
 	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
 	

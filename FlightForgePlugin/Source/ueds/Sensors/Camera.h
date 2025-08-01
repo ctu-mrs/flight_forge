@@ -30,7 +30,7 @@ public:
 	USceneCaptureComponent2D* SceneCaptureComponent2D;
 	
 	UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
-	UMaterial* PostProcessMaterial = nullptr; //is never set in code
+	UMaterial* PostProcessMaterial = nullptr;
 
 
 #if PLATFORM_WINDOWS
@@ -48,7 +48,16 @@ public:
 	virtual void BeginDestroy() override;
 	
 protected:
-	virtual void BeginPlay() override;
+	CameraCaptureModeEnum CameraCaptureMode;
+	bool CameraNeedsRefresh = false;
+
+	std::unique_ptr<TArray<uint8>> CompressedCameraData = std::make_unique<TArray<uint8>>();
+
+	bool CameraDataNeedsCompress         = false;
+
+	bool CameraRendered                  = false;
+
+	void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
 
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
@@ -64,14 +73,6 @@ public:
 
 	
 protected:
-	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
-	bool CameraNeedsRefresh = false;
+	virtual void BeginPlay() override;
 
-	std::unique_ptr<TArray<uint8>> CompressedCameraData = std::make_unique<TArray<uint8>>();
-
-	bool CameraDataNeedsCompress         = false;
-
-	bool CameraRendered                  = false;
-
-	void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
 };
