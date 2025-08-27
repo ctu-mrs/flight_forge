@@ -633,7 +633,8 @@ void ADronePawn::UpdateSegLidar(bool isExternallyLocked) {
                             if (HitResult.GetComponent()->GetName().Contains("Landscape")) {
                                 std::get<4>((*LidarSegHits)[i]) = 1;
                             } else {
-                                std::get<4>((*LidarSegHits)[i]) = component->CustomDepthStencilValue;
+                            	// check if valid component was hited
+					                    std::get<4>((*LidarSegHits)[i]) = (component != nullptr) ? component->CustomDepthStencilValue : -1; 
                             }
                         }
                     } else {
@@ -714,7 +715,8 @@ void ADronePawn::UpdateSegLidar(bool isExternallyLocked) {
                 if (HitResult.GetComponent()->GetName().Contains("Landscape")) {
                     std::get<4>((*LidarSegHits)[i]) = 1;
                 } else {
-                    std::get<4>((*LidarSegHits)[i]) = component->CustomDepthStencilValue;
+                	// check if valid component was hited
+                    std::get<4>((*LidarSegHits)[i]) = (component != nullptr) ? component->CustomDepthStencilValue : -1; 
                 }
 
                 } else {
