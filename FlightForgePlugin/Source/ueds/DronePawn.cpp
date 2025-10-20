@@ -149,9 +149,9 @@ ADronePawn::ADronePawn() {
 
   // A300
   FramePropellersTransforms.Add(FramePropellersTransform(
-      FString(TEXT("a300")), FString(TEXT("robofly")), FTransform(FRotator(0, 0, 0), FVector(-9.45, -11.7, 2.4), FVector(1, -1, 1)),
-      FTransform(FRotator(0, 0, 0), FVector(-9.45, 11.7, 2.4), FVector(1, 1, 1)), FTransform(FRotator(0, 0, 0), FVector(9.45, -11.7, 2.4), FVector(1, 1, 1)),
-      FTransform(FRotator(0, 0, 0), FVector(9.45, 11.7, 2.4), FVector(1, -1, 1))));
+      FString(TEXT("a300")), FString(TEXT("robofly")), FTransform(FRotator(0, 0, 0), FVector(-10.44, -11.65, 2.4), FVector(1, -1, 1)),
+      FTransform(FRotator(0, 0, 0), FVector(-10.44, 11.65, 2.4), FVector(1, 1, 1)), FTransform(FRotator(0, 0, 0), FVector(8.38, -11.63, 2.4), FVector(1, 1, 1)),
+      FTransform(FRotator(0, 0, 0), FVector(8.38, 11.63, 2.4), FVector(1, -1, 1))));
 
   // RoboFly
   FramePropellersTransforms.Add(FramePropellersTransform(
