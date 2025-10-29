@@ -367,8 +367,14 @@ public:
 		case 13:
 			NameOfWorld = "Race_3";
 			break;
+		case 14:
+			NameOfWorld = "MalaSkala";
+			break;
+		case 15:
+			NameOfWorld = "KayentaMine";
+			break;
 		default:
-			NameOfWorld = "InfiniteForest";
+			NameOfWorld = "Valley";
 			break;
 		}
 		
