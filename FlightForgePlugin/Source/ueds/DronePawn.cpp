@@ -343,12 +343,13 @@ void ADronePawn::BeginPlay() {
   rgb_camera_config_.motion_blur_distortion = 50.0;
 
   stereo_camera_config_.ShowCameraComponent = false;
-  stereo_camera_config_.Offset              = FVector(0, 0, 0);
-  stereo_camera_config_.Orientation         = FRotator(0, 0, 0);
+  stereo_camera_config_.Offset_left              = FVector(0, 0, 0);
+  stereo_camera_config_.Orientation_left         = FRotator(0, 0, 0);
+  stereo_camera_config_.Offset_right             = FVector(0, 0, 0);
+  stereo_camera_config_.Orientation_right        = FRotator(0, 0, 0);
   stereo_camera_config_.FOVAngle            = 90;
   stereo_camera_config_.Width               = 640;
   stereo_camera_config_.Height              = 480;
-  stereo_camera_config_.baseline            = 0.1;
 
   SetRgbCameraConfig(rgb_camera_config_);
   SetStereoCameraConfig(stereo_camera_config_);
@@ -1590,14 +1591,14 @@ bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   StereoCameraBufferCriticalSection->Lock();
 
   SceneCaptureMeshHolderStereoLeft->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolderStereoLeft->SetRelativeLocation(Config.Offset);
+  SceneCaptureMeshHolderStereoLeft->SetRelativeLocation(Config.Offset_left);
   SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(Config.Orientation_left);
 
   SceneCaptureMeshHolderStereoRight->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset + FVector(0.0, 100.0 * Config.baseline, 0.0));
+  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset_right);
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
   SceneCaptureComponent2DStereoLeft->FOVAngle  = Config.FOVAngle;
   SceneCaptureComponent2DStereoRight->FOVAngle = Config.FOVAngle;

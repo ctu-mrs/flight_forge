@@ -186,20 +186,26 @@ struct StereoCameraConfig
 {
   bool show_debug_camera_;
 
-  double offset_x_;
-  double offset_y_;
-  double offset_z_;
+  double offset_x_left_;
+  double offset_y_left_;
+  double offset_z_left_;
 
-  double rotation_pitch_;
-  double rotation_yaw_;
-  double rotation_roll_;
+  double offset_x_right_;
+  double offset_y_right_;
+  double offset_z_right_;
+
+  double rotation_pitch_left_;
+  double rotation_yaw_left_;
+  double rotation_roll_left_;
+
+  double rotation_pitch_right_;
+  double rotation_yaw_right_;
+  double rotation_roll_right_;
 
   double fov_;
 
   int width_;
   int height_;
-
-  double baseline_;
 
   bool enable_temporal_aa_;
   bool enable_raytracing_;
@@ -207,7 +213,12 @@ struct StereoCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, baseline_,
+    archive(show_debug_camera_,
+            offset_x_left_, offset_y_left_, offset_z_left_,
+            offset_x_right_, offset_y_right_, offset_z_right_,
+            rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
+            rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
+            fov_, width_, height_,
             enable_temporal_aa_, enable_raytracing_, enable_hdr_);
   }
 };

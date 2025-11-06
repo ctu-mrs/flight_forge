@@ -117,12 +117,13 @@ struct FStereoCameraConfig
 {
   bool ShowCameraComponent;
 
-  FVector  Offset;
-  FRotator Orientation;
+  FVector  Offset_left;
+  FVector  Offset_right;
+  FRotator Orientation_left;
+  FRotator Orientation_right;
   double   FOVAngle;
   int      Width;
   int      Height;
-  double   baseline;
   bool     enable_temporal_aa;
   bool     enable_hdr;
   bool     enable_raytracing;

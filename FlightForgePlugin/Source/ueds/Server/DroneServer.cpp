@@ -849,20 +849,26 @@ bool DroneServer::GetStereoCameraConfig(const FTCPClient& Client, Serializable::
 
 	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
 
-	Response.config.offset_x_ = CameraConfig.Offset.X;
-	Response.config.offset_y_ = CameraConfig.Offset.Y;
-	Response.config.offset_z_ = CameraConfig.Offset.Z;
+	Response.config.offset_x_left_ = CameraConfig.Offset_left.X;
+	Response.config.offset_y_left_ = CameraConfig.Offset_left.Y;
+	Response.config.offset_z_left_ = CameraConfig.Offset_left.Z;
 
-	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
-	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
-	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
+	Response.config.rotation_pitch_left_ = CameraConfig.Orientation_left.Pitch;
+	Response.config.rotation_yaw_left_ = CameraConfig.Orientation_left.Yaw;
+	Response.config.rotation_roll_left_ = CameraConfig.Orientation_left.Roll;
+
+	Response.config.offset_x_right_ = CameraConfig.Offset_right.X;
+	Response.config.offset_y_right_ = CameraConfig.Offset_right.Y;	
+	Response.config.offset_z_right_ = CameraConfig.Offset_right.Z;
+
+	Response.config.rotation_pitch_right_ = CameraConfig.Orientation_right.Pitch;
+	Response.config.rotation_yaw_right_ = CameraConfig.Orientation_right.Yaw;
+	Response.config.rotation_roll_right_ = CameraConfig.Orientation_right.Roll;
 
 	Response.config.fov_ = CameraConfig.FOVAngle;
 
 	Response.config.width_ = CameraConfig.Width;
 	Response.config.height_ = CameraConfig.Height;
-
-	Response.config.baseline_ = CameraConfig.baseline;
 
 	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
 	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
@@ -936,15 +942,16 @@ bool DroneServer::SetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	FStereoCameraConfig Config;
 	Config.ShowCameraComponent = Request.config.show_debug_camera_;
 
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset_left = FVector(Request.config.offset_x_left_, Request.config.offset_y_left_, Request.config.offset_z_left_);
+	Config.Orientation_left = FRotator(Request.config.rotation_pitch_left_, Request.config.rotation_yaw_left_, Request.config.rotation_roll_left_);
+
+	Config.Offset_right = FVector(Request.config.offset_x_right_, Request.config.offset_y_right_, Request.config.offset_z_right_);
+	Config.Orientation_right = FRotator(Request.config.rotation_pitch_right_, Request.config.rotation_yaw_right_, Request.config.rotation_roll_right_);
 
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width = Request.config.width_;
 	Config.Height = Request.config.height_;
-
-	Config.baseline = Request.config.baseline_;
 
 	Config.enable_hdr = Request.config.enable_hdr_;
 	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
