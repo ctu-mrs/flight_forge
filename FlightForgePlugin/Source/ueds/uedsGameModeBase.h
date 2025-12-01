@@ -373,13 +373,16 @@ public:
 		case 15:
 			NameOfWorld = "KayentaMine";
 			break;
+		case 16:
+			NameOfWorld = "SprindLab";
+			break;
 		default:
 			NameOfWorld = "Valley";
 			break;
 		}
 		
 		UGameplayStatics::OpenLevel(this, NameOfWorld);
-
+		
 		return true; 
 	}
 
