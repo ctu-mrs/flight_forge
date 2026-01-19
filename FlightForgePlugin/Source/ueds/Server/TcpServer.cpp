@@ -128,8 +128,8 @@ bool TcpServer::Respond(const FTCPClient& Client, const FString& Message) const
 
 bool TcpServer::Respond(const FTCPClient& Client, const std::string& Message) const
 {
-	auto OutBytes = new uint8[Client.SendBufferSize + 3];
-	for(int i = 0; i < Message.length(); i++)
+	auto OutBytes = new uint8[Message.length() + 3];
+	for(size_t i = 0; i < Message.length(); i++)
 		OutBytes[i] = Message[i];
 
 	OutBytes[Message.length()] = END_OF_MESSAGE; // mark end of message
