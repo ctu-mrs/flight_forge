@@ -1022,7 +1022,7 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
 
 /* getSegLidarHits() //{ */
 
-void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
+void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
 
   LidarSegHitsCriticalSection->Lock();
 
@@ -1053,7 +1053,7 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
 
 /* getIntLidarHits() //{ */
 
-void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
+void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
 
   LidarIntHitsCriticalSection->Lock();
 
