@@ -1163,9 +1163,18 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
   }
 }
 
-void ADronePawn::SetPropellersTransform(const int& frame_id) {
+void ADronePawn::SetPropellersTransform(const std::string& frame_name) {
+  
+  FString frame_name_ = FString(frame_name.c_str());
   const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData();
-
+  int frame_id = 0;
+  const int32 TransformCount = FramePropellersTransforms.Num();
+  for (int32 idx = 0; idx < TransformCount; ++idx) {
+    if (FramePropellersTransforms[idx].FrameName.Equals(frame_name_, ESearchCase::IgnoreCase)) {
+      frame_id = idx;
+      break;
+    }
+  } 
   FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType;
 
   if (UStaticMesh* PropellerMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) {
@@ -1183,10 +1192,10 @@ void ADronePawn::SetPropellersTransform(const int& frame_id) {
   PropellerRearRight->SetRelativeTransform(Transforms[frame_id].RearRight);
 }
 
-void ADronePawn::SetStaticMesh(const int& frame_id) {
+void ADronePawn::SetStaticMesh(const std::string &frame_name) {
   FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
 
-  int predefined_frame_count = FramePropellersTransforms.Num();
+  /* int predefined_frame_count = FramePropellersTransforms.Num();
 
   // last "empty" frame is not included in "FramePropellersTransforms"
   if (predefined_frame_count == frame_id) {
@@ -1194,21 +1203,27 @@ void ADronePawn::SetStaticMesh(const int& frame_id) {
   }
 
   FString frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
+ */
 
-  mesh_path += frame_name + "/" + frame_name + "." + frame_name;
+  FString frame_name_ = FString(frame_name.c_str()); 
+  mesh_path += frame_name_ + "/" + frame_name_ + "." + frame_name_;
 
   if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) {
     RootMeshComponent->SetStaticMesh(FrameMesh);
-  } else {
-    UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded!"));
+  } else if(frame_name_.Contains("empty")){
+    UE_LOG(LogTemp, Warning, TEXT("Setted empty frame"));
+  } else {  
+    UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded! Setted \"x500\" as default frame"));
+    frame_name_ = "x500";
+    mesh_path = "/FlightForgePlugin/Meshes/_Drones_/" + frame_name_ + "/" + frame_name_ + "." + frame_name_;
   }
 
   // wing has not propellers
-  if (frame_name.Contains("wing")) {
+  if (frame_name_.Contains("wing") || frame_name_.Contains("empty")) {
     return;
   }
 
-  SetPropellersTransform(frame_id);
+  SetPropellersTransform(frame_name);
 }
 
 void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {

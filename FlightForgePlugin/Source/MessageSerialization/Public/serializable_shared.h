@@ -4,7 +4,9 @@
 #pragma once
 
 #include <vector>
+#include <string>
 
+#include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
 namespace Serializable
@@ -1071,10 +1073,11 @@ namespace SpawnDroneAtLocation
     double x;
     double y;
     double z;
-    int idMesh;
+    std::string MeshName;
+
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, idMesh);
+      archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, MeshName);
     }
   };
 

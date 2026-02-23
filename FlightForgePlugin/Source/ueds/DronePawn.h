@@ -290,7 +290,7 @@ public:
 
   FTimerHandle TimerHandle_Disabled_Physics;
 
-  void SetStaticMesh(const int &frame_id);
+  void SetStaticMesh(const std::string &frame_name);
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
@@ -317,7 +317,7 @@ private:
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
-  void SetPropellersTransform(const int &frame_id);
+  void SetPropellersTransform(const std::string &frame_name);
   
   void DisabledPhysics_StartRotatePropellers();
 

@@ -243,7 +243,7 @@ bool UedsGameModeServer::SpawnDroneAtLocation(const FTCPClient& Client,
   int PawnPort = -1;
 
   auto Instruction      = std::make_shared<FInstruction<AuedsGameModeBase>>();
-  Instruction->Function = [&PawnPort, &Request](AuedsGameModeBase& _GameMode) { PawnPort = _GameMode.SpawnDroneAtLocation(FVector(Request.x,Request.y, Request.z), Request.idMesh); };
+  Instruction->Function = [&PawnPort, &Request](AuedsGameModeBase& _GameMode) { PawnPort = _GameMode.SpawnDroneAtLocation(FVector(Request.x,Request.y, Request.z), Request.MeshName); };
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 

@@ -3,13 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "DronePawn.h"
 #include "Components/SceneCaptureComponent2D.h"
-#include "Server/UedsGameModeServer.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
+
+#include "DronePawn.h"
+#include "Server/UedsGameModeServer.h"
+#include <string>
+
 #include "uedsGameModeBase.generated.h"
+
 
 #if PLATFORM_WINDOWS
   #include "Microsoft/AllowMicrosoftPlatformTypes.h"
@@ -150,7 +154,7 @@ public:
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
 		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS 
+		// First Find pawn point by raycast DOWNWARDS 
 		// if(UWorld* World = GetWorld())
 		// {
 		// 	FHitResult HitResult;
@@ -190,10 +194,9 @@ public:
 		return PlayerPawn->droneServer->GetPort();
 	}
 
-	UFUNCTION(BlueprintCallable)
-	int SpawnDroneAtLocation(FVector Location, int IdMesh)
+	int SpawnDroneAtLocation(FVector Location, std::string MeshName)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
+		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf [mesh %s]"), Location.X, Location.Y, Location.Z, *FString(MeshName.c_str()));
 		
 		ADronePawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
@@ -232,7 +235,7 @@ public:
 		PlayerPawn->droneServer->SetPort(DronePort);
 		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		PlayerPawn->StartServer();
-		PlayerPawn->SetStaticMesh(IdMesh);
+		PlayerPawn->SetStaticMesh(MeshName);
 		PlayerPawn->Simulate_UE_Physics(3.0f);
 		
 		DronePawnsCriticalSection->Lock();
