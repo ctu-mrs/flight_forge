@@ -147,12 +147,13 @@ struct FStereoCameraConfig
 {
   bool ShowCameraComponent;
 
-  FVector  Offset;
-  FRotator Orientation;
+  FVector  Offset_left;
+  FVector  Offset_right;
+  FRotator Orientation_left;
+  FRotator Orientation_right;
   double   FOVAngle;
   int      Width;
   int      Height;
-  double   baseline;
   bool     enable_temporal_aa;
   bool     enable_hdr;
   bool     enable_raytracing;
@@ -275,11 +276,11 @@ public:
   UFUNCTION(BlueprintCallable)
   void GetRangefinderData(double& range);
 
-  void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart);
+  void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp);
 
-  void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart);
+  void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp);
 
-  void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart);
+  void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp);
 
   bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
@@ -317,6 +318,10 @@ public:
   void SetStaticMeshByName(const FString& ModelName);
 
   /* void SetStaticMesh(const int &frame_id); */
+
+  // dev
+  //void SetStaticMesh(const std::string &frame_name);
+
 
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
@@ -372,7 +377,9 @@ private:
   TArray<FramePropellersTransform> FramePropellersTransforms;
 
   /* UFUNCTION(BlueprintPure, Category = "DroneSetup") */
-  /* void SetPropellersTransform(const int &frame_id); */
+  /* void SetProp ellersTransform(const int &frame_id); */
+  //dev
+  //void SetPropellersTransform(const std::string &frame_name);
   
   void DisabledPhysics_StartRotatePropellers();
 

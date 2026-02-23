@@ -3,13 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "DronePawn.h"
 #include "Components/SceneCaptureComponent2D.h"
-#include "Server/UedsGameModeServer.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
+
+#include "DronePawn.h"
+#include "Server/UedsGameModeServer.h"
+#include <string>
+
 #include "uedsGameModeBase.generated.h"
+
 
 #if PLATFORM_WINDOWS
   #include "Microsoft/AllowMicrosoftPlatformTypes.h"
@@ -129,10 +133,20 @@ void InitializeModelIdMap()
 	virtual void BeginPlay() override
 	{
 
-    InitializeModelIdMap();
-		UE_LOG(LogTemp, Warning, TEXT("Starting game mode server"));
-		Server->Run();
-		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
+		Super::BeginPlay();
+	   
+		float delay = 1.5f;
+		UE_LOG(LogTemp, Warning, TEXT("Delay %.2f before starting FlightForge server..."), delay);
+		FTimerHandle UnusedHandle;
+		GetWorldTimerManager().SetTimer(UnusedHandle, [ServerPtr = Server.get()]()
+		{
+			ServerPtr->Run();
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge server was started on port %d"), ServerPtr->GetPort());
+		},
+		delay, false);
+		
+		
+	// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
 		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
 		// {
 		// 	
@@ -148,7 +162,6 @@ void InitializeModelIdMap()
 		// 	L.X += 200;
 		// }
 		//SpawnDrone();
-		Super::BeginPlay();
 	}
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
@@ -203,7 +216,7 @@ public:
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
 		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS 
+		// First Find pawn point by raycast DOWNWARDS 
 		// if(UWorld* World = GetWorld())
 		// {
 		// 	FHitResult HitResult;
@@ -297,13 +310,55 @@ int SpawnDroneAtLocation(FVector Location, int IdMesh)
 		
     PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
 
-    if (!ModelNameToLoad.IsEmpty())
-    {
-        PlayerPawn->SetStaticMeshByName(ModelNameToLoad);
-    }
-    else {
-        UE_LOG(LogTemp, Error, TEXT("ModelNameToLoad was empty after lookup/fallback! Cannot set mesh."));
-    }
+
+// TODO
+//     if (!ModelNameToLoad.IsEmpty())
+//     {
+//         PlayerPawn->SetStaticMeshByName(ModelNameToLoad);
+//     }
+//     else {
+//         UE_LOG(LogTemp, Error, TEXT("ModelNameToLoad was empty after lookup/fallback! Cannot set mesh."));
+//     }
+		// Realistic spawner
+		// First Find spawn point by raycast DOWNWARDS
+		
+		// if(UWorld* World = GetWorld())
+		// {
+		// 	FHitResult HitResult;
+		// 	FVector Start = Location;
+		// 	FVector End = Start + FVector::DownVector * 100000;
+		// 	FVector SpawnOffset = 300*FVector::UpVector;
+		// 	if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+		// 	{
+		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast DOWN"));
+		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
+		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+		// 	}
+		// 	else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
+		// 	{
+		// 		
+		// 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone by raycast UP"));
+		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
+		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
+		// 	}
+		// }
+		
+		if(PlayerPawn == nullptr)
+		{
+			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(Location)));
+			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at defined Location"));
+		}
+		
+		const auto DronePort = GetAvailableDronePort();
+		PlayerPawn->droneServer->SetPort(DronePort);
+		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		PlayerPawn->StartServer();
+		PlayerPawn->SetStaticMesh(MeshName);
+		PlayerPawn->Simulate_UE_Physics(3.0f);
+		
+		DronePawnsCriticalSection->Lock();
+		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
+		DronePawnsCriticalSection->Unlock();
 
 
     PlayerPawn->StartServer();
@@ -428,7 +483,7 @@ int SpawnDroneAtLocation(FVector Location, int IdMesh)
 			NameOfWorld = "ErdingAirBase";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
-			NameOfWorld = "Temesvar_annotated";
+			NameOfWorld = "Temesvar";
 			break;
 		case 7:
 			NameOfWorld = "ElectricTowers";
@@ -440,7 +495,7 @@ int SpawnDroneAtLocation(FVector Location, int IdMesh)
 			NameOfWorld = "Race_2";
 			break;
 	    case 10:
-	      NameOfWorld = "IndustialWarehouse";
+	      NameOfWorld = "IndustrialWarehouse";
 	      break;
 	    case 11:
 	      NameOfWorld = "ServiceTunnel";
@@ -448,13 +503,25 @@ int SpawnDroneAtLocation(FVector Location, int IdMesh)
 	    case 12:
 	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
 	      break;
+		case 13:
+			NameOfWorld = "Race_3";
+			break;
+		case 14:
+			NameOfWorld = "MalaSkala";
+			break;
+		case 15:
+			NameOfWorld = "KayentaMine";
+			break;
+		case 16:
+			NameOfWorld = "SprindLab";
+			break;
 		default:
-			NameOfWorld = "InfiniteForest";
+			NameOfWorld = "Valley";
 			break;
 		}
 		
 		UGameplayStatics::OpenLevel(this, NameOfWorld);
-
+		
 		return true; 
 	}
 

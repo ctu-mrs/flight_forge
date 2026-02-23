@@ -755,12 +755,13 @@ void ADronePawn::BeginPlay() {
   rgb_camera_config_.motion_blur_distortion = 50.0;
 
   stereo_camera_config_.ShowCameraComponent = false;
-  stereo_camera_config_.Offset              = FVector(0, 0, 0);
-  stereo_camera_config_.Orientation         = FRotator(0, 0, 0);
+  stereo_camera_config_.Offset_left              = FVector(0, 0, 0);
+  stereo_camera_config_.Orientation_left         = FRotator(0, 0, 0);
+  stereo_camera_config_.Offset_right             = FVector(0, 0, 0);
+  stereo_camera_config_.Orientation_right        = FRotator(0, 0, 0);
   stereo_camera_config_.FOVAngle            = 90;
   stereo_camera_config_.Width               = 640;
   stereo_camera_config_.Height              = 480;
-  stereo_camera_config_.baseline            = 0.1;
 
   SetRgbCameraConfig(rgb_camera_config_);
   SetStereoCameraConfig(stereo_camera_config_);
@@ -1421,11 +1422,13 @@ void ADronePawn::GetRangefinderData(double& range) {
 
 /* getLidarHits() //{ */
 
-void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
+void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
 
   // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
   LidarHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
   
   UpdateLidar(true);
   
@@ -1442,6 +1445,8 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
 
+  OutStamp = stamp;
+
   LidarHitsCriticalSection->Unlock();
 }
 
@@ -1449,9 +1454,11 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
 
 /* getSegLidarHits() //{ */
 
-void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
+void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
 
   LidarSegHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
 
   UpdateSegLidar(true);
 
@@ -1469,6 +1476,8 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
 
+  OutStamp = stamp;
+
   LidarSegHitsCriticalSection->Unlock();
 }
 
@@ -1476,9 +1485,11 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
 
 /* getIntLidarHits() //{ */
 
-void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
+void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
 
   LidarIntHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
 
   UpdateIntLidar(true);
   OutLidarIntData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -1494,6 +1505,8 @@ void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntDat
   OutStart.X = LidarConfig.Offset.X;
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
+
+  OutStamp = stamp;
 
   LidarIntHitsCriticalSection->Unlock();
 }
@@ -1594,6 +1607,7 @@ void ADronePawn::UpdateCamera(bool isExternallyLocked, int type = 1, double stam
   }
 }
 
+
 const TArray<FramePropellersTransform>& ADronePawn::GetPredefinedFrameTransforms() const
 {
     return FramePropellersTransforms;
@@ -1601,6 +1615,21 @@ const TArray<FramePropellersTransform>& ADronePawn::GetPredefinedFrameTransforms
 
 /* void ADronePawn::SetPropellersTransform(const int& frame_id) { */
 /*   const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData(); */
+
+//dev
+// void ADronePawn::SetPropellersTransform(const std::string& frame_name) {
+  
+//   FString frame_name_ = FString(frame_name.c_str());
+//   const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData();
+//   int frame_id = 0;
+//   const int32 TransformCount = FramePropellersTransforms.Num();
+//   for (int32 idx = 0; idx < TransformCount; ++idx) {
+//     if (FramePropellersTransforms[idx].FrameName.Equals(frame_name_, ESearchCase::IgnoreCase)) {
+//       frame_id = idx;
+//       break;
+//     }
+//   } 
+//   FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType;
 
 /*   FString mesh_path = "/FlightForgePlugin/Meshes/Propellers/propeller_" + Transforms[frame_id].PropellerType; */
 
@@ -1622,6 +1651,11 @@ const TArray<FramePropellersTransform>& ADronePawn::GetPredefinedFrameTransforms
 /* void ADronePawn::SetStaticMesh(const int& frame_id) { */
 /*   FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/"; */
 
+//dev
+// void ADronePawn::SetStaticMesh(const std::string &frame_name) {
+//   FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
+
+  /* int predefined_frame_count = FramePropellersTransforms.Num();
 /*   int predefined_frame_count = FramePropellersTransforms.Num(); */
 
 /*   // last "empty" frame is not included in "FramePropellersTransforms" */
@@ -1694,7 +1728,7 @@ void ADronePawn::DisabledPhysics_StartRotatePropellers()
 
 //}
 
-/* GetLeftCameraDataFromServerThread() //{ */
+/* GetRgbCameraDataFromServerThread() //{ */
 
 bool ADronePawn::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp) {
 
@@ -2006,14 +2040,14 @@ bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   StereoCameraBufferCriticalSection->Lock();
 
   SceneCaptureMeshHolderStereoLeft->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolderStereoLeft->SetRelativeLocation(Config.Offset);
+  SceneCaptureMeshHolderStereoLeft->SetRelativeLocation(Config.Offset_left);
   SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolderStereoLeft->SetRelativeRotation(Config.Orientation_left);
 
   SceneCaptureMeshHolderStereoRight->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset + FVector(0.0, 100.0 * Config.baseline, 0.0));
+  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset_right);
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
   SceneCaptureComponent2DStereoLeft->FOVAngle  = Config.FOVAngle;
   SceneCaptureComponent2DStereoRight->FOVAngle = Config.FOVAngle;

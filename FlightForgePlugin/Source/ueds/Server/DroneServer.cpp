@@ -640,7 +640,9 @@ bool DroneServer::GetLidarData(const FTCPClient& Client, Serializable::Drone::Ge
 
 	std::vector<Serializable::Drone::GetLidarData::LidarData> LidarData;
 	FVector Start;
-	DronePawn->GetLidarHits(LidarData, Start);
+	double stamp;
+
+	DronePawn->GetLidarHits(LidarData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarData::Response Response(true);
@@ -648,6 +650,7 @@ bool DroneServer::GetLidarData(const FTCPClient& Client, Serializable::Drone::Ge
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -667,7 +670,8 @@ bool DroneServer::GetLidarSegData(const FTCPClient& Client, Serializable::Drone:
 
 	std::vector<Serializable::Drone::GetLidarSegData::LidarSegData> LidarSegData;
 	FVector Start;
-	DronePawn->GetSegLidarHits(LidarSegData, Start);
+	double stamp;
+	DronePawn->GetSegLidarHits(LidarSegData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarSegData::Response Response(true);
@@ -675,6 +679,7 @@ bool DroneServer::GetLidarSegData(const FTCPClient& Client, Serializable::Drone:
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	return Respond(Client, OutputStream);
@@ -693,7 +698,8 @@ bool DroneServer::GetLidarIntData(const FTCPClient& Client, Serializable::Drone:
 
 	std::vector<Serializable::Drone::GetLidarIntData::LidarIntData> LidarIntData;
 	FVector Start;
-	DronePawn->GetIntLidarHits(LidarIntData, Start);
+	double stamp;
+	DronePawn->GetIntLidarHits(LidarIntData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarIntData::Response Response(true);
@@ -701,6 +707,7 @@ bool DroneServer::GetLidarIntData(const FTCPClient& Client, Serializable::Drone:
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	return Respond(Client, OutputStream);
@@ -849,20 +856,26 @@ bool DroneServer::GetStereoCameraConfig(const FTCPClient& Client, Serializable::
 
 	Response.config.show_debug_camera_= CameraConfig.ShowCameraComponent;
 
-	Response.config.offset_x_ = CameraConfig.Offset.X;
-	Response.config.offset_y_ = CameraConfig.Offset.Y;
-	Response.config.offset_z_ = CameraConfig.Offset.Z;
+	Response.config.offset_x_left_ = CameraConfig.Offset_left.X;
+	Response.config.offset_y_left_ = CameraConfig.Offset_left.Y;
+	Response.config.offset_z_left_ = CameraConfig.Offset_left.Z;
 
-	Response.config.rotation_pitch_ = CameraConfig.Orientation.Pitch;
-	Response.config.rotation_yaw_ = CameraConfig.Orientation.Yaw;
-	Response.config.rotation_roll_ = CameraConfig.Orientation.Roll;
+	Response.config.rotation_pitch_left_ = CameraConfig.Orientation_left.Pitch;
+	Response.config.rotation_yaw_left_ = CameraConfig.Orientation_left.Yaw;
+	Response.config.rotation_roll_left_ = CameraConfig.Orientation_left.Roll;
+
+	Response.config.offset_x_right_ = CameraConfig.Offset_right.X;
+	Response.config.offset_y_right_ = CameraConfig.Offset_right.Y;	
+	Response.config.offset_z_right_ = CameraConfig.Offset_right.Z;
+
+	Response.config.rotation_pitch_right_ = CameraConfig.Orientation_right.Pitch;
+	Response.config.rotation_yaw_right_ = CameraConfig.Orientation_right.Yaw;
+	Response.config.rotation_roll_right_ = CameraConfig.Orientation_right.Roll;
 
 	Response.config.fov_ = CameraConfig.FOVAngle;
 
 	Response.config.width_ = CameraConfig.Width;
 	Response.config.height_ = CameraConfig.Height;
-
-	Response.config.baseline_ = CameraConfig.baseline;
 
 	Response.config.enable_temporal_aa_ = CameraConfig.enable_temporal_aa;
 	Response.config.enable_hdr_ = CameraConfig.enable_hdr;
@@ -936,15 +949,16 @@ bool DroneServer::SetStereoCameraConfig(const FTCPClient& Client, Serializable::
 	FStereoCameraConfig Config;
 	Config.ShowCameraComponent = Request.config.show_debug_camera_;
 
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset_left = FVector(Request.config.offset_x_left_, Request.config.offset_y_left_, Request.config.offset_z_left_);
+	Config.Orientation_left = FRotator(Request.config.rotation_pitch_left_, Request.config.rotation_yaw_left_, Request.config.rotation_roll_left_);
+
+	Config.Offset_right = FVector(Request.config.offset_x_right_, Request.config.offset_y_right_, Request.config.offset_z_right_);
+	Config.Orientation_right = FRotator(Request.config.rotation_pitch_right_, Request.config.rotation_yaw_right_, Request.config.rotation_roll_right_);
 
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width = Request.config.width_;
 	Config.Height = Request.config.height_;
-
-	Config.baseline = Request.config.baseline_;
 
 	Config.enable_hdr = Request.config.enable_hdr_;
 	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
