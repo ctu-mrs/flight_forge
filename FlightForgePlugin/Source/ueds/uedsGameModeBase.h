@@ -67,9 +67,20 @@ private:
 
 	virtual void BeginPlay() override
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Starting game mode server"));
-		Server->Run();
-		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
+		Super::BeginPlay();
+	   
+		float delay = 1.5f;
+		UE_LOG(LogTemp, Warning, TEXT("Delay %.2f before starting FlightForge server..."), delay);
+		FTimerHandle UnusedHandle;
+		GetWorldTimerManager().SetTimer(UnusedHandle, [ServerPtr = Server.get()]()
+		{
+			ServerPtr->Run();
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge server was started on port %d"), ServerPtr->GetPort());
+		},
+		delay, false);
+		
+		
+	// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
 		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
 		// {
 		// 	
@@ -85,7 +96,6 @@ private:
 		// 	L.X += 200;
 		// }
 		//SpawnDrone();
-		Super::BeginPlay();
 	}
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
