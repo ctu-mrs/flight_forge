@@ -990,11 +990,13 @@ void ADronePawn::GetRangefinderData(double& range) {
 
 /* getLidarHits() //{ */
 
-void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
+void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
 
   // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
   LidarHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
   
   UpdateLidar(true);
   
@@ -1011,6 +1013,8 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
 
+  OutStamp = stamp;
+
   LidarHitsCriticalSection->Unlock();
 }
 
@@ -1018,9 +1022,11 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
 
 /* getSegLidarHits() //{ */
 
-void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
+void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
 
   LidarSegHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
 
   UpdateSegLidar(true);
 
@@ -1038,6 +1044,8 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
 
+  OutStamp = stamp;
+
   LidarSegHitsCriticalSection->Unlock();
 }
 
@@ -1045,9 +1053,11 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
 
 /* getIntLidarHits() //{ */
 
-void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
+void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
 
   LidarIntHitsCriticalSection->Lock();
+
+  auto stamp = FPlatformTime::Seconds();
 
   UpdateIntLidar(true);
   OutLidarIntData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -1063,6 +1073,8 @@ void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntDat
   OutStart.X = LidarConfig.Offset.X;
   OutStart.Y = LidarConfig.Offset.Y;
   OutStart.Z = LidarConfig.Offset.Z;
+
+  OutStamp = stamp;
 
   LidarIntHitsCriticalSection->Unlock();
 }
@@ -1294,7 +1306,7 @@ void ADronePawn::DisabledPhysics_StartRotatePropellers()
 
 //}
 
-/* GetLeftCameraDataFromServerThread() //{ */
+/* GetRgbCameraDataFromServerThread() //{ */
 
 bool ADronePawn::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp) {
 

@@ -640,7 +640,9 @@ bool DroneServer::GetLidarData(const FTCPClient& Client, Serializable::Drone::Ge
 
 	std::vector<Serializable::Drone::GetLidarData::LidarData> LidarData;
 	FVector Start;
-	DronePawn->GetLidarHits(LidarData, Start);
+	double stamp;
+
+	DronePawn->GetLidarHits(LidarData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarData::Response Response(true);
@@ -648,6 +650,7 @@ bool DroneServer::GetLidarData(const FTCPClient& Client, Serializable::Drone::Ge
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -667,7 +670,8 @@ bool DroneServer::GetLidarSegData(const FTCPClient& Client, Serializable::Drone:
 
 	std::vector<Serializable::Drone::GetLidarSegData::LidarSegData> LidarSegData;
 	FVector Start;
-	DronePawn->GetSegLidarHits(LidarSegData, Start);
+	double stamp;
+	DronePawn->GetSegLidarHits(LidarSegData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarSegData::Response Response(true);
@@ -675,6 +679,7 @@ bool DroneServer::GetLidarSegData(const FTCPClient& Client, Serializable::Drone:
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	return Respond(Client, OutputStream);
@@ -693,7 +698,8 @@ bool DroneServer::GetLidarIntData(const FTCPClient& Client, Serializable::Drone:
 
 	std::vector<Serializable::Drone::GetLidarIntData::LidarIntData> LidarIntData;
 	FVector Start;
-	DronePawn->GetIntLidarHits(LidarIntData, Start);
+	double stamp;
+	DronePawn->GetIntLidarHits(LidarIntData, Start, stamp);
 
 	std::stringstream OutputStream;
 	Serializable::Drone::GetLidarIntData::Response Response(true);
@@ -701,6 +707,7 @@ bool DroneServer::GetLidarIntData(const FTCPClient& Client, Serializable::Drone:
 	Response.startX = Start.X;
 	Response.startY = Start.Y;
 	Response.startZ = Start.Z;
+  Response.stamp_ = stamp;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	return Respond(Client, OutputStream);
