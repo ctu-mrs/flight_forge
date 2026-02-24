@@ -4,9 +4,7 @@
 #pragma once
 
 #include <vector>
-#include <string>
 
-#include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
 namespace Serializable
@@ -188,26 +186,20 @@ struct StereoCameraConfig
 {
   bool show_debug_camera_;
 
-  double offset_x_left_;
-  double offset_y_left_;
-  double offset_z_left_;
+  double offset_x_;
+  double offset_y_;
+  double offset_z_;
 
-  double offset_x_right_;
-  double offset_y_right_;
-  double offset_z_right_;
-
-  double rotation_pitch_left_;
-  double rotation_yaw_left_;
-  double rotation_roll_left_;
-
-  double rotation_pitch_right_;
-  double rotation_yaw_right_;
-  double rotation_roll_right_;
+  double rotation_pitch_;
+  double rotation_yaw_;
+  double rotation_roll_;
 
   double fov_;
 
   int width_;
   int height_;
+
+  double baseline_;
 
   bool enable_temporal_aa_;
   bool enable_raytracing_;
@@ -215,12 +207,7 @@ struct StereoCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_,
-            offset_x_left_, offset_y_left_, offset_z_left_,
-            offset_x_right_, offset_y_right_, offset_z_right_,
-            rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
-            rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
-            fov_, width_, height_,
+    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, baseline_,
             enable_temporal_aa_, enable_raytracing_, enable_hdr_);
   }
 };
@@ -621,12 +608,10 @@ struct Response : public Common::NetworkResponse
   double startZ;
 
   std::vector<LidarData> lidarData;
-  
-  double                     stamp_;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarData);
   }
 };
 }  // namespace GetLidarData
@@ -671,10 +656,9 @@ struct Response : public Common::NetworkResponse
 
   std::vector<LidarSegData> lidarSegData;
 
-  double                     stamp_;
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarSegData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarSegData);
   }
 };
 }  // namespace GetLidarSegData
@@ -718,12 +702,10 @@ struct Response : public Common::NetworkResponse
   double startZ;
 
   std::vector<LidarIntData> lidarIntData;
-  
-  double                     stamp_;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarIntData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarIntData);
   }
 };
 }  // namespace GetLidarIntData
@@ -1081,11 +1063,10 @@ namespace SpawnDroneAtLocation
     double x;
     double y;
     double z;
-    std::string MeshName;
-
+    int idMesh;
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, MeshName);
+      archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, idMesh);
     }
   };
 
