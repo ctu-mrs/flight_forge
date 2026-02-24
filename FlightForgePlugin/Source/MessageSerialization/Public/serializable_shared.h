@@ -1270,11 +1270,11 @@ namespace SwitchWorldLevel
   {
     Request() : Common::NetworkRequest(MessageType::switch_world_level){};
 
-    short worldLevelEnum;
+    std::string worldLevelName;
 
     template <class Archive>
     void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), worldLevelEnum);
+    archive(cereal::base_class<Common::NetworkRequest>(this), worldLevelName);
     }
   };
 

@@ -418,7 +418,7 @@ bool UedsGameModeServer::SwitchWorldLevel(const FTCPClient& Client,
   Serialization::DeserializeResponse(Response, OutputStream);
   const bool result = Respond(Client, OutputStream);
 
-  Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { _GameMode.SwitchWorldLevel(Request.worldLevelEnum); };
+  Instruction->Function = [&Request, &Response](AuedsGameModeBase& _GameMode) { _GameMode.SwitchWorldLevel(Request.worldLevelName); };
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 

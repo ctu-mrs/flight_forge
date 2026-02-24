@@ -332,69 +332,11 @@ public:
 	}
 
 	//UFUNCTION(BlueprintCallable)
-	bool SwitchWorldLevel(const short& WorldLevelEnum)
+	bool SwitchWorldLevel(const std::string& WorldLevelName)
 	{
-		FName NameOfWorld;
 
-		switch (WorldLevelEnum)
-		{
-		case Serializable::GameMode::WorldLevelEnum::VALLEY:
-			NameOfWorld = "Valley";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::FOREST:
-			NameOfWorld = "Forest";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::INFINITE_FOREST:
-			NameOfWorld = "InfinityForest";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::WAREHOUSE:
-			NameOfWorld = "Warehouse";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::CAVE:
-			NameOfWorld = "CaveTunnel";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::ERDING_AIRBASE:
-			NameOfWorld = "ErdingAirBase";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
-			NameOfWorld = "Temesvar";
-			break;
-		case 7:
-			NameOfWorld = "ElectricTowers";
-			break;
-		case 8:
-			NameOfWorld = "Race_1";
-			break;
-		case 9:
-			NameOfWorld = "Race_2";
-			break;
-	    case 10:
-	      NameOfWorld = "IndustrialWarehouse";
-	      break;
-	    case 11:
-	      NameOfWorld = "ServiceTunnel";
-	      break;
-	    case 12:
-	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
-	      break;
-		case 13:
-			NameOfWorld = "Race_3";
-			break;
-		case 14:
-			NameOfWorld = "MalaSkala";
-			break;
-		case 15:
-			NameOfWorld = "KayentaMine";
-			break;
-		case 16:
-			NameOfWorld = "SprindLab";
-			break;
-		default:
-			NameOfWorld = "Valley";
-			break;
-		}
 		
-		UGameplayStatics::OpenLevel(this, NameOfWorld);
+		UGameplayStatics::OpenLevel(this, FName(WorldLevelName.c_str()));
 		
 		return true; 
 	}
