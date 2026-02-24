@@ -1,0 +1,55 @@
+drone10:
+
+propellers:
+  - name: prop_1
+    location:
+    - 0.27928
+    - -0.291396
+    - 0.0078
+    orientation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_2
+    location:
+    - 0.281695
+    - 0.291191
+    - 0.016099
+    orientation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_3
+    location:
+    - -0.278683
+    - 0.291324
+    - 0.016313
+    orientation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_4
+    location:
+    - -0.279624
+    - -0.291879
+    - 0.011886
+    orientation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1

@@ -1,0 +1,53 @@
+- drone18
+- - name: prop_1
+    location:
+    - 0.155813
+    - 0.156769
+    - 0.095653
+    rotation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_2
+    location:
+    - -0.157502
+    - 0.153246
+    - 0.097513
+    rotation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_3
+    location:
+    - -0.157204
+    - -0.155856
+    - 0.095831
+    rotation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1
+  - name: prop_4
+    location:
+    - 0.159157
+    - -0.155717
+    - 0.096564
+    rotation:
+    - 0
+    - 0
+    - 0
+    scale:
+    - 1
+    - 1
+    - 1

@@ -54,7 +54,8 @@ void ADronePawn::ApplyExternalPropellerConfig(const TArray<FExternalPropellerCon
     }
     if (!PropMesh)
     {
-         PropMesh = DefaultExternalPropellerMesh.LoadSynchronous();
+         //PropMesh = DefaultExternalPropellerMesh.LoadSynchronous();
+         PropMesh = LoadObject<UStaticMesh>(nullptr, *DefaultExternalPropellerMeshPath);
          if (!PropMesh) UE_LOG(LogTemp, Error, TEXT("Failed to load default external propeller mesh! Cannot create propellers."));
          if (!PropMesh) return;
     }
@@ -98,7 +99,7 @@ bool ADronePawn::LoadExternalModel(const FString& ModelName)
 {
     FString ModelFolderPath = FPaths::Combine(ExternalModelBasePath, ModelName);
     FString GltfPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT(".glb")); 
-    FString YamlPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT("_props.yaml"));
+    FString YamlPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT(".yaml"));
 
     UE_LOG(LogTemp, Log, TEXT("Attempting to load external model: %s"), *ModelName);
     UE_LOG(LogTemp, Log, TEXT("  Checking GLB Path: %s"), *GltfPath);
@@ -106,25 +107,27 @@ bool ADronePawn::LoadExternalModel(const FString& ModelName)
 
     if (!FPaths::FileExists(GltfPath))
     {
-        UE_LOG(LogTemp, Log, TEXT("GLB file not found, checking for .gltf: %s"), *GltfPath);
+        UE_LOG(LogTemp, Warning, TEXT("GLB file not found, checking for .gltf: %s"), *GltfPath);
         GltfPath = FPaths::Combine(ModelFolderPath, ModelName + TEXT(".gltf"));
         UE_LOG(LogTemp, Log, TEXT("  Checking glTF Path: %s"), *GltfPath);
         if (!FPaths::FileExists(GltfPath))
         {
-             UE_LOG(LogTemp, Warning, TEXT("External model file not found (tried .glb and .gltf): %s"), *FPaths::Combine(ModelFolderPath, ModelName));
+             UE_LOG(LogTemp, Error, TEXT("External model file not found (tried .glb and .gltf): %s"), *FPaths::Combine(ModelFolderPath, ModelName));
              return false;
         }
     }
 
-    if (!GltfLoaderActor)
+    /*if (!GltfLoaderActor)
     {
         UE_LOG(LogTemp, Error, TEXT("LoadExternalModel: GltfLoaderActor is not assigned in DronePawn for model '%s'. Cannot load mesh."), *ModelName);
         return false;
-    }
+    }*/
 
     UE_LOG(LogTemp, Log, TEXT("LoadExternalModel: Calling Blueprint GLBtoSM for path: %s"), *GltfPath);
 
-    UStaticMesh* LoadedMesh = GltfLoaderActor->GLBtoSM(GltfPath);
+    /*UStaticMesh* LoadedMesh = GltfLoaderActor->GLBtoSM(GltfPath);*/
+
+    UStaticMesh* LoadedMesh = LoadGLBtoSMs_BlueprintEvent(*GltfPath);
 
     if (LoadedMesh)
     {
@@ -322,10 +325,10 @@ bool ADronePawn::ParsePropellerYAML(const FString& YamlPath, TArray<FExternalPro
         std::string FileContentStd = TCHAR_TO_UTF8(*FileContent); 
         YAML::Node RootNode = YAML::Load(FileContentStd);      
 
-        if (!RootNode.IsMap()) {
+        /*if (!RootNode.IsMap()) {
              UE_LOG(LogTemp, Error, TEXT("ParsePropellerYAML: Root node in '%s' is not a Map."), *YamlPath);
              return false;
-        }
+        }*/
 
         if (RootNode["propeller_mesh"] && RootNode["propeller_mesh"].IsScalar()) {
              OutPropellerMeshPath = UTF8_TO_TCHAR(RootNode["propeller_mesh"].as<std::string>().c_str());
@@ -370,9 +373,9 @@ bool ADronePawn::ParsePropellerYAML(const FString& YamlPath, TArray<FExternalPro
 
                 if (PropNode["location"] && PropNode["location"].IsSequence() && PropNode["location"].size() == 3) {
                     try {
-                        PropLocation.X = PropNode["location"][0].as<double>();
-                        PropLocation.Y = PropNode["location"][1].as<double>();
-                        PropLocation.Z = PropNode["location"][2].as<double>();
+                        PropLocation.X = PropNode["location"][0].as<double>()*100;
+                        PropLocation.Y = PropNode["location"][1].as<double>()*-100;
+                        PropLocation.Z = PropNode["location"][2].as<double>()*100;
                         bParsedLocation = true;
                     } catch (const YAML::BadConversion& e) {
                         UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Bad conversion for 'location'. Error: %s. Skipping."), *PropName, UTF8_TO_TCHAR(e.what())); continue;
@@ -380,12 +383,12 @@ bool ADronePawn::ParsePropellerYAML(const FString& YamlPath, TArray<FExternalPro
                 } else { UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': 'location' key is missing, not a sequence, or wrong size. Skipping."), *PropName); continue; }
 
 
-                if (PropNode["orientation"] && PropNode["orientation"].IsMap()) 
+                if (PropNode["orientation"] && PropNode["orientation"].IsSequence() && PropNode["orientation"].size() == 3) 
                 {
                      try {
-                        PropRotation.Roll = PropNode["orientation"]["roll"].as<double>();
-                        PropRotation.Pitch = PropNode["orientation"]["pitch"].as<double>();
-                        PropRotation.Yaw = PropNode["orientation"]["yaw"].as<double>();
+                        PropRotation.Roll = PropNode["orientation"][0].as<double>();
+                        PropRotation.Pitch = PropNode["orientation"][1].as<double>();
+                        PropRotation.Yaw = PropNode["orientation"][2].as<double>();
                          bParsedRotation = true;
                      } catch (const YAML::Exception& e) { 
                         UE_LOG(LogTemp, Warning, TEXT("ParsePropellerYAML: Propeller '%s': Error parsing 'orientation'. Error: %s. Skipping."), *PropName, UTF8_TO_TCHAR(e.what())); continue;
@@ -647,14 +650,14 @@ ADronePawn::ADronePawn() {
   RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
   RangefinderConfig.Offset     = FVector(0, 0, -10);
 
-
-
-
-  ExternalModelBasePath = FPaths::ProjectSavedDir() + TEXT("ExternalModels/");
-
+    
+  ExternalModelBasePath = FPaths::ProjectPluginsDir() + TEXT("flight_forge/FlightForgePlugin/Content/ExternalModels/");
+    
   /* TODO: proper path to the propeller */  
-  DefaultExternalPropellerMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT(".DefaultPropellerMesh")));
+  DefaultExternalPropellerMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(FPaths::ProjectPluginsDir() + TEXT("flight_forge/FlightForgePlugin/Content/Meshes/Propellers/propeller_X500.propeller_X500")));
 
+  DefaultExternalPropellerMeshPath = "/FlightForgePlugin/Meshes/Propellers/propeller_x500.propeller_x500";
+    
 
 
 #if PLATFORM_WINDOWS
