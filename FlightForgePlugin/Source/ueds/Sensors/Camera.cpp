@@ -33,6 +33,21 @@ void UCamera::BeginPlay()
 	// TODO check https://github.com/TimmHess/UnrealImageCapture
 }
 
+void UCamera::Initialize(int InSensorID)
+{
+	Super::Initialize(InSensorID);
+	
+	
+	SceneCaptureMeshHolder->SetMobility(EComponentMobility::Movable);
+	if (!SceneCaptureMeshHolder->IsRegistered()) 
+		SceneCaptureMeshHolder->RegisterComponent();
+	
+	
+	SceneCaptureComponent2D->SetMobility(EComponentMobility::Movable);
+	if (!SceneCaptureComponent2D->IsRegistered())
+		SceneCaptureComponent2D->RegisterComponent();
+}
+
 void UCamera::BeginDestroy()
 {
 	// Cleanup buffer when component is destroyed

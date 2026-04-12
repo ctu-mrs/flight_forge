@@ -61,6 +61,20 @@ void UStereoCamera::BeginPlay()
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
 }
 
+void UStereoCamera::Initialize(int InSensorID)
+{
+	Super::Initialize(InSensorID);
+	
+	SceneCaptureMeshHolderStereoRight->SetMobility(EComponentMobility::Movable);
+	if (!SceneCaptureMeshHolderStereoRight->IsRegistered()) 
+		SceneCaptureMeshHolderStereoRight->RegisterComponent();
+	
+	
+	SceneCaptureComponent2DStereoRight->SetMobility(EComponentMobility::Movable);
+	if (!SceneCaptureComponent2DStereoRight->IsRegistered())
+		SceneCaptureComponent2DStereoRight->RegisterComponent();
+}
+
 
 void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {

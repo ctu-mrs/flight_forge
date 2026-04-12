@@ -51,6 +51,8 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
+	virtual void Initialize(int InSensorID) override;
+	
 
 	FStereoCameraConfig stereo_camera_config_;
 

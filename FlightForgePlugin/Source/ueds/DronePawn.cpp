@@ -37,7 +37,7 @@ ADronePawn::ADronePawn() {
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
-
+  RootComponent = RootMeshComponent;
   
   nextSensorID = 0;
 
@@ -150,6 +150,18 @@ void ADronePawn::BeginPlay() {
     
   Super::BeginPlay();
 }
+
+// void ADronePawn::PostInitializeComponents() {
+//     Super::PostInitializeComponents();
+//     
+//     // Add default sensors that every drone should have
+//     // AddSensor(0);
+//     // AddSensor(1); //Lidar
+//     // AddSensor(2); //RangeFinder
+//     // AddSensor(3); //Lidar Livox
+//     // AddSensor(4); //RGB Seg camera
+//     // AddSensor(5); //Stereo camera
+// }
 
 
 void ADronePawn::StartServer() {
@@ -412,68 +424,119 @@ int ADronePawn::AddSensor(int SensorTypeNum){
 
   int ret = nextSensorID;
   
-  USensor* NewSensor = nullptr;
+  // USensor* NewSensor = nullptr;
+  // SensorType Type = static_cast<SensorType>(SensorTypeNum);
+  //
+  // switch (Type)
+  // {
+  // case SensorType::RGB_CAMERA:
+  //   {
+  //     URgbCamera* NewCam = NewObject<URgbCamera>(this, URgbCamera::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = NewCam;
+  //     break;
+  //   }
+  //
+  // case SensorType::LIDAR:
+  //   {
+  //     ULidar* NewLidar = NewObject<ULidar>(this, ULidar::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = NewLidar;
+  //     break;
+  //   }
+  //
+  // case SensorType::RANGEFINDER:
+  //   {
+  //     URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = RF;
+  //     break;
+  //   }
+  // case SensorType::LIDAR_LIVOX:
+  //   {
+  //     ULidarLivox* LidarLiv = NewObject<ULidarLivox>(this, ULidarLivox::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = LidarLiv;
+  //     break;
+  //   }
+  // case SensorType::RGB_SEG_CAMERA:
+  //   {
+  //     URgbSegCamera* NewRgbSeg = NewObject<URgbSegCamera>(this, URgbSegCamera::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = NewRgbSeg;
+  //     break;
+  //   }
+  // case SensorType::STEREO_CAMERA:
+  //   {
+  //     UStereoCamera* NewStereo = NewObject<UStereoCamera>(this, UStereoCamera::StaticClass(), NAME_None, RF_NoFlags);
+  //     NewSensor = NewStereo;
+  //     break;
+  //   }
+  //
+  // default:
+  //   UE_LOG(LogTemp, Error, TEXT("Unhandled sensor type: %d"), SensorTypeNum);
+  //   return -2;
+  // }
+  //
+  // if (NewSensor)
+  // {
+  //   NewSensor->SetMobility(EComponentMobility::Movable);
+  //   
+  //   NewSensor->Initialize(nextSensorID);
+  //   
+  //   NewSensor->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::SnapToTargetIncludingScale);
+  //   NewSensor->RegisterComponent();
+  //   NewSensor->UpdateComponentToWorld();
+  //   AddInstanceComponent(NewSensor);
+  //
+  //   FVector SensorLoc = NewSensor->GetComponentLocation();
+  //   UE_LOG(LogTemp, Warning, TEXT("Sensor World Location after attach: %s"), *SensorLoc.ToString());
+  //   
+  //   Sensors.Add(nextSensorID, NewSensor);
+  //   UE_LOG(LogTemp, Log, TEXT("Added sensor %s with ID %d"),
+  //       *NewSensor->GetName(), nextSensorID);
+  //   
+  //   nextSensorID++;
+  // }
+
+  UClass* SensorClass = nullptr;
   SensorType Type = static_cast<SensorType>(SensorTypeNum);
 
   switch (Type)
   {
-  case SensorType::RGB_CAMERA:
-    {
-      URgbCamera* NewCam = NewObject<URgbCamera>(this, URgbCamera::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = NewCam;
-      break;
-    }
-
-  case SensorType::LIDAR:
-    {
-      ULidar* NewLidar = NewObject<ULidar>(this, ULidar::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = NewLidar;
-      break;
-    }
-
-  case SensorType::RANGEFINDER:
-    {
-      URangeFinder* RF = NewObject<URangeFinder>(this, URangeFinder::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = RF;
-      break;
-    }
-  case SensorType::LIDAR_LIVOX:
-    {
-      ULidarLivox* LidarLiv = NewObject<ULidarLivox>(this, ULidarLivox::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = LidarLiv;
-      break;
-    }
-  case SensorType::RGB_SEG_CAMERA:
-    {
-      URgbSegCamera* NewRgbSeg = NewObject<URgbSegCamera>(this, URgbSegCamera::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = NewRgbSeg;
-      break;
-    }
-  case SensorType::STEREO_CAMERA:
-    {
-      UStereoCamera* NewStereo = NewObject<UStereoCamera>(this, UStereoCamera::StaticClass(), NAME_None, RF_NoFlags);
-      NewSensor = NewStereo;
-      break;
-    }
-
-  default:
-    UE_LOG(LogTemp, Error, TEXT("Unhandled sensor type: %d"), SensorTypeNum);
-    return -2;
+    case SensorType::RGB_CAMERA:     SensorClass = URgbCamera::StaticClass();   break;
+    case SensorType::LIDAR:          SensorClass = ULidar::StaticClass();       break;
+    case SensorType::RANGEFINDER:    SensorClass = URangeFinder::StaticClass(); break;
+    case SensorType::LIDAR_LIVOX:    SensorClass = ULidarLivox::StaticClass();  break;
+    case SensorType::RGB_SEG_CAMERA: SensorClass = URgbSegCamera::StaticClass();break;
+    case SensorType::STEREO_CAMERA:  SensorClass = UStereoCamera::StaticClass();break;
+    default: return -2;
   }
+
+  // 2. Create the Object
+  // Using NewObject with 'this' as the Outer sets the ownership correctly
+  USensor* NewSensor = NewObject<USensor>(this, SensorClass);
 
   if (NewSensor)
   {
+    // 3. Configure BEFORE Registration
+    NewSensor->SetMobility(EComponentMobility::Movable);
     NewSensor->Initialize(nextSensorID);
-    
-    NewSensor->RegisterComponent();
-    NewSensor->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-    AddInstanceComponent(NewSensor);
 
+    // 4. Hierarchy Setup
+    // Attach BEFORE RegisterComponent so Unreal knows where it belongs 
+    // in the world the moment it "wakes up"
+    NewSensor->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::SnapToTargetIncludingScale);
+
+    // 5. Activation
+    // RegisterComponent will handle registering sub-components 
+    // if they were created via CreateDefaultSubobject in the constructor
+    NewSensor->RegisterComponent();
+
+    // 6. Persistence
+    // AddInstanceComponent makes it show up in the Editor's Details panel during simulation
+    AddInstanceComponent(NewSensor);
     Sensors.Add(nextSensorID, NewSensor);
-    UE_LOG(LogTemp, Log, TEXT("Added sensor %s with ID %d"),
-        *NewSensor->GetName(), nextSensorID);
-    
-    nextSensorID++;
+
+    UE_LOG(LogTemp, Log, TEXT("Successfully attached %s (ID: %d) at %s"), 
+        *NewSensor->GetName(), nextSensorID, *NewSensor->GetComponentLocation().ToString());
+
+    return nextSensorID++;
   }
 
   return ret;
