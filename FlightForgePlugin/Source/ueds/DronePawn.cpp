@@ -2,6 +2,8 @@
 
 #include "DronePawn.h"
 
+#include UE_INLINE_GENERATED_CPP_BY_NAME(DronePawn)
+
 #include "ImageUtils.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -19,7 +21,7 @@
 #include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
-#include "Kismet/BlueprintTypeConversions.h"
+/* #include "Kismet/BlueprintTypeConversions.h" */
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
@@ -103,15 +105,9 @@ ADronePawn::ADronePawn() {
   PrimaryActorTick.bCanEverTick = true;
   PrimaryActorTick.TickGroup    = TG_PrePhysics;
 
-#if PLATFORM_WINDOWS
-  RgbCameraBufferCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-  StereoCameraBufferCriticalSection = std::make_unique<FWindowsCriticalSection>();
-  RgbSegCameraBufferCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-  RgbCameraBufferCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
-  StereoCameraBufferCriticalSection = std::make_unique<FPThreadsCriticalSection>();
-  RgbSegCameraBufferCriticalSection = std::make_unique<FPThreadsCriticalSection>();
-#endif
+  RgbCameraBufferCriticalSection    = std::make_unique<FCriticalSection>();
+  StereoCameraBufferCriticalSection = std::make_unique<FCriticalSection>();
+  RgbSegCameraBufferCriticalSection = std::make_unique<FCriticalSection>();
 
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
@@ -248,17 +244,10 @@ ADronePawn::ADronePawn() {
   RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
   RangefinderConfig.Offset     = FVector(0, 0, -10);
 
-#if PLATFORM_WINDOWS
-  LidarHitsCriticalSection       = std::make_unique<FWindowsCriticalSection>();
-  LidarSegHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-  LidarIntHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-  RangefinderHitsCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-  LidarHitsCriticalSection          = std::make_unique<FPThreadsCriticalSection>();
-  LidarSegHitsCriticalSection       = std::make_unique<FPThreadsCriticalSection>();
-  LidarIntHitsCriticalSection       = std::make_unique<FPThreadsCriticalSection>();
-  RangefinderHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
-#endif
+  LidarHitsCriticalSection       = std::make_unique<FCriticalSection>();
+  LidarSegHitsCriticalSection    = std::make_unique<FCriticalSection>();
+  LidarIntHitsCriticalSection    = std::make_unique<FCriticalSection>();
+  RangefinderHitsCriticalSection = std::make_unique<FCriticalSection>();
 
   LidarHits     = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
   LidarSegHits  = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -301,7 +290,7 @@ void ADronePawn::BeginPlay() {
   
   SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorHDR;
   SceneCaptureComponent2DRgb->TextureTarget = RenderTarget2DRgb;
-  SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(true);
+  SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(false);
   SceneCaptureComponent2DRgb->bAlwaysPersistRenderingState = true;
   SceneCaptureComponent2DRgb->bCaptureEveryFrame           = false;
   SceneCaptureComponent2DRgb->bCaptureOnMovement           = false;
@@ -1546,8 +1535,6 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
     SceneCaptureComponent2DRgb->CaptureSource = SCS_FinalColorLDR;
   }
 
-  SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-
   SceneCaptureComponent2DRgb->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
   SceneCaptureComponent2DRgb->TextureTarget                        = RenderTarget2DRgb;
@@ -1556,7 +1543,23 @@ bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config) {
   SceneCaptureComponent2DRgb->bCaptureOnMovement                   = false;
   SceneCaptureComponent2DRgb->PostProcessSettings.MotionBlurAmount = Config.motion_blur_amount;
   SceneCaptureComponent2DRgb->PostProcessSettings.MotionBlurMax    = Config.motion_blur_distortion;
+
+  FPostProcessSettings& PPSettings = SceneCaptureComponent2DRgb->PostProcessSettings;
+
+  // Force Lumen for Global Illumination
+  PPSettings.bOverride_DynamicGlobalIlluminationMethod = true;
+  PPSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
+
+  // Force Lumen for Reflections
+  PPSettings.bOverride_ReflectionMethod = true;
+  PPSettings.ReflectionMethod = EReflectionMethod::Lumen;
+
   SceneCaptureComponent2DRgb->ShowFlags.SetMotionBlur(Config.enable_motion_blur);
+  SceneCaptureComponent2DRgb->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+  SceneCaptureComponent2DRgb->ShowFlags.SetNaniteMeshes(true);
+  SceneCaptureComponent2DRgb->ShowFlags.SetAtmosphere(true);
+  SceneCaptureComponent2DRgb->ShowFlags.SetLumenReflections(true);
+  SceneCaptureComponent2DRgb->ShowFlags.SetLumenGlobalIllumination(true);
 
   SceneCaptureComponent2DRgbSeg->TextureTarget                = RenderTarget2DRgbSeg;
   SceneCaptureComponent2DRgbSeg->bAlwaysPersistRenderingState = true;

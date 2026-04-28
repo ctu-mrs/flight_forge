@@ -212,15 +212,9 @@ public:
   // Sets default values for this character's properties
   ADronePawn();
 
-#if PLATFORM_WINDOWS
-  std::unique_ptr<FWindowsCriticalSection> RgbCameraBufferCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> StereoCameraBufferCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> RgbSegCameraBufferCriticalSection;
-#else
-  std::unique_ptr<FPThreadsCriticalSection> RgbCameraBufferCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> StereoCameraBufferCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> RgbSegCameraBufferCriticalSection;
-#endif
+  std::unique_ptr<FCriticalSection> RgbCameraBufferCriticalSection;
+  std::unique_ptr<FCriticalSection> StereoCameraBufferCriticalSection;
+  std::unique_ptr<FCriticalSection> RgbSegCameraBufferCriticalSection;
 
   TArray<FColor>                                                     RgbCameraBuffer;
   TArray<FColor>                                                     StereoLeftCameraBuffer;
@@ -321,19 +315,11 @@ private:
   
   void DisabledPhysics_StartRotatePropellers();
 
-#if PLATFORM_WINDOWS
-  std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> LidarIntHitsCriticalSection;
-  std::unique_ptr<FWindowsCriticalSection> RangefinderHitsCriticalSection;
+  std::unique_ptr<FCriticalSection> LidarHitsCriticalSection;
+  std::unique_ptr<FCriticalSection> LidarSegHitsCriticalSection;
+  std::unique_ptr<FCriticalSection> LidarIntHitsCriticalSection;
+  std::unique_ptr<FCriticalSection> RangefinderHitsCriticalSection;
 
-
-#else
-  std::unique_ptr<FPThreadsCriticalSection> LidarHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> LidarSegHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> LidarIntHitsCriticalSection;
-  std::unique_ptr<FPThreadsCriticalSection> RangefinderHitsCriticalSection;
-#endif
   std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
   std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
   std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarIntHits;

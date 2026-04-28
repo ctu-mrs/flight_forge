@@ -13,6 +13,10 @@ public class ueds : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		
 		//bUseRTTI = true;
+
+    // Opt into UE 5.7 build settings
+    DefaultBuildSettings = BuildSettingsVersion.V6;
+    IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
 		
 		bEnableUndefinedIdentifierWarnings = false;
     bEnableExceptions = true;

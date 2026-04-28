@@ -35,18 +35,11 @@ private:
 
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ON_DEMAND;
 
-#if PLATFORM_WINDOWS
-	std::unique_ptr<FWindowsCriticalSection> FPSCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-	std::unique_ptr<FPThreadsCriticalSection> FPSCriticalSection = std::make_unique<FPThreadsCriticalSection>();
-#endif
+	std::unique_ptr<FCriticalSection> FPSCriticalSection = std::make_unique<FCriticalSection>();
 	double FPS = 0; 
 
-#if PLATFORM_WINDOWS
-	std::unique_ptr<FWindowsCriticalSection> DronePawnsCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-	std::unique_ptr<FPThreadsCriticalSection> DronePawnsCriticalSection = std::make_unique<FPThreadsCriticalSection>();
-#endif
+	std::unique_ptr<FCriticalSection> DronePawnsCriticalSection = std::make_unique<FCriticalSection>();
+
 	TMap<int, std::pair<ADronePawn*, APlayerController*>> DronePawns = TMap<int, std::pair<ADronePawn*, APlayerController*>>();
 
 	AuedsGameModeBase(const FObjectInitializer& ObjectInitializer) : AGameModeBase(ObjectInitializer)
