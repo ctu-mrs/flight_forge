@@ -63,6 +63,7 @@ enum CameraMode
   CAMERA_MODE_RGB          = 1,
   CAMERA_MODE_STEREO       = 2,
   CAMERA_MODE_RGB_SEG      = 3,
+  CAMERA_MODE_DEPTH        = 4,
 };
 
 struct FLidarConfig
@@ -158,6 +159,9 @@ public:
   UTextureRenderTarget2D* RenderTarget2DStereoRight;
 
   UPROPERTY(VisibleAnywhere, Category = "Components")
+  UTextureRenderTarget2D* RenderTarget2DDepth;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components")
   UTextureRenderTarget2D* RenderTarget2DRgbSeg;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
@@ -173,6 +177,9 @@ public:
   UStaticMeshComponent* SceneCaptureMeshHolderRgbSeg;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
+  UStaticMeshComponent* SceneCaptureMeshHolderDepth;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   UStaticMeshComponent* SceneCaptureMeshHolderStereoLeft;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
@@ -183,6 +190,9 @@ public:
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   USceneCaptureComponent2D* SceneCaptureComponent2DRgbSeg;
+
+  UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
+  USceneCaptureComponent2D* SceneCaptureComponent2DDepth;
 
   UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
   USceneCaptureComponent2D* SceneCaptureComponent2DStereoLeft;
@@ -216,10 +226,12 @@ public:
   std::unique_ptr<FWindowsCriticalSection> RgbCameraBufferCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> StereoCameraBufferCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> RgbSegCameraBufferCriticalSection;
+  std::unique_ptr<FWindowsCriticalSection> DepthCameraBufferCriticalSection;
 #else
   std::unique_ptr<FPThreadsCriticalSection> RgbCameraBufferCriticalSection;
   std::unique_ptr<FPThreadsCriticalSection> StereoCameraBufferCriticalSection;
   std::unique_ptr<FPThreadsCriticalSection> RgbSegCameraBufferCriticalSection;
+  std::unique_ptr<FPThreadsCriticalSection> DepthCameraBufferCriticalSection;
 #endif
 
   TArray<FColor>                                                     RgbCameraBuffer;
@@ -227,14 +239,17 @@ public:
   TArray<FColor>                                                     StereoRightCameraBuffer;
   TArray<FColor>                                                     SemanticBuffer;
   TArray<FColor>                                                     RgbSegCameraBuffer;
+  TArray<FFloat16Color>                                              DepthCameraBuffer;
 
   double rgb_camera_last_request_time_ = 0;
   double rgb_seg_camera_last_request_time_ = 0;
   double stereo_camera_last_request_time_ = 0;
+  double depth_camera_last_request_time_ = 0;
 
   double rgb_stamp_ = 0;
   double rgb_seg_stamp_ = 0;
   double stereo_stamp_ = 0;
+  double depth_stamp_ = 0;
 
   std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>> InstructionQueue;
 
@@ -259,6 +274,8 @@ public:
   void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp);
 
   bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
+
+  bool GetDepthCameraDataFromServerThread(TArray<uint16>& outArray, double& stamp);
 
   bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
 
@@ -321,6 +338,8 @@ private:
   
   void DisabledPhysics_StartRotatePropellers();
 
+  void SetDepthCamera(const FRgbCameraConfig& Config);
+
 #if PLATFORM_WINDOWS
   std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
   std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
@@ -360,6 +379,8 @@ private:
   bool RgbCameraRendered                  = false;
   bool RgbSegCameraRendered               = false;
   bool StereoCameraRendered               = false;
+  bool DepthCameraRendered                = false;
+
 
   TArray<FramePropellersTransform> FramePropellersTransforms;
 };

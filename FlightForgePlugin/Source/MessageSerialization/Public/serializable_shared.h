@@ -108,6 +108,7 @@ enum MessageType : unsigned short
   get_crash_state                 = 21,
   get_lidar_int                   = 22,
   get_rangefinder_data            = 23,
+  get_depth_camera_data           = 24,
 };
 
 /* struct LidarConfig //{ */
@@ -359,6 +360,31 @@ struct Response : public Common::NetworkResponse
 }  // namespace GetRgbSegCameraData
 
 //}
+
+
+
+namespace GetDepthCameraData {
+    struct Request : public Common::NetworkRequest
+    {
+        Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_depth_camera_data)) {}
+    };
+
+    struct Response : public Common::NetworkResponse
+    {
+        Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_depth_camera_data)) {}
+        explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_depth_camera_data, _status) {}
+
+        std::vector<uint16_t> image_;
+        double                stamp_;
+        template <class Archive>
+        void serialize(Archive& archive) {
+            archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_);
+        }
+    };
+}
+
+
+
 
 /* GetStereoCameraData //{ */
 
@@ -618,7 +644,6 @@ struct Response : public Common::NetworkResponse
   double startZ;
 
   std::vector<LidarData> lidarData;
-  
   double                     stamp_;
 
   template <class Archive>
@@ -667,8 +692,8 @@ struct Response : public Common::NetworkResponse
   double startZ;
 
   std::vector<LidarSegData> lidarSegData;
-
   double                     stamp_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarSegData, stamp_);
@@ -715,7 +740,6 @@ struct Response : public Common::NetworkResponse
   double startZ;
 
   std::vector<LidarIntData> lidarIntData;
-  
   double                     stamp_;
 
   template <class Archive>

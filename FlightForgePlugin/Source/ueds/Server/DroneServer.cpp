@@ -65,6 +65,13 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	
 		return GetRgbSegCameraData(Client, CustomRequest);
 	}
+
+	if (Request.type == Serializable::Drone::MessageType::get_depth_camera_data) {
+		Serializable::Drone::GetDepthCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetDepthCameraData(Client, CustomRequest);
+	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rotation) {
 	
@@ -403,6 +410,30 @@ bool DroneServer::GetRgbSegCameraData(const FTCPClient& Client, Serializable::Dr
 	Response.stamp_ = stamp;
 
 	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+	return Respond(Client, OutputStream);
+}
+
+bool DroneServer::GetDepthCameraData(const FTCPClient& Client, Serializable::Drone::GetDepthCameraData::Request& Request) {
+	TArray<uint16_t> Temp;
+	double stamp;
+	bool res = DronePawn->GetDepthCameraDataFromServerThread(Temp, stamp);
+
+	if (!res) {
+		Serializable::Drone::GetDepthCameraData::Response Response(false);
+		std::stringstream OutputStream;
+		Serialization::DeserializeResponse(Response, OutputStream);
+		return Respond(Client, OutputStream);
+	}
+	Serializable::Drone::GetDepthCameraData::Response Response(true);
+	Response.image_ = std::vector<uint16_t>(Temp.Num());
+	for (int i = 0; i < Temp.Num(); i++) {
+		Response.image_[i] = Temp[i];
+	}
+	std::stringstream OutputStream;
+	Response.stamp_ = stamp;
+	Response.status = true;
+
 	Serialization::DeserializeResponse(Response, OutputStream);
 	return Respond(Client, OutputStream);
 }
