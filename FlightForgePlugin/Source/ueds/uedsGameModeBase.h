@@ -67,8 +67,23 @@ private:
 
 	virtual void BeginPlay() override
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Starting game mode server"));
+		Super::BeginPlay();
+
+		FString NextMapNameStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapName"));
+		FString NextMapPathStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapPath"));
+		if (!NextMapNameStr.IsEmpty() && !NextMapPathStr.IsEmpty())
+		{
+			StartAsyncLoadingTargetMap(NextMapNameStr, NextMapPathStr);
+        
+			UE_LOG(LogTemp, Warning, TEXT("Loading screen, switching to: %s"), *NextMapPathStr);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Starting game mode server (Normal Map)"));
+		}
+		
 		Server->Run();
+		// Server->Run();
 		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
 		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
 		// {
@@ -85,7 +100,7 @@ private:
 		// 	L.X += 200;
 		// }
 		//SpawnDrone();
-		Super::BeginPlay();
+		// Super::BeginPlay();
 	}
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
@@ -322,56 +337,106 @@ public:
 	bool SwitchWorldLevel(const short& WorldLevelEnum)
 	{
 		FName NameOfWorld;
-
+		FString PackagePath;
+		
 		switch (WorldLevelEnum)
 		{
 		case Serializable::GameMode::WorldLevelEnum::VALLEY:
 			NameOfWorld = "Valley";
+			PackagePath = "/Game/Worlds/Valley/Maps/Valley";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::FOREST:
 			NameOfWorld = "Forest";
+			PackagePath = "/Game/Worlds/Forest/Maps/Forest";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::INFINITE_FOREST:
 			NameOfWorld = "InfinityForest";
+			PackagePath = "/Game/Worlds/Forest/Maps/InfinityForest";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::WAREHOUSE:
 			NameOfWorld = "Warehouse";
+			PackagePath = "/Game/Worlds/Warehouse/Maps/Warehouse";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::CAVE:
 			NameOfWorld = "CaveTunnel";
+			PackagePath = "/Game/Worlds/Cave/Maps/CaveTunnel";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::ERDING_AIRBASE:
 			NameOfWorld = "ErdingAirBase";
+			PackagePath = "/Game/Worlds/ErdingAirBase/Maps/ErdingAirBase";
 			break;
 		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
 			NameOfWorld = "Temesvar_annotated";
+			PackagePath = "/Game/Worlds/Temesvar/Maps/Temesvar_annotated";
 			break;
 		case 7:
 			NameOfWorld = "ElectricTowers";
+			PackagePath = "/Game/Worlds/ElectricTowers/Maps/ElectricTowers";
 			break;
 		case 8:
 			NameOfWorld = "Race_1";
+			PackagePath = "/Game/Worlds/Warehouse/Maps/Race_1";
 			break;
 		case 9:
 			NameOfWorld = "Race_2";
+			PackagePath = "/Game/Worlds/Warehouse/Maps/Race_2";
 			break;
 	    case 10:
-	      NameOfWorld = "IndustialWarehouse";
+			NameOfWorld = "IndustialWarehouse";
+			PackagePath = "/Game/Worlds/IndustialWarehouse/Maps/IndustialWarehouse";
 	      break;
 	    case 11:
-	      NameOfWorld = "ServiceTunnel";
+			NameOfWorld = "ServiceTunnel";
+			PackagePath = "/Game/Worlds/ServiceTunnel/Maps/ServiceTunnel";
 	      break;
 	    case 12:
-	      NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
+			NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
+			PackagePath = "/Game/MWDeadSpruceForest/Maps/DeadSpruceForestBiome_Example_Daytime";
 	      break;
 		default:
-			NameOfWorld = "InfiniteForest";
+			// NameOfWorld = "InfiniteForest"; could not find level named InfiniteForest
+			NameOfWorld = "InfinityForest";
+			PackagePath = "/Game/Worlds/Forest/Maps/InfinityForest";
 			break;
 		}
 		
-		UGameplayStatics::OpenLevel(this, NameOfWorld);
+		FString Options = FString::Printf(TEXT("?game=/Script/ueds.uedsGameModeBase?NextMapName=%s?NextMapPath=%s"), 
+		*NameOfWorld.ToString(), 
+		*PackagePath);
 
+		//opens empty level, might switch to loading screen
+		UE_LOG(LogTemp, Warning, TEXT("OpenLevel: Empty"));
+		UGameplayStatics::OpenLevel(this, "/Engine/Maps/Entry", true, Options);
+		
 		return true; 
+	}
+
+	void StartAsyncLoadingTargetMap(const FString& NextMapNameStr, const FString& NextMapPathStr)
+	{
+		FName TargetMapName = FName(*NextMapNameStr);
+		
+		FLoadPackageAsyncDelegate CompletionDelegate = FLoadPackageAsyncDelegate::CreateUObject(
+			this, 
+			&AuedsGameModeBase::OnMapPackageLoaded, 
+			TargetMapName
+		);
+		
+		LoadPackageAsync(NextMapPathStr, CompletionDelegate, 0, PKG_ContainsMap);
+	}
+	
+
+	void OnMapPackageLoaded(const FName& PackageName, UPackage* LoadedPackage, EAsyncLoadingResult::Type Result, FName MapNameToOpen)
+	{
+		if (Result == EAsyncLoadingResult::Succeeded)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Target Map %s is fully in RAM. Executing fast switch."), *MapNameToOpen.ToString());
+			
+			UGameplayStatics::OpenLevel(this, MapNameToOpen);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to load map package to RAM: %s"), *PackageName.ToString());
+		}
 	}
 
 	FVector GetWorldOrigin()
