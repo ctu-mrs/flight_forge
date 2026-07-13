@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <mutex>
+
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "TcpServer.h"
 
@@ -11,13 +13,15 @@ class AuedsGameModeBase;
 class UedsGameModeServer : public TcpServer
 {
 public:
-	UedsGameModeServer(AuedsGameModeBase& _GameMode, const int Port): TcpServer(Port), GameMode(&_GameMode) {};
+	UedsGameModeServer(const int Port, AuedsGameModeBase* InitialGameMode = nullptr): TcpServer(Port), GameMode(InitialGameMode) {};
 
+	void SetCurrentGameMode(AuedsGameModeBase* NewGameMode);
 protected:
 	virtual bool Route(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream) override;
 
 private:
 	AuedsGameModeBase* GameMode;
+	std::mutex GameModeMutex;
 
 	bool GetDrones(const FTCPClient& Client, Serializable::GameMode::GetDrones::Request& Request);
 

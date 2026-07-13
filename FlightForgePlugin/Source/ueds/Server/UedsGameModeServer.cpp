@@ -128,9 +128,13 @@ bool UedsGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<std::st
   return false;
 }
 
-//}
 
-/* getDrones() //{ */
+void UedsGameModeServer::SetCurrentGameMode(AuedsGameModeBase* NewGameMode)
+{
+  std::lock_guard<std::mutex> Lock(GameModeMutex);
+  GameMode = NewGameMode;
+}
+
 
 bool UedsGameModeServer::GetDrones(const FTCPClient& Client, Serializable::GameMode::GetDrones::Request& Request) {
 
@@ -226,7 +230,8 @@ bool UedsGameModeServer::SpawnDrone(const FTCPClient& Client, Serializable::Game
 
   auto Response = Serializable::GameMode::SpawnDrone::Response(PawnPort >= 0);
   Response.port = PawnPort;
-
+  UE_LOG(LogTemp, Warning, TEXT("Pawn port: %d"), PawnPort);
+  
   std::stringstream OutputStream;
   Serialization::DeserializeResponse<Serializable::GameMode::SpawnDrone::Response>(Response, OutputStream);
 
@@ -247,11 +252,11 @@ bool UedsGameModeServer::SpawnDroneAtLocation(const FTCPClient& Client,
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 
-  auto Response = Serializable::GameMode::SpawnDrone::Response(PawnPort >= 0);
+  auto Response = Serializable::GameMode::SpawnDroneAtLocation::Response(PawnPort >= 0);
   Response.port = PawnPort;
 
   std::stringstream OutputStream;
-  Serialization::DeserializeResponse(Response, OutputStream);
+  Serialization::DeserializeResponse<Serializable::GameMode::SpawnDroneAtLocation::Response>(Response, OutputStream);
 
   return Respond(Client, OutputStream);  
 }

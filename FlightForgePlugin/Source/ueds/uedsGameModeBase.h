@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "DronePawn.h"
+#include "uedsGameInstance.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Server/UedsGameModeServer.h"
 #include "GameFramework/GameModeBase.h"
@@ -15,9 +16,14 @@
   #include "Microsoft/AllowMicrosoftPlatformTypes.h"
 #endif
 
-/**
- * 
- */
+
+//Drone pooling for faster spawning
+struct FPooledDrone
+{
+	APlayerController* Controller;
+	ADronePawn* Pawn;
+};
+
 UCLASS()
 class UEDS_API AuedsGameModeBase : public AGameModeBase
 {
@@ -31,8 +37,9 @@ public:
 	int ForestHillyLevel = 3;
 
 private:
-	std::unique_ptr<UedsGameModeServer> Server;
-
+	int DronePoolSize = 2;
+	TArray<FPooledDrone> DronePool;
+	
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 
 #if PLATFORM_WINDOWS
@@ -54,8 +61,6 @@ private:
 		PrimaryActorTick.bCanEverTick = true;
 		
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>>();
-		
-		Server = std::make_unique<UedsGameModeServer>(*this, 8551);
 	}
 
 	// Must be used in order to tell UE that there will be more players - drones
@@ -69,6 +74,13 @@ private:
 	{
 		Super::BeginPlay();
 
+		UuedsGameInstance* MyGameInstance = Cast<UuedsGameInstance>(GetGameInstance());
+		if (MyGameInstance && MyGameInstance->Server)
+		{
+			MyGameInstance->Server->SetCurrentGameMode(this);
+			UE_LOG(LogTemp, Log, TEXT("GameMode connected to server!"));
+		}
+		
 		FString NextMapNameStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapName"));
 		FString NextMapPathStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapPath"));
 		if (!NextMapNameStr.IsEmpty() && !NextMapPathStr.IsEmpty())
@@ -80,9 +92,9 @@ private:
 		else
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Starting game mode server (Normal Map)"));
+			InitializeDronePool();
 		}
 		
-		Server->Run();
 		// Server->Run();
 		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
 		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
@@ -105,7 +117,13 @@ private:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
 	{
-		Server->Stop();
+		UuedsGameInstance* MyGameInstance = Cast<UuedsGameInstance>(GetGameInstance());
+		if (MyGameInstance && MyGameInstance->Server)
+		{
+			MyGameInstance->Server->SetCurrentGameMode(nullptr);
+		}
+
+		Super::EndPlay(EndPlayReason);
 	}
 
 	virtual void Tick(float DeltaSeconds) override
@@ -132,6 +150,33 @@ private:
 		return NextDronePort++;
 	}
 
+	void InitializeDronePool()
+	{
+		for (int i = 0; i < DronePoolSize; i++)
+		{
+			SpawnDroneToPool();
+		}
+	}
+
+	void SpawnDroneToPool()
+	{
+		FTransform HideTransform(FRotator::ZeroRotator, FVector(0, 0, -100000));
+		FPooledDrone NewDrone;
+			
+		NewDrone.Controller = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+			
+		NewDrone.Pawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(NewDrone.Controller, HideTransform));
+
+		if (NewDrone.Pawn)
+		{
+			NewDrone.Pawn->SetActorHiddenInGame(true);
+			NewDrone.Pawn->SetActorEnableCollision(false);
+			NewDrone.Pawn->SetActorTickEnabled(false);
+            
+			DronePool.Add(NewDrone);
+		}
+	}
+
 public:
 	void GetDronePorts(std::vector<int>& Ports)
 	{
@@ -153,6 +198,8 @@ public:
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV")); 
 		ADronePawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+		
+		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone"));
 
 		// Realistic spawner
 		// First Find spawn point by raycast DOWNWARDS 
@@ -198,10 +245,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	int SpawnDroneAtLocation(FVector Location, int IdMesh)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
+		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDroneAtLocation at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
 		
-		ADronePawn* PlayerPawn = nullptr;
-		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+		// ADronePawn* PlayerPawn = nullptr;
+		// auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
 		// Realistic spawner
 		// First Find spawn point by raycast DOWNWARDS
@@ -226,31 +273,54 @@ public:
 		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
 		// 	}
 		// }
-		
-		if(PlayerPawn == nullptr)
+
+		FPooledDrone ReadyDrone;
+		if (DronePool.Num() > 0)
 		{
-			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(Location)));
+			ReadyDrone = DronePool.Pop();
+			
+			ReadyDrone.Pawn->SetActorLocation(Location);
+			
+			ReadyDrone.Pawn->SetActorHiddenInGame(false);
+			ReadyDrone.Pawn->SetActorEnableCollision(true);
+			ReadyDrone.Pawn->SetActorTickEnabled(true);
+        
+			UE_LOG(LogTemp, Log, TEXT("Drone taken from a pool"));
+
+			//new drone to pool
+			auto Instruction = std::make_shared<FInstruction<AuedsGameModeBase>>();
+			Instruction->Function = [](AuedsGameModeBase& _GameMode)
+			{
+				_GameMode.SpawnDroneToPool();
+			};
+			InstructionQueue->Enqueue(Instruction);
+			
+		}
+		else
+		{
+			ReadyDrone.Controller = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
+			ReadyDrone.Pawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Location)));
 			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone at defined Location"));
 		}
 		
 		const auto DronePort = GetAvailableDronePort();
-		PlayerPawn->droneServer->SetPort(DronePort);
-		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
-		PlayerPawn->StartServer();
-		PlayerPawn->SetStaticMesh(IdMesh);
-		PlayerPawn->Simulate_UE_Physics(3.0f);
+		ReadyDrone.Pawn->droneServer->SetPort(DronePort);
+		ReadyDrone.Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		ReadyDrone.Pawn->StartServer();
+		ReadyDrone.Pawn->SetStaticMesh(IdMesh);
+		ReadyDrone.Pawn->Simulate_UE_Physics(3.0f);
 		
 		DronePawnsCriticalSection->Lock();
-		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
+		DronePawns.Add(DronePort, std::make_pair(ReadyDrone.Pawn, ReadyDrone.Controller));
 		DronePawnsCriticalSection->Unlock();
 
 		if(!bMutualDroneVisibilityEnabled_)
 		{
-			PlayerPawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
+			ReadyDrone.Pawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
 			UpdateMutualVisibility();
 		}
 
-		return PlayerPawn->droneServer->GetPort();
+		return ReadyDrone.Pawn->droneServer->GetPort();
 	}
 
 	bool RemoveDrone(int Port)
