@@ -4,6 +4,8 @@
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "Sockets.h"
 #include "Networking.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "MessageSerialization/Public/Serialize.h"
@@ -167,8 +169,22 @@ void TcpServer::Run()
 	ListenSocket->SetReceiveBufferSize(MaxBufferSize, ReceiveBufferSize);
 	ListenSocket->SetSendBufferSize(MaxBufferSize, SendBufferSize);
 
+	// Bind address is configurable via the "-FlightForgeBindAddress=<ip>" launch
+	// argument (e.g. 0.0.0.0 to listen on all interfaces). Defaults to localhost.
+	FString BindAddressStr = TEXT("127.0.0.1");
+	FParse::Value(FCommandLine::Get(), TEXT("FlightForgeBindAddress="), BindAddressStr);
+
 	FIPv4Address IPAddress;
-	FIPv4Address::Parse(FString("127.0.0.1"), IPAddress);
+	if(!FIPv4Address::Parse(BindAddressStr, IPAddress))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("FlightForge: invalid -FlightForgeBindAddress=%s, falling back to 127.0.0.1"),
+			*BindAddressStr);
+		BindAddressStr = TEXT("127.0.0.1");
+		FIPv4Address::Parse(BindAddressStr, IPAddress);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("FlightForge: TCP server binding to %s:%d"), *BindAddressStr, Port);
+
 	const auto InternetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
 	InternetAddr->SetIp(IPAddress.Value);
 	InternetAddr->SetPort(Port);
