@@ -1202,6 +1202,19 @@ void ADronePawn::SetStaticMesh(const int& frame_id) {
     UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded!"));
   }
 
+  // Write the drone into the custom depth-stencil buffer so it shows up in the
+  // semantic segmentation (and lidar-seg) output. Without this the spawned UAVs
+  // are visible in RGB but completely absent from the segmentation. Each drone
+  // gets its own stencil value from its port so they stay distinguishable.
+  const int32 SegStencilValue = droneServer ? (droneServer->GetPort() - 3999) : 1;
+  for (UStaticMeshComponent* Mesh :
+       {RootMeshComponent, PropellerFrontLeft, PropellerFrontRight, PropellerRearLeft, PropellerRearRight}) {
+    if (Mesh) {
+      Mesh->SetRenderCustomDepth(true);
+      Mesh->SetCustomDepthStencilValue(SegStencilValue);
+    }
+  }
+
   // wing has not propellers
   if (frame_name.Contains("wing")) {
     return;
