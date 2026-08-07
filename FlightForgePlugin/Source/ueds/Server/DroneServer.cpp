@@ -1,6 +1,7 @@
 #include "DroneServer.h"
 
 #include "../DronePawn.h"
+#include "ueds/Devices/SensorDeviceLibrary.h"
 #include "ImageUtils.h"
 
 #include "Sockets.h"
@@ -288,6 +289,17 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 
 	if(Request.type == Serializable::Drone::MessageType::list_sensors) {
 		return ListSensors(Client);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::add_device) {
+		Serializable::Drone::AddDevice::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return AddDevice(Client, CustomRequest);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::list_devices) {
+		return ListDevices(Client);
 	}
 
 	return false;
@@ -726,6 +738,45 @@ bool DroneServer::ListSensors(const FTCPClient& Client)
 
 	Serializable::Drone::ListSensors::Response Response(true);
 	DronePawn->GetSensorList(Response.sensor_ids_, Response.sensor_types_);
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
+}
+
+bool DroneServer::AddDevice(const FTCPClient& Client, Serializable::Drone::AddDevice::Request& Request)
+{
+	UE_LOG(LogTemp, Log, TEXT("DroneServer::AddDevice"));
+
+	if(!DronePawn) {
+		return false;
+	}
+
+	const FVector  MountOffset(Request.offset_x_, Request.offset_y_, Request.offset_z_);
+	const FRotator MountRotation(Request.rotation_pitch_, Request.rotation_yaw_, Request.rotation_roll_);
+
+	Serializable::Drone::AddDevice::Response Response(false);
+
+	const bool bAdded = DronePawn->AddDeviceFromServerThread(FString(UTF8_TO_TCHAR(Request.device_name_.c_str())), MountOffset, MountRotation,
+	                                                         Request.show_mesh_, Response.sensor_ids_, Response.sensor_types_);
+	Response.status = bAdded;
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
+}
+
+bool DroneServer::ListDevices(const FTCPClient& Client)
+{
+	Serializable::Drone::ListDevices::Response Response(true);
+
+	for (const FSensorDeviceSpec& Device : FSensorDeviceLibrary::Get())
+	{
+		Response.names_.push_back(TCHAR_TO_UTF8(*Device.Name));
+		Response.descriptions_.push_back(TCHAR_TO_UTF8(*Device.Description));
+	}
 
 	std::stringstream OutputStream;
 	Serialization::DeserializeResponse(Response, OutputStream);

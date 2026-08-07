@@ -34,6 +34,16 @@ protected:
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
+
+	FRangefinderConfig GetRangefinderConfig() const { return RangefinderConfig; }
+
+	void SetRangefinderConfig(const FRangefinderConfig& Config)
+	{
+		RangefinderHitsCriticalSection->Lock();
+		RangefinderConfig = Config;
+		RangefinderHitsCriticalSection->Unlock();
+	}
+
 private:
 	FRangefinderConfig RangefinderConfig;
 	void GetRangefinderData(double& range);

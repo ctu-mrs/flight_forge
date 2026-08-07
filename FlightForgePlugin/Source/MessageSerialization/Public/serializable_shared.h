@@ -117,6 +117,8 @@ enum MessageType : unsigned short
   get_fisheye_camera_data         = 30,
   get_fisheye_camera_config       = 31,
   set_fisheye_camera_config       = 32,
+  add_device                      = 33,
+  list_devices                    = 34,
 };
 
 /* struct LidarConfig //{ */
@@ -1368,6 +1370,81 @@ struct Response : public Common::NetworkResponse
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_fisheye_camera_config, _status){};
 };
 }  // namespace SetFisheyeCameraConfig
+
+//}
+
+/* AddDevice //{ */
+
+// Instantiates a preconfigured real-world sensor device (see list_devices) at
+// a mount pose on the drone. A device may create several sensors (e.g. a
+// RealSense D435i is a stereo pair plus an RGB camera); their ids come back in
+// creation order. show_mesh_ attaches a roughly device-sized placeholder mesh
+// at the mount pose for visual debugging.
+namespace AddDevice
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::add_device)){};
+
+  std::string device_name_;
+
+  double offset_x_;
+  double offset_y_;
+  double offset_z_;
+
+  double rotation_pitch_;
+  double rotation_yaw_;
+  double rotation_roll_;
+
+  bool show_mesh_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), device_name_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_,
+            show_mesh_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::add_device)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::add_device, _status){};
+
+  std::vector<int> sensor_ids_;
+  std::vector<int> sensor_types_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_ids_, sensor_types_);
+  }
+};
+}  // namespace AddDevice
+
+//}
+
+/* ListDevices //{ */
+
+namespace ListDevices
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::list_devices)){};
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::list_devices)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::list_devices, _status){};
+
+  std::vector<std::string> names_;
+  std::vector<std::string> descriptions_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), names_, descriptions_);
+  }
+};
+}  // namespace ListDevices
 
 //}
 

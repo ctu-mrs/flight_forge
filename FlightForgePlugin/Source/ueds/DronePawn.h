@@ -157,6 +157,14 @@ public:
   // server-thread wrappers; the actual component work hops to the game thread
   int  AddSensorFromServerThread(int SensorTypeNum);
   bool RemoveSensorFromServerThread(int SensorID);
+
+  // game thread: instantiates a device preset at a mount pose; returns the
+  // created sensor ids/types, optionally attaching a debug mesh
+  bool AddDevice(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh, std::vector<int>& OutIds,
+                 std::vector<int>& OutTypes);
+
+  bool AddDeviceFromServerThread(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh, std::vector<int>& OutIds,
+                                 std::vector<int>& OutTypes);
   
 private:
 

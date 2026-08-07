@@ -53,6 +53,8 @@ public:
 
 	bool SetEventCameraConfig(const FEventCameraConfig& Config);
 
+	FEventCameraConfig GetEventCameraConfig() const { return event_camera_config_; }
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 

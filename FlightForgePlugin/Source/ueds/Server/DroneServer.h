@@ -44,4 +44,7 @@ private:
   bool AddSensor(const FTCPClient& Client, Serializable::Drone::AddSensor::Request& Request);
   bool RemoveSensor(const FTCPClient& Client, Serializable::Drone::RemoveSensor::Request& Request);
   bool ListSensors(const FTCPClient& Client);
+
+  bool AddDevice(const FTCPClient& Client, Serializable::Drone::AddDevice::Request& Request);
+  bool ListDevices(const FTCPClient& Client);
 };

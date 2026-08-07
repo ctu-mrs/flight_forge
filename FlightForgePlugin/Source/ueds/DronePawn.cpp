@@ -22,6 +22,7 @@
 #include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
+#include "ueds/Devices/SensorDeviceLibrary.h"
 
 
 // Sets default values
@@ -549,6 +550,81 @@ void ADronePawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTy
   }
   SensorsCriticalSection->Unlock();
 }
+
+/* addDevice() //{ */
+
+bool ADronePawn::AddDevice(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh, std::vector<int>& OutIds,
+                           std::vector<int>& OutTypes)
+{
+  const FSensorDeviceSpec* Device = FSensorDeviceLibrary::Find(DeviceName);
+
+  if (!Device)
+  {
+    UE_LOG(LogTemp, Error, TEXT("AddDevice: unknown device '%s'"), *DeviceName);
+    return false;
+  }
+
+  for (const FDeviceSensorEntry& Entry : Device->Sensors)
+  {
+    const int SensorID = AddSensor(static_cast<int>(Entry.Type));
+
+    if (SensorID < 0)
+    {
+      return false;
+    }
+
+    const FVector  AbsOffset   = MountOffset + MountRotation.RotateVector(Entry.RelOffset);
+    const FRotator AbsRotation = (MountRotation.Quaternion() * Entry.RelRotation.Quaternion()).Rotator();
+
+    if (Entry.Configure)
+    {
+      Entry.Configure(FindSensorById(SensorID), AbsOffset, AbsRotation);
+    }
+
+    OutIds.push_back(SensorID);
+    OutTypes.push_back(static_cast<int>(Entry.Type));
+  }
+
+  if (bShowMesh)
+  {
+    const TCHAR* ShapePath = Device->MeshShape == EDeviceMeshShape::Cylinder ? TEXT("/Engine/BasicShapes/Cylinder.Cylinder") : TEXT("/Engine/BasicShapes/Cube.Cube");
+
+    if (UStaticMesh* Shape = LoadObject<UStaticMesh>(nullptr, ShapePath))
+    {
+      UStaticMeshComponent* Mesh = NewObject<UStaticMeshComponent>(this);
+      Mesh->SetStaticMesh(Shape);
+      Mesh->SetMobility(EComponentMobility::Movable);
+      Mesh->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
+      Mesh->SetRelativeLocation(MountOffset);
+      Mesh->SetRelativeRotation(MountRotation);
+      // engine basic shapes are 100 cm across
+      Mesh->SetRelativeScale3D(Device->MeshDimensionsCm / 100.0f);
+      Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+      Mesh->RegisterComponent();
+      AddInstanceComponent(Mesh);
+    }
+  }
+
+  UE_LOG(LogTemp, Log, TEXT("AddDevice: '%s' -> %d sensors at (%s)"), *DeviceName, (int)Device->Sensors.Num(), *MountOffset.ToCompactString());
+
+  return true;
+}
+
+bool ADronePawn::AddDeviceFromServerThread(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh,
+                                           std::vector<int>& OutIds, std::vector<int>& OutTypes)
+{
+  bool bAdded = false;
+
+  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+  Instruction->Function = [&](ADronePawn& Pawn) { bAdded = Pawn.AddDevice(DeviceName, MountOffset, MountRotation, bShowMesh, OutIds, OutTypes); };
+  InstructionQueue->Enqueue(Instruction);
+
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  return bAdded;
+}
+
+//}
 
 int ADronePawn::AddSensorFromServerThread(int SensorTypeNum)
 {

@@ -70,6 +70,8 @@ public:
 	
 	bool SetStereoCameraConfig(const FStereoCameraConfig& Config);
 
+	FStereoCameraConfig GetStereoCameraConfig() const { return stereo_camera_config_; }
+
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 	
 	virtual void GetConfig(std::stringstream& OutputStream) override;

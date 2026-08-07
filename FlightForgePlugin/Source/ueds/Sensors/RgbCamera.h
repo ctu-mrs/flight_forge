@@ -82,6 +82,8 @@ public:
 	//FRgbCameraConfig GetRgbCameraConfig();
 	bool SetRgbCameraConfig(const FRgbCameraConfig& Config);
 
+	FRgbCameraConfig GetRgbCameraConfig() const { return rgb_camera_config_; }
+
 	void ApplyExposureAndLens(const FCameraExposure& Exposure, const FCameraLensEffects& Lens, FPostProcessSettings& PP);
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;

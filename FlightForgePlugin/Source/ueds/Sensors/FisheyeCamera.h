@@ -65,6 +65,8 @@ public:
 
 	bool SetFisheyeCameraConfig(const FFisheyeCameraConfig& Config);
 
+	FFisheyeCameraConfig GetFisheyeCameraConfig() const { return fisheye_camera_config_; }
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
