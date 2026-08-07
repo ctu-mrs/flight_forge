@@ -14,15 +14,11 @@
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
-#include <fstream>
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
 #include "Kismet/BlueprintTypeConversions.h"
-#include "Interfaces/IPluginManager.h"
-#include "Misc/Paths.h"
-#include "Misc/FileHelper.h"
 
 
 // Sets default values
@@ -104,30 +100,6 @@ ADronePawn::ADronePawn() {
   ThirdPersonCameraSpringArm->SetupAttachment(RootMeshComponent);
   ThirdPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ThirdPersonCamera"));
   ThirdPersonCamera->SetupAttachment(ThirdPersonCameraSpringArm);
-
-
-  /* CSVFilePath = FString(TEXT("/home/david/mid360.csv")); */
-  /* CSVFilePath = FPaths::ProjectContentDir() + TEXT("mid360.csv"); */ 
-  /* CSVFilePath = FPaths::ProjectSavedDir() + TEXT("mid360.csv"); */
-  /* FString PluginContentDir = FString(TEXT("/Game/../Plugins/flight_forge/FlightForgePlugin/Content/")); */
-
-  /* CSVFilePath = PluginContentDir + TEXT("mid360.csv"); */
-
-    FString PluginName = TEXT("FlightForgePlugin");
-    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(PluginName);
-    if (Plugin.IsValid())
-    {
-        FString PluginContentDir = Plugin->GetContentDir();
-        FString CSVRelativePath = TEXT("Lidar/mid360.csv");
-        CSVFilePath = FPaths::Combine(PluginContentDir, CSVRelativePath);
-
-    }
-    else
-    {
-      UE_LOG(LogTemp, Error, TEXT("Plugin not found"));
-    }
-
-  FTimerHandle OusterTimerHandle;
 
   droneServer = std::make_shared<DroneServer>(*this);
 }

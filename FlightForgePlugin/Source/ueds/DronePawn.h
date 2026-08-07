@@ -134,9 +134,7 @@ public:
   void SetVisibilityOtherDrones(bool bEnable);
   
   bool GetVisibilityOtherDrones();
-  
-  FString CSVFilePath;
-  
+
   //void UpdateCamera(int ID, bool isExternallyLocked, double stamp);
 
   void UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden);
@@ -150,7 +148,7 @@ private:
   int nextSensorID;
   
   bool bCanSeeOtherDrone = true;
-  
+
   void Tick(float DeltaSeconds) override;
 
   void SetPropellersTransform(const std::string &frame_name);

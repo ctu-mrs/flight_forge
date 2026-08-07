@@ -137,10 +137,15 @@ struct LidarConfig
   double FOVVertDown;
   bool Livox;
 
+  // Which non-repetitive scan pattern to replay when Livox is set: "avia",
+  // "mid360", or empty for none. Matches the Content/Lidar/<name>.ffpat stem,
+  // so a new sensor is a new pattern file and needs no protocol change.
+  std::string LivoxSensor;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox); 
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox, LivoxSensor);
   }
 };
 

@@ -28,7 +28,8 @@ ULidar::ULidar()
 	LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
 	LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
 
-	LidarConfig.Livox = false;
+	LidarConfig.Livox       = false;
+	LidarConfig.LivoxSensor = TEXT("mid360");
 
 	#if PLATFORM_WINDOWS
 		LidarHitsCriticalSection       = std::make_unique<FWindowsCriticalSection>();
@@ -50,12 +51,6 @@ ULidar::ULidar()
 void ULidar::BeginPlay()
 {
 	Super::BeginPlay();
-
-    // CSVFilePath = Owner->CSVFilePath;
-    //
-    // if (!LoadCSVData(CSVFilePath)) {
-    //     UE_LOG(LogTemp, Error, TEXT("Failed to load CSV data in BeginPlay."));
-    // }
 }
 
 void ULidar::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -72,10 +67,16 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarHitsCriticalSection->Lock();
     LidarSegHitsCriticalSection->Lock();
 
-    LidarConfig.Enable     = Config.Enable;
-    LidarConfig.Livox     = Config.Livox;
-    LidarConfig.ShowBeams  = Config.ShowBeams;
-    LidarConfig.BeamLength = Config.BeamLength;
+    const bool    LivoxWas       = LidarConfig.Livox;
+    const FString LivoxSensorWas = LidarConfig.LivoxSensor;
+
+    LidarConfig.Enable      = Config.Enable;
+    LidarConfig.Livox       = Config.Livox;
+    LidarConfig.LivoxSensor = Config.LivoxSensor;
+    LidarConfig.ShowBeams   = Config.ShowBeams;
+    LidarConfig.BeamLength  = Config.BeamLength;
+
+    ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
 
     if (Config.BeamHorRays > 0 && Config.BeamVertRays > 0) {
         LidarConfig.BeamHorRays  = Config.BeamHorRays;
@@ -113,6 +114,198 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
 }
 
 
+/* resetLivoxCursorsIfChanged() //{ */
+
+// Switching sensor mid-flight would otherwise resume at a pattern index that
+// belongs to the previous sensor's table.
+void ULidar::ResetLivoxCursorsIfChanged(bool LivoxWas, const FString& LivoxSensorWas) {
+
+    if (LidarConfig.Livox == LivoxWas && LidarConfig.LivoxSensor == LivoxSensorWas) {
+        return;
+    }
+
+    LivoxCursor    = FLivoxCursor();
+    LivoxSegCursor = FLivoxCursor();
+    LivoxIntCursor = FLivoxCursor();
+
+    if (LidarConfig.Livox) {
+        // Fail loudly at configuration time rather than returning empty clouds.
+        if (const FLivoxPattern* Pattern = GetLivoxPattern()) {
+            UE_LOG(LogTemp, Log, TEXT("Livox: '%s' active, %.0f kHz -> %d points per message at %.1f Hz"), *LidarConfig.LivoxSensor,
+                   Pattern->PointRate / 1000.0, FMath::RoundToInt(Pattern->PointRate / FMath::Max(LidarConfig.Frequency, 1.0)), LidarConfig.Frequency);
+        } else {
+            UE_LOG(LogTemp, Error, TEXT("Livox: no scan pattern named '%s', lidar will return nothing"), *LidarConfig.LivoxSensor);
+        }
+    }
+}
+
+//}
+
+/* materialIntensity() //{ */
+
+int ULidar::MaterialIntensity(const FString& PhysMatName) {
+
+    if (PhysMatName.Equals("PM_Grass", ESearchCase::IgnoreCase)) {
+        return 1;
+    } else if (PhysMatName.Equals("PM_Road", ESearchCase::IgnoreCase)) {
+        return 2;
+    } else if (PhysMatName.Equals("PM_Tree", ESearchCase::IgnoreCase)) {
+        return 3;
+    } else if (PhysMatName.Equals("PM_Building", ESearchCase::IgnoreCase)) {
+        return 4;
+    } else if (PhysMatName.Equals("PM_Fence", ESearchCase::IgnoreCase)) {
+        return 5;
+    } else if (PhysMatName.Equals("PM_DirtRoad", ESearchCase::IgnoreCase)) {
+        return 6;
+    }
+
+    return 0;
+}
+
+//}
+
+/* getLivoxPattern() //{ */
+
+const FLivoxPattern* ULidar::GetLivoxPattern() const {
+    return FLivoxPatternLibrary::Get(LidarConfig.LivoxSensor);
+}
+
+//}
+
+/* castLivoxRays() //{ */
+
+// A stalled client would otherwise ask for an unbounded slice on its next poll;
+// one second of Avia is already 240k points.
+#define LIVOX_MAX_INTEGRATION_TIME 1.0
+
+// Rays are traced in chunks this long, each from the drone pose interpolated to
+// the middle of the chunk. 1 ms is ~240 rays on Avia, fine enough that the
+// residual within a chunk is far below the range noise of the real sensor.
+#define LIVOX_SUB_BATCH_TIME 0.001
+
+int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
+                            TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store) {
+
+    const FLivoxPattern* Pattern = GetLivoxPattern();
+
+    if (!Pattern || Pattern->Num() == 0) {
+        return 0;
+    }
+
+    auto World = Owner->GetWorld();
+
+    if (!World) {
+        return 0;
+    }
+
+    const double Now = World->GetTimeSeconds();
+
+    // First slice after enabling or reconfiguring: hand out one nominal period so
+    // the client gets a sane message instead of an empty or enormous one.
+    if (Cursor.LastTime < 0.0) {
+        const double NominalPeriod = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
+        Cursor.LastTime            = Now - NominalPeriod;
+    }
+
+    double Elapsed = Now - Cursor.LastTime;
+
+    // World time restarts on a level switch.
+    if (Elapsed < 0.0) {
+        Elapsed = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
+    }
+
+    if (Elapsed > LIVOX_MAX_INTEGRATION_TIME) {
+        UE_LOG(LogTemp, Warning, TEXT("Livox: %.2f s since last request, clamping integration to %.2f s"), Elapsed, LIVOX_MAX_INTEGRATION_TIME);
+        Elapsed = LIVOX_MAX_INTEGRATION_TIME;
+    }
+
+    const int32 NumRays = FMath::Max(1, FMath::RoundToInt(Elapsed * Pattern->PointRate));
+
+    Prepare(NumRays);
+
+    const FTransform DroneTransform = Owner->GetActorTransform();
+
+    const FQuat      LidarQuat     = DroneTransform.GetRotation() * LidarConfig.Orientation.Quaternion();
+    const FVector    LidarLocation = DroneTransform.TransformPosition(LidarConfig.Offset);
+    const FTransform RefTransform(LidarQuat, LidarLocation);
+
+    // The slice covers [LastTime, Now]; the pose at each end is known, so poses
+    // inside it are interpolated. Output is expressed in the pose at Now, which is
+    // what the response stamp refers to.
+    const FTransform& FromPose = Cursor.bPoseValid ? Cursor.LastPose : RefTransform;
+
+    const int32  PatternStart = (int32)FMath::Fmod(Cursor.PatternPos, (double)Pattern->Num());
+    const int32  RaysPerBatch = FMath::Max(1, FMath::RoundToInt(LIVOX_SUB_BATCH_TIME * Pattern->PointRate));
+    const int32  NumBatches   = FMath::DivideAndRoundUp(NumRays, RaysPerBatch);
+    const double MinRangeCm   = Pattern->MinRangeCm;
+    const double BeamLength   = LidarConfig.BeamLength;
+
+    ParallelFor(NumBatches, [&](int32 BatchIndex) {
+        const double Alpha = NumBatches > 1 ? ((double)BatchIndex + 0.5) / (double)NumBatches : 1.0;
+
+        const FTransform BatchPose(FQuat::Slerp(FromPose.GetRotation(), RefTransform.GetRotation(), Alpha),
+                                   FMath::Lerp(FromPose.GetLocation(), RefTransform.GetLocation(), Alpha));
+
+        const FVector BatchOrigin = BatchPose.GetLocation();
+
+        const int32 First = BatchIndex * RaysPerBatch;
+        const int32 Last  = FMath::Min(First + RaysPerBatch, NumRays);
+
+        FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+        CollisionParams.bReturnPhysicalMaterial = true;
+
+        if (LidarConfig.ShowBeams) {
+            CollisionParams.TraceTag = FName(TEXT("LivoxTraceTag"));
+        }
+
+        for (int32 i = First; i < Last; ++i) {
+
+            const FVector3f& Dir3f = Pattern->Directions[(PatternStart + i) % Pattern->Num()];
+            const FVector    PatternDir(Dir3f.X, Dir3f.Y, Dir3f.Z);
+
+            const FVector RayWorld = BatchPose.TransformVector(PatternDir) * BeamLength;
+
+            // Fallback for a non-return: the nominal ray, expressed in the reference frame.
+            FVector OutDir      = RefTransform.InverseTransformVector(RayWorld);
+            double  OutDistance = -1.0;
+            bool    bHasReturn  = false;
+
+            FHitResult HitResult;
+
+            if (World->LineTraceSingleByChannel(HitResult, BatchOrigin, BatchOrigin + RayWorld, ECC_Visibility, CollisionParams) && HitResult.bBlockingHit) {
+
+                AActor* HitActor = HitResult.GetActor();
+
+                const bool bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != Owner;
+
+                if (!bHiddenDrone && HitResult.Distance >= MinRangeCm) {
+                    // Re-expressing the world hit in the reference frame is what bakes the
+                    // intra-scan motion distortion into the geometry, while keeping the
+                    // wire format (distance + direction) unchanged.
+                    const FVector Local = RefTransform.InverseTransformPosition(HitResult.ImpactPoint);
+
+                    OutDistance = Local.Size();
+                    OutDir      = Local.GetSafeNormal() * BeamLength;
+                    bHasReturn  = true;
+                }
+            }
+
+            Store(i, OutDistance, OutDir, HitResult, bHasReturn);
+        }
+    });
+
+    Cursor.PatternPos = FMath::Fmod(Cursor.PatternPos + NumRays, (double)Pattern->Num());
+    Cursor.LastTime   = Now;
+    Cursor.LastPose   = RefTransform;
+    Cursor.bPoseValid = true;
+
+    LidarHitStart.reset(new FVector(LidarLocation));
+
+    return NumRays;
+}
+
+//}
+
 void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
 
     // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
@@ -122,10 +315,12 @@ void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarDa
     auto stamp = FPlatformTime::Seconds();
 
     UpdateLidar(true);
-  
-    OutLidarData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
-    for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+    // Livox slices vary in length with the elapsed time they cover, so the
+    // buffer size is authoritative, not the configured beam grid.
+    OutLidarData.resize(LidarHits->size());
+
+    for (size_t i = 0; i < LidarHits->size(); i++) {
         OutLidarData[i].distance   = std::get<0>((*LidarHits)[i]);
         OutLidarData[i].directionX = std::get<1>((*LidarHits)[i]);
         OutLidarData[i].directionY = std::get<2>((*LidarHits)[i]);
@@ -160,7 +355,24 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
-    
+
+    if (LidarConfig.Livox) {
+
+        LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>();
+
+        CastLivoxRays(
+            LivoxCursor, [&](int32 NumRays) { LidarHits->resize(NumRays); },
+            [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+                (*LidarHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z);
+            });
+
+        if (!isExternallyLocked) {
+            LidarHitsCriticalSection->Unlock();
+        }
+
+        return;
+    }
+
     LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
     
     FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
@@ -231,9 +443,9 @@ void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::L
 
     UpdateSegLidar(true);
 
-    OutLidarSegData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+    OutLidarSegData.resize(LidarSegHits->size());
 
-    for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+    for (size_t i = 0; i < LidarSegHits->size(); i++) {
         OutLidarSegData[i].distance     = std::get<0>((*LidarSegHits)[i]);
         OutLidarSegData[i].directionX   = std::get<1>((*LidarSegHits)[i]);
         OutLidarSegData[i].directionY   = std::get<2>((*LidarSegHits)[i]);
@@ -270,6 +482,33 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
+
+    if (LidarConfig.Livox) {
+
+        LidarSegHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>();
+
+        CastLivoxRays(
+            LivoxSegCursor, [&](int32 NumRays) { LidarSegHits->resize(NumRays); },
+            [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+                int segmentation = -1;
+
+                if (bHasReturn && Hit.GetComponent()) {
+                    if (Hit.GetComponent()->GetName().Contains("Landscape")) {
+                        segmentation = 1;
+                    } else if (auto component = Cast<UStaticMeshComponent>(Hit.GetComponent())) {
+                        segmentation = component->CustomDepthStencilValue;
+                    }
+                }
+
+                (*LidarSegHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z, segmentation);
+            });
+
+        if (!isExternallyLocked) {
+            LidarSegHitsCriticalSection->Unlock();
+        }
+
+        return;
+    }
 
     LidarSegHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
     
@@ -372,9 +611,10 @@ void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::L
     auto stamp = FPlatformTime::Seconds();
 
     UpdateIntLidar(true);
-    OutLidarIntData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
-    for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+    OutLidarIntData.resize(LidarIntHits->size());
+
+    for (size_t i = 0; i < LidarIntHits->size(); i++) {
         OutLidarIntData[i].distance   = std::get<0>((*LidarIntHits)[i]);
         OutLidarIntData[i].directionX = std::get<1>((*LidarIntHits)[i]);
         OutLidarIntData[i].directionY = std::get<2>((*LidarIntHits)[i]);
@@ -411,8 +651,32 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
+  if (LidarConfig.Livox) {
+
+    LidarIntHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>();
+
+    CastLivoxRays(
+        LivoxIntCursor, [&](int32 NumRays) { LidarIntHits->resize(NumRays); },
+        [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+            int intensity = -1;
+
+            if (bHasReturn) {
+                if (UPhysicalMaterial* PhysMat = Hit.PhysMaterial.Get()) {
+                    intensity = MaterialIntensity(PhysMat->GetName());
+                }
+            }
+
+            (*LidarIntHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z, intensity);
+        });
+
+    if (!isExternallyLocked) {
+      LidarIntHitsCriticalSection->Unlock();
+    }
+
+    return;
+  }
+
   LidarIntHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
-    
 
     // Derive the lidar's world-space axes
     FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
@@ -466,29 +730,9 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
             std::get<2>((*LidarIntHits)[i]) = ray_in_lidar_coord.Y;
             std::get<3>((*LidarIntHits)[i]) = ray_in_lidar_coord.Z;
 
-            FVector            surfaceNormal = HitResult.ImpactNormal;
-            UPhysicalMaterial* PhysMat       = HitResult.PhysMaterial.Get();
-            /* UE_LOG(LogTemp, Warning, TEXT("HitResult.PhysMaterial.Get() %s"), *HitResult.PhysMaterial->GetName()); */
-            double intensity = -1;
-            /* double intensity = 1.0 - FMath::Abs(FVector::DotProduct(surfaceNormal, raycastAngle.GetSafeNormal())); */
-            if (PhysMat) {
-                FString PhysMatName = PhysMat->GetName();
-                if (PhysMatName.Equals("PM_Grass", ESearchCase::IgnoreCase)) {
-                intensity = 1;
-                } else if (PhysMatName.Equals("PM_Road", ESearchCase::IgnoreCase)) {
-                intensity = 2;
-                } else if (PhysMatName.Equals("PM_Tree", ESearchCase::IgnoreCase)) {
-                intensity = 3;
-                } else if (PhysMatName.Equals("PM_Building", ESearchCase::IgnoreCase)) {
-                intensity = 4;
-                } else if (PhysMatName.Equals("PM_Fence", ESearchCase::IgnoreCase)) {
-                intensity = 5;
-                } else if (PhysMatName.Equals("PM_DirtRoad", ESearchCase::IgnoreCase)) {
-                intensity = 6;
-                } else {
-                intensity = 0;
-                }
-            }
+            UPhysicalMaterial* PhysMat   = HitResult.PhysMaterial.Get();
+            double             intensity = PhysMat ? MaterialIntensity(PhysMat->GetName()) : -1;
+
             std::get<4>((*LidarIntHits)[i]) = intensity;
             } else {
 
@@ -557,6 +801,7 @@ void ULidar::GetConfig(std::stringstream& OutputStream)
     Response.config.FOVVertUp        = LidarConfig.FOVVertUp;
     Response.config.FOVVertDown      = LidarConfig.FOVVertDown;
     Response.config.Livox            = LidarConfig.Livox;
+    Response.config.LivoxSensor      = TCHAR_TO_UTF8(*LidarConfig.LivoxSensor);
 
     Serialization::DeserializeResponse(Response, OutputStream);
 
@@ -573,10 +818,16 @@ void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::str
     LidarHitsCriticalSection->Lock();
     LidarSegHitsCriticalSection->Lock();
 
-    LidarConfig.Enable     = Request.config.Enable;
-    LidarConfig.Livox     = Request.config.Livox;
-    LidarConfig.ShowBeams  = Request.config.ShowBeams;
-    LidarConfig.BeamLength = Request.config.BeamLength;
+    const bool    LivoxWas       = LidarConfig.Livox;
+    const FString LivoxSensorWas = LidarConfig.LivoxSensor;
+
+    LidarConfig.Enable      = Request.config.Enable;
+    LidarConfig.Livox       = Request.config.Livox;
+    LidarConfig.LivoxSensor = FString(UTF8_TO_TCHAR(Request.config.LivoxSensor.c_str()));
+    LidarConfig.ShowBeams   = Request.config.ShowBeams;
+    LidarConfig.BeamLength  = Request.config.BeamLength;
+
+    ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
 
     if (Request.config.BeamHorRays > 0 && Request.config.BeamVertRays > 0) {
         LidarConfig.BeamHorRays  = Request.config.BeamHorRays;

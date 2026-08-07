@@ -12,6 +12,8 @@
 
 #include "DronePawn.h"
 #include "Server/UedsGameModeServer.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include <string>
 
 #include "uedsGameModeBase.generated.h"
@@ -64,8 +66,14 @@ private:
 	AuedsGameModeBase(const FObjectInitializer& ObjectInitializer) : AGameModeBase(ObjectInitializer)
 	{
 		PrimaryActorTick.bCanEverTick = true;
-		
+
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>>();
+
+		// Per-drone servers start at "-FlightForgeDroneStartPort=<port>" (default 4000) and
+		// increment per spawned drone. Overrides the NextDronePort member initializer.
+		FParse::Value(FCommandLine::Get(), TEXT("FlightForgeDroneStartPort="), NextDronePort);
+
+		UE_LOG(LogTemp, Warning, TEXT("FlightForge: drone start port %d"), NextDronePort);
 	}
 
 	// Must be used in order to tell UE that there will be more players - drones

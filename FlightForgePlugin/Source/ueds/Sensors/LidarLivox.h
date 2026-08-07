@@ -6,12 +6,10 @@
 #include "LidarLivox.generated.h"
 
 
-struct FLivoxDataPoint {
-	double Time;
-	double Azimuth; // in radians
-	double Zenith;  // in radians
-};
-
+// The wire protocol drives every lidar request through the primary ULidar slot,
+// which replays a Livox pattern whenever LidarConfig.Livox is set. This
+// subclass only pins that flag on, for setups that attach a dedicated Livox
+// sensor directly.
 UCLASS()
 class UEDS_API ULidarLivox : public ULidar
 {
@@ -19,23 +17,4 @@ class UEDS_API ULidarLivox : public ULidar
 
 public:
 	ULidarLivox();
-
-	TArray<FLivoxDataPoint> LivoxData;
-	int StartIndex;
-	
-protected:
-	virtual void BeginPlay() override;
-
-	virtual void UpdateLidar(bool isExternallyLocked) override;
-	virtual void UpdateIntLidar(bool isExternallyLocked) override;
-	virtual void UpdateSegLidar(bool isExternallyLocked) override;
-
-public:
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-	                           FActorComponentTickFunction* ThisTickFunction) override;
-	bool LoadCSVData(const FString& FilePath);
-	
-
-private:
-	FString CSVFilePath;
 };
