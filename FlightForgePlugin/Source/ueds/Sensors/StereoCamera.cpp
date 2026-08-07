@@ -91,13 +91,13 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-	  CameraBufferCriticalSection->Lock();
-	
 	  if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
 	    if (SceneCaptureComponent2D->bCaptureEveryFrame) {
 	      SceneCaptureComponent2D->bCaptureEveryFrame  = false;
 	      SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = false;
+	      CameraBufferCriticalSection->Lock();
 	      CameraRendered = false;
+	      CameraBufferCriticalSection->Unlock();
 	      UE_LOG(LogTemp, Warning, TEXT("Turning off Stereo capture"));
 	    }
 	  } else {
@@ -109,10 +109,10 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	      UpdateCamera(true, start);
 	    }
 	  }
-	
-	  CameraBufferCriticalSection->Unlock();
 	}
-	
+
+	PumpStereoReadback();
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
@@ -169,12 +169,12 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   return true;
 }
 
+// game thread; starts both captures and hands the pixel transfers to the GPU
+// readback pipeline instead of stalling on ReadPixels()
 void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	UE_LOG(LogTemp, Log, TEXT("UStereoCamera::UpdateCamera"));
-	
-	if (!isExternallyLocked) {
-	  CameraBufferCriticalSection->Lock();
+	if (PendingReadback || PendingReadbackRight) {
+		return;  // previous transfer still in flight
 	}
 
 	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
@@ -182,77 +182,96 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		SceneCaptureComponent2D->CaptureScene();
 		SceneCaptureComponent2DStereoRight->CaptureScene();
 	}
-	
-	const auto ResourceLeft = RenderTarget2D->GameThread_GetRenderTargetResource();
-	
-	const auto ResourceRight = RenderTarget2DStereoRight->GameThread_GetRenderTargetResource();
-	
-	ResourceLeft->ReadPixels(CameraBuffer);
-	ResourceRight->ReadPixels(StereoRightCameraBuffer);
-	
-	CameraDataNeedsCompress = true;
-	
-	CameraRendered = true;
-	
-	stamp_ = stamp;
-	
-	if (!isExternallyLocked) {
-	  CameraBufferCriticalSection->Unlock();
+
+	PendingReadback      = EnqueueReadback(RenderTarget2D, stamp);
+	PendingReadbackRight = EnqueueReadback(RenderTarget2DStereoRight, stamp);
+}
+
+// game thread: publishes only when both eyes have landed, so left/right in a
+// response always come from the same capture
+bool UStereoCamera::PumpStereoReadback()
+{
+	if (!PendingReadback || !PendingReadbackRight)
+	{
+		PendingReadback.Reset();
+		PendingReadbackRight.Reset();
+		return false;
 	}
+
+	if (PendingReadback->bCopied && PendingReadbackRight->bCopied)
+	{
+		CameraBufferCriticalSection->Lock();
+		CameraBuffer            = MoveTemp(PendingReadback->Pixels);
+		StereoRightCameraBuffer = MoveTemp(PendingReadbackRight->Pixels);
+		CameraBufferSize        = PendingReadback->Size;
+		stamp_                  = PendingReadback->Stamp;
+		CameraRendered          = CameraBuffer.Num() > 0 && StereoRightCameraBuffer.Num() > 0;
+		CameraBufferCriticalSection->Unlock();
+
+		PendingReadback.Reset();
+		PendingReadbackRight.Reset();
+		NotifyFrameReady();
+		return true;
+	}
+
+	if (PendingReadback->Readback && PendingReadback->Readback->IsReady() && !PendingReadback->bResolveIssued.exchange(true))
+	{
+		IssueResolve(PendingReadback);
+	}
+
+	if (PendingReadbackRight->Readback && PendingReadbackRight->Readback->IsReady() && !PendingReadbackRight->bResolveIssued.exchange(true))
+	{
+		IssueResolve(PendingReadbackRight);
+	}
+
+	return false;
 }
 
 bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double& stamp)
 {
+	camera_last_request_time_ = FPlatformTime::Seconds();
+
+	CameraBufferCriticalSection->Lock();
+	const bool bHaveFrame = CameraRendered;
+	CameraBufferCriticalSection->Unlock();
+
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !bHaveFrame)) {
+		const uint64 Baseline = FrameCounter.load();
+
+		auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
+		Instruction->Function = [](UStereoCamera& _UStereoCamera) { _UStereoCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
+		InstructionQueue->Enqueue(Instruction);
+
+		if (!WaitForNewFrame(Baseline, 2.0)) {
+			UE_LOG(LogTemp, Warning, TEXT("UStereoCamera: timed out waiting for a frame"));
+		}
+	}
+
+	TArray<FColor> RawLeft;
+	TArray<FColor> RawRight;
+	FIntPoint      RawSize;
 	{
 		CameraBufferCriticalSection->Lock();
 
-		camera_last_request_time_ = FPlatformTime::Seconds();
-
-		if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !CameraRendered)) {
-			// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-			// Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
-			// Owner->InstructionQueue->Enqueue(Instruction);
-
-			auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
-			Instruction->Function = [ID = this->SensorID](UStereoCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, 0.0); };
-			InstructionQueue->Enqueue(Instruction);
-			
-			FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-		}
-
 		if (!CameraRendered) {
-			UE_LOG(LogTemp, Warning, TEXT("DronePawn(): stereo camera is not rendered, returning"));
 			CameraBufferCriticalSection->Unlock();
+			UE_LOG(LogTemp, Warning, TEXT("UStereoCamera: stereo camera is not rendered, returning"));
 			return false;
 		}
 
-		if (CameraDataNeedsCompress) {
-
-			FImageUtils::ThumbnailCompressImageArray(RenderTarget2D->SizeX, RenderTarget2D->SizeY, CameraBuffer,
-													 *CompressedCameraData);
-			FImageUtils::ThumbnailCompressImageArray(RenderTarget2DStereoRight->SizeX, RenderTarget2DStereoRight->SizeY, StereoRightCameraBuffer,
-													 *CompressedStereoRightCameraData);
-			CameraDataNeedsCompress = false;
-		}
-
-		{
-			const auto Size = (*CompressedCameraData).Num();
-			image_left.SetNumUninitialized(Size);
-			FMemory::Memcpy(image_left.GetData(), (*CompressedCameraData).GetData(), Size * sizeof(uint8));
-		}
-
-		{
-			const auto Size = (*CompressedStereoRightCameraData).Num();
-			image_right.SetNumUninitialized(Size);
-			FMemory::Memcpy(image_right.GetData(), (*CompressedStereoRightCameraData).GetData(), Size * sizeof(uint8));
-		}
-
-		stamp = stamp_;
+		RawLeft  = CameraBuffer;
+		RawRight = StereoRightCameraBuffer;
+		RawSize  = CameraBufferSize;
+		stamp    = stamp_;
 
 		CameraBufferCriticalSection->Unlock();
-
-		return true;
 	}
+
+	// compress outside the lock so the game thread's publish path never blocks on PNG encoding
+	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawLeft, image_left);
+	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawRight, image_right);
+
+	return true;
 }
 
 void UStereoCamera::GetConfig(std::stringstream& OutputStream)

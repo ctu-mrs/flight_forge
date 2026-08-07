@@ -56,15 +56,15 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	Instruction->Function(*this);
 	Instruction->Finished = true;
 	}
-	
+
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		CameraBufferCriticalSection->Lock();
-	
 	   if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
 	     if (SceneCaptureComponent2D->bCaptureEveryFrame) {
 	       SceneCaptureComponent2D->bCaptureEveryFrame = false;
+	       CameraBufferCriticalSection->Lock();
 	       CameraRendered = false;
+	       CameraBufferCriticalSection->Unlock();
 	       UE_LOG(LogTemp, Warning, TEXT("Turning off RGB capture"));
 	     }
 	   } else {
@@ -75,10 +75,10 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	       UpdateCamera(true, start);
 	     }
 	   }
-	
-	   CameraBufferCriticalSection->Unlock();
 	}
-	
+
+	PumpReadback();
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
@@ -141,71 +141,62 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   return true;
 }
 
+// game thread; starts the capture and hands the pixel transfer to the GPU
+// readback pipeline instead of stalling on ReadPixels()
 void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	UE_LOG(LogTemp, Log, TEXT("URgbCamera::UpdateCamera"));
-	if (!isExternallyLocked) {
-	  CameraBufferCriticalSection->Lock();
+	if (PendingReadback) {
+		return;  // previous transfer still in flight
 	}
 
 	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
 	{
 		SceneCaptureComponent2D->CaptureScene();
 	}
-	
-	const auto Resource = RenderTarget2D->GameThread_GetRenderTargetResource();
-	Resource->ReadPixels(CameraBuffer);
-	  
-	CameraDataNeedsCompress = true;
-	
-	stamp_ = stamp;
-	
-	CameraRendered = true;
-	
-	if (!isExternallyLocked) {
-	  CameraBufferCriticalSection->Unlock();
-	}
+
+	PendingReadback = EnqueueReadback(RenderTarget2D, stamp);
 }
 
 bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp)
 {
-	CameraBufferCriticalSection->Lock();
-
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !CameraRendered) ) {
-		// auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-		// Instruction->Function = [ID = this->SensorID](ADronePawn& _DronePawn) { _DronePawn.UpdateCamera(ID, true, 0.0); };
-		// Owner->InstructionQueue->Enqueue(Instruction);
+	CameraBufferCriticalSection->Lock();
+	const bool bHaveFrame = CameraRendered;
+	CameraBufferCriticalSection->Unlock();
+
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !bHaveFrame)) {
+		const uint64 Baseline = FrameCounter.load();
 
 		auto Instruction      = std::make_shared<FInstruction<URgbCamera>>();
-		Instruction->Function = [ID = this->SensorID](URgbCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, 0.0); };
+		Instruction->Function = [](URgbCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
 		InstructionQueue->Enqueue(Instruction);
 
-		//UE_LOG(LogTemp, Log, TEXT("Rgb camera locked and asleep"));
-		FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-		//UE_LOG(LogTemp, Log, TEXT("Rgb camera awoken"));
-		
+		if (!WaitForNewFrame(Baseline, 2.0)) {
+			UE_LOG(LogTemp, Warning, TEXT("URgbCamera: timed out waiting for a frame"));
+		}
 	}
 
-	if (!CameraRendered) {
-		UE_LOG(LogTemp, Warning, TEXT("DronePawn(): rgb camera is not rendered, returning"));
+	TArray<FColor> RawCopy;
+	FIntPoint      RawSize;
+	{
+		CameraBufferCriticalSection->Lock();
+
+		if (!CameraRendered) {
+			CameraBufferCriticalSection->Unlock();
+			UE_LOG(LogTemp, Warning, TEXT("URgbCamera: camera is not rendered, returning"));
+			return false;
+		}
+
+		RawCopy = CameraBuffer;
+		RawSize = CameraBufferSize;
+		stamp   = stamp_;
+
 		CameraBufferCriticalSection->Unlock();
-		return false;
 	}
 
-	if (CameraDataNeedsCompress) {
-		FImageUtils::ThumbnailCompressImageArray(RenderTarget2D->SizeX, RenderTarget2D->SizeY, CameraBuffer, *CompressedCameraData);
-		CameraDataNeedsCompress = false;
-	}
-
-	const auto Size = (*CompressedCameraData).Num();
-	OutArray.SetNumUninitialized(Size);
-	FMemory::Memcpy(OutArray.GetData(), (*CompressedCameraData).GetData(), Size * sizeof(uint8));
-
-	stamp = stamp_;
-
-	CameraBufferCriticalSection->Unlock();
+	// compress outside the lock so the game thread's publish path never blocks on PNG encoding
+	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
 
 	return true;
 }

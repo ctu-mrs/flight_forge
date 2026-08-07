@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "CoreMinimal.h"
 #include "ueds/Instruction.h"
 #include "ImageUtils.h"
@@ -7,12 +9,32 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Materials/Material.h"
+#include "RHIGPUReadback.h"
 #include "Sensor.h"
 
 #include "Camera.generated.h"
 
 
 using Serializable::GameMode::CameraCaptureModeEnum;
+
+/* FCameraReadback //{ */
+
+// One in-flight GPU->CPU copy of a render target. The game thread enqueues the
+// copy right after the capture and keeps ticking; render-thread commands fill
+// Pixels and flip bCopied when the transfer lands, typically a frame later.
+// Shared ownership: the render commands hold a reference, so the slot outlives
+// the component even if it is torn down mid-flight.
+struct FCameraReadback
+{
+	TUniquePtr<FRHIGPUTextureReadback> Readback;
+	TArray<FColor>    Pixels;
+	FIntPoint         Size = FIntPoint::ZeroValue;
+	double            Stamp = 0.0;
+	std::atomic<bool> bResolveIssued{false};
+	std::atomic<bool> bCopied{false};
+};
+
+//}
 
 UCLASS()
 class UEDS_API UCamera : public USensor
@@ -36,24 +58,37 @@ public:
 
 
 	std::unique_ptr<FCriticalSection> CameraBufferCriticalSection;
-	
+
 	TArray<FColor> CameraBuffer;
 
-	double camera_last_request_time_ = 0;
+	// dimensions of the published CameraBuffer, not of the (possibly resized) render target
+	FIntPoint CameraBufferSize = FIntPoint::ZeroValue;
+
+	std::atomic<double> camera_last_request_time_{0};
 
 	double stamp_ = 0;
-	
+
 	virtual void BeginDestroy() override;
-	
+
 protected:
 	CameraCaptureModeEnum CameraCaptureMode;
 	bool CameraNeedsRefresh = false;
 
-	std::unique_ptr<TArray<uint8>> CompressedCameraData = std::make_unique<TArray<uint8>>();
-
-	bool CameraDataNeedsCompress         = false;
-
 	bool CameraRendered                  = false;
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadback;
+
+	// bumped each time a frame is published to CameraBuffer; server threads wait on it
+	std::atomic<uint64> FrameCounter{0};
+	FEvent* FrameReadyEvent = nullptr;
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp);
+	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+	// game thread: advances the pending readback and publishes a completed frame; true when published
+	bool PumpReadback();
+	void NotifyFrameReady();
+	// server thread: true once FrameCounter passes BaselineFrame
+	bool WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds);
 
 	void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
 

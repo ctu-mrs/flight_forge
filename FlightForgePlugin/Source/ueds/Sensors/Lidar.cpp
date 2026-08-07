@@ -381,13 +381,15 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
     double totalHorFov = LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight;
     double totalVertFov = LidarConfig.FOVVertUp + LidarConfig.FOVVertDown;
 
-    ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-        double horAngle = -LidarConfig.FOVHorLeft + (totalHorFov * (double)row / (double)(LidarConfig.BeamHorRays - 1.0));
+    ParallelFor(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays, [&](int32 rayIndex) {
+        const int32 row = rayIndex / LidarConfig.BeamVertRays;
+        const int32 col = rayIndex % LidarConfig.BeamVertRays;
+
+        double  horAngle       = -LidarConfig.FOVHorLeft + (totalHorFov * (double)row / (double)(LidarConfig.BeamHorRays - 1.0));
         FVector rotatedForward = forwardVec.RotateAngleAxis(horAngle, upVec);
-        FVector rotatedRight = rightVector.RotateAngleAxis(horAngle, upVec);
+        FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
-
-        ParallelFor(LidarConfig.BeamVertRays, [&](int32 col) {
+        {
             auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
             if (LidarConfig.ShowBeams) {
                 const FName TraceTag(FString::Printf(TEXT("LidarTraceTag_%d"), 0));
@@ -423,7 +425,7 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
                 FVector ray_in_lidar_coord = lidarGlobalTransform.InverseTransformVector(raycastAngle_world);
                 (*LidarHits)[i] = std::make_tuple(-1.0, ray_in_lidar_coord.X, ray_in_lidar_coord.Y, ray_in_lidar_coord.Z); 
             }
-        });
+        }
     });
     LidarHitStart.reset(new FVector(lidarLocation));
     
@@ -521,13 +523,15 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
     double totalHorFov  = LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight;
     double totalVertFov = LidarConfig.FOVVertUp + LidarConfig.FOVVertDown;
 
-    ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-        // Calculate the horizontal angle for the current ray
+    ParallelFor(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays, [&](int32 rayIndex) {
+        const int32 row = rayIndex / LidarConfig.BeamVertRays;
+        const int32 col = rayIndex % LidarConfig.BeamVertRays;
+
         double  horAngle       = -LidarConfig.FOVHorLeft + (totalHorFov * (double)row / (double)(LidarConfig.BeamHorRays - 1.0));
         FVector rotatedForward = forwardVec.RotateAngleAxis(horAngle, upVec);
         FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
-        ParallelFor(LidarConfig.BeamVertRays, [&](int32 col) {
+        {
         auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
 
         // Calculate the vertical angle for the current ray
@@ -592,9 +596,9 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
                 std::get<3>((*LidarSegHits)[i]) = ray_in_lidar_coord.Z;
                 std::get<4>((*LidarSegHits)[i]) = -1;  // Important: Set segmentation to -1 for no hit
             }
-        });
+        }
     });
-    
+
   LidarHitStart.reset(new FVector(lidarLocation));
 
   if (!isExternallyLocked) {
@@ -688,13 +692,15 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
     double totalHorFov  = LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight;
     double totalVertFov = LidarConfig.FOVVertUp + LidarConfig.FOVVertDown;
 
-    ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-        // Calculate the horizontal angle for the current ray
+    ParallelFor(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays, [&](int32 rayIndex) {
+        const int32 row = rayIndex / LidarConfig.BeamVertRays;
+        const int32 col = rayIndex % LidarConfig.BeamVertRays;
+
         double  horAngle       = -LidarConfig.FOVHorLeft + (totalHorFov * (double)row / (double)(LidarConfig.BeamHorRays - 1.0));
         FVector rotatedForward = forwardVec.RotateAngleAxis(horAngle, upVec);
         FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
-        ParallelFor(LidarConfig.BeamVertRays, [&](int32 col) {
+        {
         auto CollisionParams                    = FCollisionQueryParams::DefaultQueryParam;
         CollisionParams.bReturnPhysicalMaterial = true;
 
@@ -756,9 +762,9 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
                 std::get<3>((*LidarIntHits)[i]) = ray_in_lidar_coord.Z;
                 std::get<4>((*LidarIntHits)[i]) = -1;  // Set intensity -1 for no hit.
             }
-        });
+        }
     });
-    
+
   LidarHitStart.reset(new FVector(lidarLocation));
 
   if (!isExternallyLocked) {

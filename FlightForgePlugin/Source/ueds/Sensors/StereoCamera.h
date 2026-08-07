@@ -59,7 +59,10 @@ protected:
 
 	bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
 
-	std::unique_ptr<TArray<uint8>> CompressedStereoRightCameraData = std::make_unique<TArray<uint8>>();
+	// base PendingReadback carries the left eye; right eye rides here and both publish together
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadbackRight;
+
+	bool PumpStereoReadback();
 
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
