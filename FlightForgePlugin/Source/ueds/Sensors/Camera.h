@@ -4,7 +4,9 @@
 #include "ueds/Instruction.h"
 #include "ImageUtils.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Materials/Material.h"
 #include "Sensor.h"
 
 #include "Camera.generated.h"

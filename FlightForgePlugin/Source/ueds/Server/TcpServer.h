@@ -1,8 +1,12 @@
 #pragma once
 
-class FSocket;
+#include "CoreMinimal.h"
+#include "Async/Future.h"
 
+#include <memory>
 #include <sstream>
+
+class FSocket;
 
 #define END_OF_MESSAGE '$'
 

@@ -3,6 +3,7 @@
 
 #pragma once
 #include <memory>
+#include "CoreMinimal.h"
 #include "serializable_shared.h"
 
 namespace Serializable::Drone::GetLocation

@@ -1,6 +1,11 @@
 #include "Lidar.h"
 
-//#include <fstream>
+#include "Async/ParallelFor.h"
+#include "CollisionQueryParams.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/HitResult.h"
+#include "Engine/World.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 
 #include "ueds/DronePawn.h"
 #include "Serialize.h"

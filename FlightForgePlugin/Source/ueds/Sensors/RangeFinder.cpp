@@ -1,4 +1,8 @@
 #include "RangeFinder.h"
+
+#include "Engine/HitResult.h"
+#include "Engine/World.h"
+
 #include "ueds/DronePawn.h"
 #include "Serialize.h"
 

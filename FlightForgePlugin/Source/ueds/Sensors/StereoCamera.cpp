@@ -1,5 +1,7 @@
 #include "StereoCamera.h"
 
+#include "TextureResource.h"
+
 #include "Serialize.h"
 #include "ueds/DronePawn.h"
 

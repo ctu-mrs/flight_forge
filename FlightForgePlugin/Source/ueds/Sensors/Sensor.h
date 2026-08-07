@@ -28,7 +28,7 @@ class UEDS_API USensor : public USceneComponent
 public:
 	USensor();
 	
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintCallable, Category = "FlightForge|Sensors")
 	virtual void Initialize(int InSensorID);
 	FName Name;
     

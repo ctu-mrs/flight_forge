@@ -122,7 +122,7 @@ public:
 
   bool uav_crashed_ = false;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlightForge|Drone")
   bool propellers_rotate = false;
 
   FTimerHandle TimerHandle_Disabled_Physics;

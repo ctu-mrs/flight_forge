@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "uedsGameInstance.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Engine/Engine.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
@@ -37,10 +38,10 @@ class UEDS_API AuedsGameModeBase : public AGameModeBase
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Blueprintable)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlightForge|Forest")
 	int ForestDensityLevel = 5;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Blueprintable)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlightForge|Forest")
 	int ForestHillyLevel = 3;
 
 private:
@@ -488,10 +489,10 @@ public:
 		}
 	}
 		
-	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "FlightForge|Environment")
 	bool SetWeather(int TypeId);
 
-	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable)
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "FlightForge|Environment")
 	bool SetDaytime(int hour, int minute);
 
 	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AuedsGameModeBase>>>> InstructionQueue;
