@@ -1,0 +1,6 @@
+# Only avia and mid360 ship. The other five Livox patterns (horizon, hap,
+# mid40, mid70, tele) are generated on demand:
+#   ./convert_livox_csv.py <livox_laser_simulation>/scan_mode .
+*.ffpat
+!avia.ffpat
+!mid360.ffpat
