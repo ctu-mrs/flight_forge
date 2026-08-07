@@ -247,6 +247,31 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 		return SetSensorConfig(Client, InputStream, SensorID);
 	}
 
+	if(Request.type == Serializable::Drone::MessageType::get_fisheye_camera_data) {
+		Serializable::Drone::GetFisheyeCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::FISHEYE_CAMERA, CustomRequest.sensor_id_));
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::get_fisheye_camera_config) {
+		Serializable::Drone::GetFisheyeCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::FISHEYE_CAMERA, CustomRequest.sensor_id_);
+
+		return GetSensorConfig(Client, SensorID);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::set_fisheye_camera_config) {
+		Serializable::Drone::SetFisheyeCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::FISHEYE_CAMERA, CustomRequest.sensor_id_);
+
+		return SetSensorConfig(Client, InputStream, SensorID);
+	}
+
 	if(Request.type == Serializable::Drone::MessageType::add_sensor) {
 		Serializable::Drone::AddSensor::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);

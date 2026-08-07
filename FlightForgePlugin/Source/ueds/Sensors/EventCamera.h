@@ -19,6 +19,10 @@ struct FEventCameraConfig
 	// intensity moves by one threshold since its last event
 	double ContrastThresholdPos;
 	double ContrastThresholdNeg;
+
+	// stamp events with sim time instead of wall clock; with a fixed engine
+	// timestep this yields an exact-rate stream regardless of GPU load
+	bool UseSimTime;
 };
 
 /* FCameraEvent //{ */
@@ -67,7 +71,11 @@ protected:
 
 	// per-pixel log intensity at the time of each pixel's last event
 	TArray<float> ReferenceLogIntensity;
-	FIntPoint     ReferenceSize = FIntPoint::ZeroValue;
+
+	// per-pixel log intensity of the previous frame, for crossing-time interpolation
+	TArray<float> PrevLogIntensity;
+
+	FIntPoint ReferenceSize = FIntPoint::ZeroValue;
 
 	std::unique_ptr<FCriticalSection> EventsCriticalSection;
 	TArray<FCameraEvent> EventBuffer;

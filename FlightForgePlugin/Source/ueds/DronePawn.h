@@ -14,6 +14,7 @@
 #include "Sensors/RangeFinder.h"
 #include "Sensors/LidarLivox.h"
 #include "Sensors/EventCamera.h"
+#include "Sensors/FisheyeCamera.h"
 
 #include "GameFramework/Pawn.h"
 

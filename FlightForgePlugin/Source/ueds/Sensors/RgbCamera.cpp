@@ -1,5 +1,6 @@
 #include "RgbCamera.h"
 
+#include "Engine/World.h"
 #include "TextureResource.h"
 
 #include "Serialize.h"
@@ -82,6 +83,65 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
+/* applyExposureAndLens() //{ */
+
+void URgbCamera::ApplyExposureAndLens(const FCameraExposure& Exposure, const FCameraLensEffects& Lens, FPostProcessSettings& PP)
+{
+  if (Exposure.Manual) {
+    PP.bOverride_AutoExposureMethod = true;
+    PP.AutoExposureMethod           = AEM_Manual;
+
+    PP.bOverride_CameraShutterSpeed = true;
+    PP.CameraShutterSpeed           = 1.0f / FMath::Max((float)Exposure.ShutterTime, 1e-5f);
+
+    PP.bOverride_CameraISO = true;
+    PP.CameraISO           = FMath::Max((float)Exposure.ISO, 1.0f);
+
+    PP.bOverride_AutoExposureBias = true;
+    PP.AutoExposureBias           = Exposure.EvCompensation;
+
+    PP.bOverride_DepthOfFieldFstop = true;
+    PP.DepthOfFieldFstop           = FMath::Max((float)Lens.Fstop, 0.1f);
+
+    if (Lens.MotionBlurFromShutter) {
+      // blur length physically tied to exposure: shutter time over frame time
+      const float FrameTime = GetWorld() ? FMath::Max(GetWorld()->GetDeltaSeconds(), 1e-4f) : 1.0f / 60.0f;
+      PP.bOverride_MotionBlurAmount = true;
+      PP.MotionBlurAmount           = FMath::Clamp((float)Exposure.ShutterTime / FrameTime, 0.0f, 1.0f);
+    }
+  }
+
+  if (Lens.FocalDistance > 0.0) {
+    PP.bOverride_DepthOfFieldFocalDistance = true;
+    PP.DepthOfFieldFocalDistance           = Lens.FocalDistance * 100.0f;  // m -> cm
+
+    PP.bOverride_DepthOfFieldSensorWidth = true;
+    PP.DepthOfFieldSensorWidth           = Lens.SensorWidthMm;
+  }
+
+  PP.bOverride_VignetteIntensity = true;
+  PP.VignetteIntensity           = Lens.VignetteIntensity;
+
+  PP.bOverride_SceneFringeIntensity = true;
+  PP.SceneFringeIntensity           = Lens.ChromaticAberration;
+
+  PP.bOverride_BloomIntensity = true;
+  PP.BloomIntensity           = Lens.BloomIntensity;
+
+  PP.bOverride_LensFlareIntensity = true;
+  PP.LensFlareIntensity           = Lens.LensFlareIntensity;
+
+  if (Lens.WhiteTemp > 0.0) {
+    PP.bOverride_WhiteTemp = true;
+    PP.WhiteTemp           = Lens.WhiteTemp;
+
+    PP.bOverride_WhiteTint = true;
+    PP.WhiteTint           = Lens.WhiteTint;
+  }
+}
+
+//}
+
 bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 {
   UE_LOG(LogTemp, Log, TEXT("UCamera::SetRgbCameraConfig"));
@@ -128,6 +188,8 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureComponent2D->ShowFlags.SetAtmosphere(true);
   SceneCaptureComponent2D->ShowFlags.SetLumenReflections(true);
   SceneCaptureComponent2D->ShowFlags.SetLumenGlobalIllumination(true);
+
+  ApplyExposureAndLens(Config.Exposure, Config.Lens, PPSettings);
 
 
   if (Config.Width > 0 && Config.Height > 0) {
@@ -229,6 +291,22 @@ void URgbCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.motion_blur_distortion_ = rgb_camera_config_.motion_blur_distortion;
 	ResponseRGB.config.motion_blur_amount_ = rgb_camera_config_.motion_blur_amount;
 
+	ResponseRGB.config.exposure_.manual_          = rgb_camera_config_.Exposure.Manual;
+	ResponseRGB.config.exposure_.shutter_time_    = rgb_camera_config_.Exposure.ShutterTime;
+	ResponseRGB.config.exposure_.iso_             = rgb_camera_config_.Exposure.ISO;
+	ResponseRGB.config.exposure_.ev_compensation_ = rgb_camera_config_.Exposure.EvCompensation;
+
+	ResponseRGB.config.lens_.fstop_                    = rgb_camera_config_.Lens.Fstop;
+	ResponseRGB.config.lens_.focal_distance_           = rgb_camera_config_.Lens.FocalDistance;
+	ResponseRGB.config.lens_.sensor_width_mm_          = rgb_camera_config_.Lens.SensorWidthMm;
+	ResponseRGB.config.lens_.vignette_intensity_       = rgb_camera_config_.Lens.VignetteIntensity;
+	ResponseRGB.config.lens_.chromatic_aberration_     = rgb_camera_config_.Lens.ChromaticAberration;
+	ResponseRGB.config.lens_.bloom_intensity_          = rgb_camera_config_.Lens.BloomIntensity;
+	ResponseRGB.config.lens_.lens_flare_intensity_     = rgb_camera_config_.Lens.LensFlareIntensity;
+	ResponseRGB.config.lens_.white_temp_               = rgb_camera_config_.Lens.WhiteTemp;
+	ResponseRGB.config.lens_.white_tint_               = rgb_camera_config_.Lens.WhiteTint;
+	ResponseRGB.config.lens_.motion_blur_from_shutter_ = rgb_camera_config_.Lens.MotionBlurFromShutter;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGB config"));
 }
@@ -256,6 +334,22 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 	Config.enable_motion_blur = Request.config.enable_motion_blur_;
 	Config.motion_blur_amount = Request.config.motion_blur_amount_;
 	Config.motion_blur_distortion = Request.config.motion_blur_distortion_;
+
+	Config.Exposure.Manual         = Request.config.exposure_.manual_;
+	Config.Exposure.ShutterTime    = Request.config.exposure_.shutter_time_;
+	Config.Exposure.ISO            = Request.config.exposure_.iso_;
+	Config.Exposure.EvCompensation = Request.config.exposure_.ev_compensation_;
+
+	Config.Lens.Fstop                 = Request.config.lens_.fstop_;
+	Config.Lens.FocalDistance         = Request.config.lens_.focal_distance_;
+	Config.Lens.SensorWidthMm         = Request.config.lens_.sensor_width_mm_;
+	Config.Lens.VignetteIntensity     = Request.config.lens_.vignette_intensity_;
+	Config.Lens.ChromaticAberration   = Request.config.lens_.chromatic_aberration_;
+	Config.Lens.BloomIntensity        = Request.config.lens_.bloom_intensity_;
+	Config.Lens.LensFlareIntensity    = Request.config.lens_.lens_flare_intensity_;
+	Config.Lens.WhiteTemp             = Request.config.lens_.white_temp_;
+	Config.Lens.WhiteTint             = Request.config.lens_.white_tint_;
+	Config.Lens.MotionBlurFromShutter = Request.config.lens_.motion_blur_from_shutter_;
 
 	bool Status = false;
 

@@ -424,6 +424,7 @@ int ADronePawn::AddSensor(int SensorTypeNum){
     case SensorType::RGB_SEG_CAMERA: SensorClass = URgbSegCamera::StaticClass();break;
     case SensorType::STEREO_CAMERA:  SensorClass = UStereoCamera::StaticClass();break;
     case SensorType::EVENT_CAMERA:   SensorClass = UEventCamera::StaticClass(); break;
+    case SensorType::FISHEYE_CAMERA: SensorClass = UFisheyeCamera::StaticClass();break;
     default: return -2;
   }
   

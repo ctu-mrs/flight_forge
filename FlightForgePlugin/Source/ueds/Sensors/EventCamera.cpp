@@ -1,6 +1,7 @@
 #include "EventCamera.h"
 
 #include "Async/ParallelFor.h"
+#include "Engine/World.h"
 #include "TextureResource.h"
 
 #include "Serialize.h"
@@ -50,6 +51,7 @@ void UEventCamera::BeginPlay()
 	event_camera_config_.Height               = 480;
 	event_camera_config_.ContrastThresholdPos = 0.2;
 	event_camera_config_.ContrastThresholdNeg = 0.2;
+	event_camera_config_.UseSimTime           = false;
 
 	SetEventCameraConfig(event_camera_config_);
 }
@@ -86,6 +88,7 @@ void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 		if (SceneCaptureComponent2D->bCaptureEveryFrame) {
 			SceneCaptureComponent2D->bCaptureEveryFrame = false;
 			ReferenceLogIntensity.Empty();
+			PrevLogIntensity.Empty();
 			UE_LOG(LogTemp, Warning, TEXT("Turning off event camera capture"));
 		}
 	} else {
@@ -93,7 +96,8 @@ void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 			SceneCaptureComponent2D->bCaptureEveryFrame = true;
 			UE_LOG(LogTemp, Warning, TEXT("Turning on event camera capture"));
 		} else {
-			UpdateCamera(true, start);
+			const double Stamp = event_camera_config_.UseSimTime && GetWorld() ? GetWorld()->GetTimeSeconds() : start;
+			UpdateCamera(true, Stamp);
 		}
 	}
 
@@ -147,12 +151,15 @@ void UEventCamera::ProcessPublishedFrame()
 	if (ReferenceLogIntensity.Num() != NumPixels || ReferenceSize != Size)
 	{
 		ReferenceLogIntensity.SetNumUninitialized(NumPixels);
+		PrevLogIntensity.SetNumUninitialized(NumPixels);
 		ReferenceSize = Size;
 
 		for (int32 i = 0; i < NumPixels; ++i)
 		{
 			const FColor& C = Frame[i];
-			ReferenceLogIntensity[i] = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
+			const float   L = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
+			ReferenceLogIntensity[i] = L;
+			PrevLogIntensity[i]      = L;
 		}
 
 		LastFrameStamp = Stamp;
@@ -161,6 +168,10 @@ void UEventCamera::ProcessPublishedFrame()
 
 	const float Cpos = FMath::Max((float)event_camera_config_.ContrastThresholdPos, 0.01f);
 	const float Cneg = FMath::Max((float)event_camera_config_.ContrastThresholdNeg, 0.01f);
+
+	const double TPrev = LastFrameStamp;
+	const double TCur  = Stamp;
+	const double TSpan = FMath::Max(TCur - TPrev, 0.0);
 
 	// per-chunk local buffers so the pixel sweep parallelizes without contention
 	const int32 NumChunks = FMath::Clamp(NumPixels / 65536, 1, 16);
@@ -177,50 +188,71 @@ void UEventCamera::ProcessPublishedFrame()
 
 		for (int32 i = First; i < Last; ++i)
 		{
-			const FColor& C = Frame[i];
-			const float   L = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
+			const FColor& C     = Frame[i];
+			const float   LCur  = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
+			const float   LPrev = PrevLogIntensity[i];
 
-			float Delta = L - ReferenceLogIntensity[i];
+			float& Ref = ReferenceLogIntensity[i];
 
-			int32 Count    = 0;
-			int8  Polarity = 0;
+			// assume linear log-intensity change across the frame interval and
+			// stamp each threshold crossing at its interpolated time
+			const float Slope = LCur - LPrev;
 
-			if (Delta >= Cpos)
-			{
-				Count    = FMath::Min((int32)(Delta / Cpos), EVENT_MAX_PER_PIXEL);
-				Polarity = 1;
-				ReferenceLogIntensity[i] += Count * Cpos;
-			}
-			else if (Delta <= -Cneg)
-			{
-				Count    = FMath::Min((int32)(-Delta / Cneg), EVENT_MAX_PER_PIXEL);
-				Polarity = -1;
-				ReferenceLogIntensity[i] -= Count * Cneg;
-			}
-
-			if (Count > 0)
+			if (Slope > 0.0f)
 			{
 				const uint16 X = (uint16)(i % Size.X);
 				const uint16 Y = (uint16)(i / Size.X);
 
-				for (int32 e = 0; e < Count; ++e)
+				for (int32 e = 0; e < EVENT_MAX_PER_PIXEL && Ref + Cpos <= LCur; ++e)
 				{
-					Local.Add({X, Y, Polarity, Stamp});
+					Ref += Cpos;
+					const float  Frac = FMath::Clamp((Ref - LPrev) / Slope, 0.0f, 1.0f);
+					const double T    = TPrev + Frac * TSpan;
+					Local.Add({X, Y, 1, T});
 				}
 			}
+			else if (Slope < 0.0f)
+			{
+				const uint16 X = (uint16)(i % Size.X);
+				const uint16 Y = (uint16)(i / Size.X);
+
+				for (int32 e = 0; e < EVENT_MAX_PER_PIXEL && Ref - Cneg >= LCur; ++e)
+				{
+					Ref -= Cneg;
+					const float  Frac = FMath::Clamp((Ref - LPrev) / Slope, 0.0f, 1.0f);
+					const double T    = TPrev + Frac * TSpan;
+					Local.Add({X, Y, -1, T});
+				}
+			}
+
+			PrevLogIntensity[i] = LCur;
 		}
 	});
 
-	EventsCriticalSection->Lock();
-
+	// merge and time-sort the frame's batch; consumers expect a sorted stream
+	TArray<FCameraEvent> FrameEvents;
+	int32 Total = 0;
 	for (const TArray<FCameraEvent>& Local : ChunkEvents)
 	{
-		if (EventBuffer.Num() + Local.Num() > EVENT_BUFFER_MAX_EVENTS)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("UEventCamera: event buffer full, dropping events"));
-			break;
-		}
-		EventBuffer.Append(Local);
+		Total += Local.Num();
+	}
+	FrameEvents.Reserve(Total);
+	for (const TArray<FCameraEvent>& Local : ChunkEvents)
+	{
+		FrameEvents.Append(Local);
+	}
+
+	FrameEvents.Sort([](const FCameraEvent& A, const FCameraEvent& B) { return A.Stamp < B.Stamp; });
+
+	EventsCriticalSection->Lock();
+
+	if (EventBuffer.Num() + FrameEvents.Num() > EVENT_BUFFER_MAX_EVENTS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UEventCamera: event buffer full, dropping events"));
+	}
+	else
+	{
+		EventBuffer.Append(FrameEvents);
 	}
 
 	LastFrameStamp = Stamp;
@@ -255,6 +287,7 @@ bool UEventCamera::SetEventCameraConfig(const FEventCameraConfig& Config)
 
 	// resolution or optics changed: reseed the reference on the next frame
 	ReferenceLogIntensity.Empty();
+	PrevLogIntensity.Empty();
 
 	EventsCriticalSection->Lock();
 	EventBuffer.Empty();
@@ -288,6 +321,7 @@ void UEventCamera::GetConfig(std::stringstream& OutputStream)
 
 	Response.config.contrast_threshold_pos_ = event_camera_config_.ContrastThresholdPos;
 	Response.config.contrast_threshold_neg_ = event_camera_config_.ContrastThresholdNeg;
+	Response.config.use_sim_time_           = event_camera_config_.UseSimTime;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 }
@@ -309,6 +343,7 @@ void UEventCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<st
 
 	Config.ContrastThresholdPos = Request.config.contrast_threshold_pos_;
 	Config.ContrastThresholdNeg = Request.config.contrast_threshold_neg_;
+	Config.UseSimTime           = Request.config.use_sim_time_;
 
 	bool Status = false;
 

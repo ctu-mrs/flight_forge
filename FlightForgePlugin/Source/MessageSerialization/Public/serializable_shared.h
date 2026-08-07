@@ -114,6 +114,9 @@ enum MessageType : unsigned short
   get_event_camera_data           = 27,
   get_event_camera_config         = 28,
   set_event_camera_config         = 29,
+  get_fisheye_camera_data         = 30,
+  get_fisheye_camera_config       = 31,
+  set_fisheye_camera_config       = 32,
 };
 
 /* struct LidarConfig //{ */
@@ -157,6 +160,54 @@ struct LidarConfig
 
 //}
 
+/* struct CameraExposure //{ */
+
+// physically-based exposure; when manual_ is set the abstract auto-exposure is
+// replaced by the EV100 model driven by shutter time, ISO and f-stop
+struct CameraExposure
+{
+  bool   manual_;
+  double shutter_time_;     // seconds
+  double iso_;
+  double ev_compensation_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(manual_, shutter_time_, iso_, ev_compensation_);
+  }
+};
+
+//}
+
+/* struct CameraLensEffects //{ */
+
+// artistic-model lens effects (UE's vignette/CA are not calibrated physics -
+// suited to domain randomization, not to matching a specific lens)
+struct CameraLensEffects
+{
+  double fstop_;
+  double focal_distance_;   // meters; <= 0 disables depth of field
+  double sensor_width_mm_;
+  double vignette_intensity_;
+  double chromatic_aberration_;
+  double bloom_intensity_;
+  double lens_flare_intensity_;
+  double white_temp_;       // Kelvin; <= 0 keeps engine default
+  double white_tint_;
+
+  // derive motion blur length from shutter_time_/frame time instead of the
+  // free-standing motion_blur_amount_
+  bool motion_blur_from_shutter_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(fstop_, focal_distance_, sensor_width_mm_, vignette_intensity_, chromatic_aberration_, bloom_intensity_, lens_flare_intensity_, white_temp_,
+            white_tint_, motion_blur_from_shutter_);
+  }
+};
+
+//}
+
 /* struct RgbCameraConfig //{ */
 
 struct RgbCameraConfig
@@ -184,10 +235,13 @@ struct RgbCameraConfig
   double   motion_blur_amount_;
   double   motion_blur_distortion_;
 
+  CameraExposure    exposure_;
+  CameraLensEffects lens_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_);
+            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_);
   }
 };
 
@@ -1073,10 +1127,14 @@ struct EventCameraConfig
   double contrast_threshold_pos_;
   double contrast_threshold_neg_;
 
+  // stamp events with simulation time instead of wall clock; pair with a fixed
+  // engine timestep to get an exact-rate event stream regardless of GPU load
+  bool use_sim_time_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_,
-            contrast_threshold_pos_, contrast_threshold_neg_);
+            contrast_threshold_pos_, contrast_threshold_neg_, use_sim_time_);
   }
 };
 
@@ -1186,6 +1244,130 @@ struct Response : public Common::NetworkResponse
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_event_camera_config, _status){};
 };
 }  // namespace SetEventCameraConfig
+
+//}
+
+/* FisheyeCameraConfig //{ */
+
+struct FisheyeCameraConfig
+{
+  bool show_debug_camera_;
+
+  double offset_x_;
+  double offset_y_;
+  double offset_z_;
+
+  double rotation_pitch_;
+  double rotation_yaw_;
+  double rotation_roll_;
+
+  // full diagonal field of view in degrees, up to 220
+  double fov_;
+
+  int width_;
+  int height_;
+
+  // 0 equidistant (r = f*theta), 1 equisolid (r = 2f*sin(theta/2)),
+  // 2 stereographic (r = 2f*tan(theta/2))
+  int lens_model_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, lens_model_);
+  }
+};
+
+//}
+
+/* GetFisheyeCameraData //{ */
+
+namespace GetFisheyeCameraData
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_fisheye_camera_data)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_fisheye_camera_data)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_fisheye_camera_data, _status){};
+
+  std::vector<unsigned char> image_;
+  double                     stamp_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_);
+  }
+};
+}  // namespace GetFisheyeCameraData
+
+//}
+
+/* GetFisheyeCameraConfig //{ */
+
+namespace GetFisheyeCameraConfig
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_fisheye_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_fisheye_camera_config)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_fisheye_camera_config, _status){};
+
+  FisheyeCameraConfig config;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+  }
+};
+}  // namespace GetFisheyeCameraConfig
+
+//}
+
+/* SetFisheyeCameraConfig //{ */
+
+namespace SetFisheyeCameraConfig
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_fisheye_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  FisheyeCameraConfig config;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_fisheye_camera_config)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_fisheye_camera_config, _status){};
+};
+}  // namespace SetFisheyeCameraConfig
 
 //}
 
