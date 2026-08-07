@@ -4,18 +4,6 @@
 
 #include "CoreMinimal.h"
 
-/* ELivoxSensor //{ */
-
-// Wire values; keep stable, clients depend on the integers.
-enum class ELivoxSensor : int32
-{
-  None   = 0,
-  Mid360 = 1,
-  Avia   = 2,
-};
-
-//}
-
 /* FLivoxPattern //{ */
 
 // One sensor's full scan pattern. Directions are unit vectors in the lidar's
@@ -41,14 +29,14 @@ struct FLivoxPattern
 /* FLivoxPatternLibrary //{ */
 
 // Patterns are large (10-12 MB) and identical for every drone, so they are
-// loaded once per process and shared. Get() is thread-safe and returns nullptr
-// if the table is missing or malformed.
+// loaded once per process and shared. Sensors are named after their pattern
+// file (Content/Lidar/<name>.ffpat), so adding one is a drop-in rather than a
+// protocol change. Get() is thread-safe and returns nullptr for an unknown or
+// malformed pattern.
 class FLivoxPatternLibrary
 {
 public:
-  static const FLivoxPattern* Get(ELivoxSensor Sensor);
-
-  static const TCHAR* Name(ELivoxSensor Sensor);
+  static const FLivoxPattern* Get(const FString& SensorName);
 };
 
 //}

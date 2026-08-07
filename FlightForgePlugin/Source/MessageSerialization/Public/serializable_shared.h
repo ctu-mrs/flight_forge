@@ -137,9 +137,10 @@ struct LidarConfig
   double FOVVertDown;
   bool Livox;
 
-  // Which non-repetitive scan pattern to replay when Livox is set.
-  // 0 = none, 1 = Mid-360, 2 = Avia. Keep the integers stable.
-  int LivoxSensor;
+  // Which non-repetitive scan pattern to replay when Livox is set: "avia",
+  // "mid360", or empty for none. Matches the Content/Lidar/<name>.ffpat stem,
+  // so a new sensor is a new pattern file and needs no protocol change.
+  std::string LivoxSensor;
 
   template <class Archive>
   void serialize(Archive& archive) {

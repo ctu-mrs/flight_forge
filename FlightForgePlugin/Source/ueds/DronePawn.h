@@ -70,7 +70,7 @@ struct FLidarConfig
 {
   bool   Enable;
   bool Livox;
-  ELivoxSensor LivoxSensor;
+  FString LivoxSensor;
   bool   ShowBeams;
   double BeamLength;
 

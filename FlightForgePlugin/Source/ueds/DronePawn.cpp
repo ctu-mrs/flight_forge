@@ -149,7 +149,7 @@ ADronePawn::ADronePawn() {
   LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
 
   LidarConfig.Livox       = false;
-  LidarConfig.LivoxSensor = ELivoxSensor::Mid360;
+  LidarConfig.LivoxSensor = TEXT("mid360");
 
   FTimerHandle OusterTimerHandle;
 
@@ -1372,7 +1372,7 @@ bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
   LidarSegHitsCriticalSection->Lock();
 
   const bool         LivoxWas       = LidarConfig.Livox;
-  const ELivoxSensor LivoxSensorWas = LidarConfig.LivoxSensor;
+  const FString      LivoxSensorWas = LidarConfig.LivoxSensor;
 
   LidarConfig.Enable      = Config.Enable;
   LidarConfig.Livox       = Config.Livox;
@@ -1390,10 +1390,10 @@ bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
     if (LidarConfig.Livox) {
       // Fail loudly at configuration time rather than returning empty clouds.
       if (const FLivoxPattern* Pattern = GetLivoxPattern()) {
-        UE_LOG(LogTemp, Log, TEXT("Livox: '%s' active, %.0f kHz -> %d points per message at %.1f Hz"), FLivoxPatternLibrary::Name(LidarConfig.LivoxSensor),
+        UE_LOG(LogTemp, Log, TEXT("Livox: '%s' active, %.0f kHz -> %d points per message at %.1f Hz"), *LidarConfig.LivoxSensor,
                Pattern->PointRate / 1000.0, FMath::RoundToInt(Pattern->PointRate / FMath::Max(LidarConfig.Frequency, 1.0)), LidarConfig.Frequency);
       } else {
-        UE_LOG(LogTemp, Error, TEXT("Livox: no scan pattern for sensor %d, lidar will return nothing"), (int32)LidarConfig.LivoxSensor);
+        UE_LOG(LogTemp, Error, TEXT("Livox: no scan pattern named '%s', lidar will return nothing"), *LidarConfig.LivoxSensor);
       }
     }
   }
