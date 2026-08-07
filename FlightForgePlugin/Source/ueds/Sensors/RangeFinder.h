@@ -38,11 +38,7 @@ private:
 	FRangefinderConfig RangefinderConfig;
 	void GetRangefinderData(double& range);
 
-#if PLATFORM_WINDOWS
-  std::unique_ptr<FWindowsCriticalSection> RangefinderHitsCriticalSection;
-#else
-  std::unique_ptr<FPThreadsCriticalSection> RangefinderHitsCriticalSection;
-#endif
+  std::unique_ptr<FCriticalSection> RangefinderHitsCriticalSection;
 	
 	
 };

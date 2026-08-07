@@ -2,6 +2,8 @@
 
 #include "DronePawn.h"
 
+#include UE_INLINE_GENERATED_CPP_BY_NAME(DronePawn)
+
 #include "ImageUtils.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -18,7 +20,6 @@
 #include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
-#include "Kismet/BlueprintTypeConversions.h"
 
 
 // Sets default values

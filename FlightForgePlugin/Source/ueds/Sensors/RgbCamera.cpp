@@ -24,7 +24,7 @@ void URgbCamera::BeginPlay()
 
 	SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
-	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(true);
+	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(false);
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
@@ -101,8 +101,6 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
     SceneCaptureComponent2D->CaptureSource = SCS_FinalColorLDR;
   }
 
-  SceneCaptureComponent2D->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-
   SceneCaptureComponent2D->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
   SceneCaptureComponent2D->TextureTarget                        = RenderTarget2D;
@@ -111,7 +109,23 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureComponent2D->bCaptureOnMovement                   = false;
   SceneCaptureComponent2D->PostProcessSettings.MotionBlurAmount = Config.motion_blur_amount;
   SceneCaptureComponent2D->PostProcessSettings.MotionBlurMax    = Config.motion_blur_distortion;
+
+  FPostProcessSettings& PPSettings = SceneCaptureComponent2D->PostProcessSettings;
+
+  // Force Lumen for Global Illumination
+  PPSettings.bOverride_DynamicGlobalIlluminationMethod = true;
+  PPSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
+
+  // Force Lumen for Reflections
+  PPSettings.bOverride_ReflectionMethod = true;
+  PPSettings.ReflectionMethod = EReflectionMethod::Lumen;
+
   SceneCaptureComponent2D->ShowFlags.SetMotionBlur(Config.enable_motion_blur);
+  SceneCaptureComponent2D->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+  SceneCaptureComponent2D->ShowFlags.SetNaniteMeshes(true);
+  SceneCaptureComponent2D->ShowFlags.SetAtmosphere(true);
+  SceneCaptureComponent2D->ShowFlags.SetLumenReflections(true);
+  SceneCaptureComponent2D->ShowFlags.SetLumenGlobalIllumination(true);
 
 
   if (Config.Width > 0 && Config.Height > 0) {

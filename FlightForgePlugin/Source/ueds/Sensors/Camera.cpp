@@ -9,11 +9,7 @@ UCamera::UCamera()
 	PrimaryComponentTick.bCanEverTick = true;
 	//PrimaryComponentTick.TickGroup    = TG_PrePhysics;
 
-#if PLATFORM_WINDOWS
-	CameraBufferCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-	CameraBufferCriticalSection = std::make_unique<FPThreadsCriticalSection>();
-#endif
+	CameraBufferCriticalSection = std::make_unique<FCriticalSection>();
 
 	SceneCaptureMeshHolder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolder"));
 	SceneCaptureMeshHolder->SetupAttachment(this);

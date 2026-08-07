@@ -33,11 +33,7 @@ public:
 	UMaterial* PostProcessMaterial = nullptr;
 
 
-#if PLATFORM_WINDOWS
-	std::unique_ptr<FWindowsCriticalSection> CameraBufferCriticalSection;
-#else
-	std::unique_ptr<FPThreadsCriticalSection> CameraBufferCriticalSection;
-#endif
+	std::unique_ptr<FCriticalSection> CameraBufferCriticalSection;
 	
 	TArray<FColor> CameraBuffer;
 

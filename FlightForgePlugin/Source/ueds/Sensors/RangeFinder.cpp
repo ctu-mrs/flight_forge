@@ -12,11 +12,7 @@ URangeFinder::URangeFinder()
 	RangefinderConfig.BeamLength = DEFAULT_RANGEFINDER_BEAM_LENGTH;
 	RangefinderConfig.Offset     = FVector(0, 0, -10);
 
-#if PLATFORM_WINDOWS
-	RangefinderHitsCriticalSection = std::make_unique<FWindowsCriticalSection>();
-#else
-	RangefinderHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
-#endif
+	RangefinderHitsCriticalSection = std::make_unique<FCriticalSection>();
 }
 
 

@@ -31,15 +31,9 @@ ULidar::ULidar()
 	LidarConfig.Livox       = false;
 	LidarConfig.LivoxSensor = TEXT("mid360");
 
-	#if PLATFORM_WINDOWS
-		LidarHitsCriticalSection       = std::make_unique<FWindowsCriticalSection>();
-		LidarSegHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-		LidarIntHitsCriticalSection    = std::make_unique<FWindowsCriticalSection>();
-	#else
-		LidarHitsCriticalSection       = std::make_unique<FPThreadsCriticalSection>();
-		LidarSegHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
-		LidarIntHitsCriticalSection    = std::make_unique<FPThreadsCriticalSection>();
-	#endif
+	LidarHitsCriticalSection    = std::make_unique<FCriticalSection>();
+	LidarSegHitsCriticalSection = std::make_unique<FCriticalSection>();
+	LidarIntHitsCriticalSection = std::make_unique<FCriticalSection>();
 
 	LidarHits     = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 	LidarSegHits  = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);

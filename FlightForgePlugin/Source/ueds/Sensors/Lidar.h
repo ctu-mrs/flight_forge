@@ -130,15 +130,9 @@ protected:
 	FLivoxCursor LivoxSegCursor;
 	FLivoxCursor LivoxIntCursor;
 
-	#if PLATFORM_WINDOWS
-		std::unique_ptr<FWindowsCriticalSection> LidarHitsCriticalSection;
-		std::unique_ptr<FWindowsCriticalSection> LidarSegHitsCriticalSection;
-		std::unique_ptr<FWindowsCriticalSection> LidarIntHitsCriticalSection;
-	#else
-		std::unique_ptr<FPThreadsCriticalSection> LidarHitsCriticalSection;
-		std::unique_ptr<FPThreadsCriticalSection> LidarSegHitsCriticalSection;
-		std::unique_ptr<FPThreadsCriticalSection> LidarIntHitsCriticalSection;
-	#endif
+	std::unique_ptr<FCriticalSection> LidarHitsCriticalSection;
+	std::unique_ptr<FCriticalSection> LidarSegHitsCriticalSection;
+	std::unique_ptr<FCriticalSection> LidarIntHitsCriticalSection;
 	std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
 	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
 	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarIntHits;
