@@ -13,6 +13,7 @@
 #include "Sensors/StereoCamera.h"
 #include "Sensors/RangeFinder.h"
 #include "Sensors/LidarLivox.h"
+#include "Sensors/EventCamera.h"
 
 #include "GameFramework/Pawn.h"
 
@@ -142,11 +143,30 @@ public:
   //should be called from game thread
   int AddSensor(int SensorTypeNum);
   bool RemoveSensor(int sensorID);
+
+  USensor* FindSensorById(int SensorID);
+
+  // server thread: id of the sensor a request addresses; RequestedID < 0 means
+  // the default instance of Type, created lazily on first use. Returns -1 when
+  // RequestedID does not exist or is of an incompatible type.
+  int ResolveSensorId(SensorType Type, int RequestedID);
+
+  void GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes);
+
+  // server-thread wrappers; the actual component work hops to the game thread
+  int  AddSensorFromServerThread(int SensorTypeNum);
+  bool RemoveSensorFromServerThread(int SensorID);
   
 private:
-  
+
   int nextSensorID;
-  
+
+  // guards Sensors and DefaultSensorOfType; sensors are created/destroyed on
+  // the game thread but resolved from server threads
+  std::unique_ptr<FCriticalSection> SensorsCriticalSection;
+
+  TMap<SensorType, int> DefaultSensorOfType;
+
   bool bCanSeeOtherDrone = true;
 
   void Tick(float DeltaSeconds) override;

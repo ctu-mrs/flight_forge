@@ -46,15 +46,24 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_data) {
-		return GetSensorData(Client, 0);
+		Serializable::Drone::GetRgbCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::RGB_CAMERA, CustomRequest.sensor_id_));
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_stereo_camera_data) {
-		return GetSensorData(Client, 5);
+		Serializable::Drone::GetStereoCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::STEREO_CAMERA, CustomRequest.sensor_id_));
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_seg_camera_data) {
-		return GetSensorData(Client, 4);
+		Serializable::Drone::GetRgbSegCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::RGB_SEG_CAMERA, CustomRequest.sensor_id_));
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rotation) {
@@ -96,69 +105,98 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_data) {
-		//1 - lidar, 3 - livox
-		//TODO better mode selecting
-		if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(1))
+		Serializable::Drone::GetLidarData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		if (ULidar* Lidar = Cast<ULidar>(DronePawn->FindSensorById(SensorID)))
 		{
-			USensor* Sensor = *SensorPtr;
-			if (ULidar* Lidar = Cast<ULidar>(Sensor))
-			{
-				Lidar->SetLidarModeWithInt(0);
-			}
+			Lidar->SetLidarModeWithInt(0);
 		}
-		
-		return GetSensorData(Client, 1);
+
+		return GetSensorData(Client, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_seg) {
-		//TODO better mode selecting
-		if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(1))
+		Serializable::Drone::GetLidarSegData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		if (ULidar* Lidar = Cast<ULidar>(DronePawn->FindSensorById(SensorID)))
 		{
-			USensor* Sensor = *SensorPtr;
-			if (ULidar* Lidar = Cast<ULidar>(Sensor))
-			{
-				Lidar->SetLidarModeWithInt(1);
-			}
+			Lidar->SetLidarModeWithInt(1);
 		}
-		
-		return GetSensorData(Client, 1);
+
+		return GetSensorData(Client, SensorID);
 	}
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_int) {
-		//TODO better mode selecting
-		if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(1))
+		Serializable::Drone::GetLidarIntData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		if (ULidar* Lidar = Cast<ULidar>(DronePawn->FindSensorById(SensorID)))
 		{
-			USensor* Sensor = *SensorPtr;
-			if (ULidar* Lidar = Cast<ULidar>(Sensor))
-			{
-				Lidar->SetLidarModeWithInt(2);
-			}
+			Lidar->SetLidarModeWithInt(2);
 		}
-		
-		return GetSensorData(Client, 1);
+
+		return GetSensorData(Client, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_config) {
-		return GetSensorConfig(Client, 1);
+		Serializable::Drone::GetLidarConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		return GetSensorConfig(Client, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_lidar_config) {
-		return SetSensorConfig(Client, InputStream, 1);
+		Serializable::Drone::SetLidarConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		return SetSensorConfig(Client, InputStream, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rgb_camera_config) {
-		return GetSensorConfig(Client, 0);
+		Serializable::Drone::GetRgbCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::RGB_CAMERA, CustomRequest.sensor_id_);
+
+		return GetSensorConfig(Client, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_rgb_camera_config) {
-		return SetSensorConfig(Client, InputStream, 0);
+		Serializable::Drone::SetRgbCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::RGB_CAMERA, CustomRequest.sensor_id_);
+
+		return SetSensorConfig(Client, InputStream, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_stereo_camera_config) {
-		return GetSensorConfig(Client, 5);
+		Serializable::Drone::GetStereoCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::STEREO_CAMERA, CustomRequest.sensor_id_);
+
+		return GetSensorConfig(Client, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::set_stereo_camera_config) {
-		return SetSensorConfig(Client, InputStream, 5);
+		Serializable::Drone::SetStereoCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::STEREO_CAMERA, CustomRequest.sensor_id_);
+
+		return SetSensorConfig(Client, InputStream, SensorID);
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_move_line_visible) {
@@ -178,7 +216,53 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_rangefinder_data) {
-		return GetSensorData(Client, 2);
+		Serializable::Drone::GetRangefinderData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::RANGEFINDER, CustomRequest.sensor_id_));
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::get_event_camera_data) {
+		Serializable::Drone::GetEventCameraData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return GetSensorData(Client, DronePawn->ResolveSensorId(SensorType::EVENT_CAMERA, CustomRequest.sensor_id_));
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::get_event_camera_config) {
+		Serializable::Drone::GetEventCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::EVENT_CAMERA, CustomRequest.sensor_id_);
+
+		return GetSensorConfig(Client, SensorID);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::set_event_camera_config) {
+		Serializable::Drone::SetEventCameraConfig::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::EVENT_CAMERA, CustomRequest.sensor_id_);
+
+		return SetSensorConfig(Client, InputStream, SensorID);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::add_sensor) {
+		Serializable::Drone::AddSensor::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return AddSensor(Client, CustomRequest);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::remove_sensor) {
+		Serializable::Drone::RemoveSensor::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return RemoveSensor(Client, CustomRequest);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::list_sensors) {
+		return ListSensors(Client);
 	}
 
 	return false;
@@ -524,17 +608,12 @@ bool DroneServer::GetSensorConfig(const FTCPClient& Client, int SensorID)
 
 	std::stringstream OutputStream;
 
-	//0 - camera, 1 - lidar, 2 - rangefinder 
-	if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(SensorID))
+	if (USensor* Sensor = DronePawn->FindSensorById(SensorID))
 	{
-		USensor* Sensor = *SensorPtr;
 		Sensor->GetConfig(OutputStream);
-		//UE_LOG(LogTemp, Warning, TEXT("Serialized Sensor Config:\n%s"), *FString(OutputStream.str().c_str()));
-		UE_LOG(LogTemp, Warning, TEXT("Stream size: %d bytes"), OutputStream.str().size());
-		
 		return Respond(Client, OutputStream);
 	}
-	
+
 	return false;
 }
 
@@ -547,14 +626,13 @@ bool DroneServer::SetSensorConfig(const FTCPClient& Client, std::shared_ptr<std:
 	}
 
 	std::stringstream OutputStream;
-	if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(SensorID))
+
+	if (USensor* Sensor = DronePawn->FindSensorById(SensorID))
 	{
-		USensor* Sensor = *SensorPtr;
 		Sensor->SetConfig(OutputStream, InputStream);
-		
 		return Respond(Client, OutputStream);
 	}
-	
+
 	return false;
 }
 
@@ -568,28 +646,17 @@ bool DroneServer::GetSensorData(const FTCPClient& Client, int SensorID)
 	}
 
 	std::stringstream OutputStream;
-	if (TObjectPtr<USensor>* SensorPtr = DronePawn->Sensors.Find(SensorID))
+
+	if (USensor* Sensor = DronePawn->FindSensorById(SensorID))
 	{
-		USensor* Sensor = *SensorPtr;
 		Sensor->GetData(OutputStream);
-		
 		return Respond(Client, OutputStream);
 	}
-	
+
 	return false;
 }
 
-bool DroneServer::GetAllSensors(const FTCPClient& Client)
-{
-	 //ID - name
-	for (const TPair<int32, TObjectPtr<USensor>>& Pair : DronePawn->Sensors)
-	{
-		UE_LOG(LogTemp, Log, TEXT("Sensor ID: %d, Name: %s"), Pair.Key, *Pair.Value->GetName());
-	}
-	return true;
-}
-
-bool DroneServer::AddSensor(const FTCPClient& Client, int SensorType)
+bool DroneServer::AddSensor(const FTCPClient& Client, Serializable::Drone::AddSensor::Request& Request)
 {
 	UE_LOG(LogTemp, Log, TEXT("DroneServer::AddSensor"));
 
@@ -597,26 +664,18 @@ bool DroneServer::AddSensor(const FTCPClient& Client, int SensorType)
 		return false;
 	}
 
-	bool ret = false;
-	int SensorID = -1;
-	
-	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
-	Instruction->Function = [SensorType, &SensorID](ADronePawn& _DronePawn)
-	{
-		SensorID = _DronePawn.AddSensor(SensorType);
-	};
-	DronePawn->InstructionQueue->Enqueue(Instruction);
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-	
-	if(SensorID >= 0)
-	{
-		//probably send back
-		ret = true;
-	}
+	const int SensorID = DronePawn->AddSensorFromServerThread(Request.sensor_type_);
 
-	return ret;
+	Serializable::Drone::AddSensor::Response Response(SensorID >= 0);
+	Response.sensor_id_ = SensorID;
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
 }
-bool DroneServer::RemoveSensor(const FTCPClient& Client, int RemoveSensorID)
+
+bool DroneServer::RemoveSensor(const FTCPClient& Client, Serializable::Drone::RemoveSensor::Request& Request)
 {
 	UE_LOG(LogTemp, Log, TEXT("DroneServer::RemoveSensor"));
 
@@ -624,15 +683,28 @@ bool DroneServer::RemoveSensor(const FTCPClient& Client, int RemoveSensorID)
 		return false;
 	}
 
-	bool status = false;
-	
-	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
-	Instruction->Function = [&status, RemoveSensorID](ADronePawn& _DronePawn)
-	{
-		status = _DronePawn.RemoveSensor(RemoveSensorID);
-	};
-	DronePawn->InstructionQueue->Enqueue(Instruction);
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-	
-	return status;
+	const bool bRemoved = DronePawn->RemoveSensorFromServerThread(Request.sensor_id_);
+
+	Serializable::Drone::RemoveSensor::Response Response(bRemoved);
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
 }
+
+bool DroneServer::ListSensors(const FTCPClient& Client)
+{
+	if(!DronePawn) {
+		return false;
+	}
+
+	Serializable::Drone::ListSensors::Response Response(true);
+	DronePawn->GetSensorList(Response.sensor_ids_, Response.sensor_types_);
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
+}
+

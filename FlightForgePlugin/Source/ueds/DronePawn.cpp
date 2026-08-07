@@ -35,6 +35,8 @@ ADronePawn::ADronePawn() {
 
   InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
 
+  SensorsCriticalSection = std::make_unique<FCriticalSection>();
+
   RootMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RootMeshComponent"));
   RootComponent = RootMeshComponent;
   
@@ -116,13 +118,8 @@ void ADronePawn::BeginPlay() {
 
   //startTime = FPlatformTime::Seconds();
   
-  AddSensor(0); //RGB camera
-  AddSensor(1); //Lidar
-  AddSensor(2); //RangeFinder
-  AddSensor(3); //Lidar Livox
-  AddSensor(4); //RGB Seg camera
-  AddSensor(5); //Stereo camera
-    
+  // sensors are created lazily on first request (or explicitly via add_sensor)
+
   Super::BeginPlay();
 }
 
@@ -426,6 +423,7 @@ int ADronePawn::AddSensor(int SensorTypeNum){
     case SensorType::LIDAR_LIVOX:    SensorClass = ULidarLivox::StaticClass();  break;
     case SensorType::RGB_SEG_CAMERA: SensorClass = URgbSegCamera::StaticClass();break;
     case SensorType::STEREO_CAMERA:  SensorClass = UStereoCamera::StaticClass();break;
+    case SensorType::EVENT_CAMERA:   SensorClass = UEventCamera::StaticClass(); break;
     default: return -2;
   }
   
@@ -440,7 +438,14 @@ int ADronePawn::AddSensor(int SensorTypeNum){
     NewSensor->RegisterComponent();
     
     AddInstanceComponent(NewSensor);
+
+    SensorsCriticalSection->Lock();
     Sensors.Add(nextSensorID, NewSensor);
+    if (!DefaultSensorOfType.Contains(Type))
+    {
+      DefaultSensorOfType.Add(Type, nextSensorID);
+    }
+    SensorsCriticalSection->Unlock();
 
     UE_LOG(LogTemp, Log, TEXT("Successfully attached %s (ID: %d) at %s"), 
         *NewSensor->GetName(), nextSensorID, *NewSensor->GetComponentLocation().ToString());
@@ -453,24 +458,120 @@ int ADronePawn::AddSensor(int SensorTypeNum){
 
 bool ADronePawn::RemoveSensor(int32 sensorID)
 {
+  USensor* Sensor = nullptr;
+
+  SensorsCriticalSection->Lock();
   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(sensorID))
   {
-    USensor* Sensor = *SensorPtr;
+    Sensor = *SensorPtr;
+    Sensors.Remove(sensorID);
+
     if (Sensor)
     {
-      Sensor->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
-      Sensor->UnregisterComponent();
-      RemoveOwnedComponent(Sensor);
-      Sensors.Remove(sensorID);
-      Sensor->DestroyComponent();
-
-      UE_LOG(LogTemp, Log, TEXT("Removed sensor with ID %d (%s)"), 
-             sensorID, *Sensor->GetName());
-      return true;
+      if (int* DefaultID = DefaultSensorOfType.Find(Sensor->GetSensorType()); DefaultID && *DefaultID == sensorID)
+      {
+        DefaultSensorOfType.Remove(Sensor->GetSensorType());
+      }
     }
+  }
+  SensorsCriticalSection->Unlock();
+
+  if (Sensor)
+  {
+    Sensor->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
+    Sensor->UnregisterComponent();
+    RemoveOwnedComponent(Sensor);
+    Sensor->DestroyComponent();
+
+    UE_LOG(LogTemp, Log, TEXT("Removed sensor with ID %d (%s)"), sensorID, *Sensor->GetName());
+    return true;
   }
 
   UE_LOG(LogTemp, Warning, TEXT("Sensor with ID %d not found"), sensorID);
   return false;
+}
+
+USensor* ADronePawn::FindSensorById(int SensorID)
+{
+  SensorsCriticalSection->Lock();
+  TObjectPtr<USensor>* Found = Sensors.Find(SensorID);
+  USensor* Sensor = Found ? Found->Get() : nullptr;
+  SensorsCriticalSection->Unlock();
+
+  return Sensor;
+}
+
+int ADronePawn::ResolveSensorId(SensorType Type, int RequestedID)
+{
+  // the generic lidar messages also drive a dedicated livox instance
+  auto TypeCompatible = [Type](SensorType Actual) {
+    return Actual == Type || (Type == SensorType::LIDAR && Actual == SensorType::LIDAR_LIVOX);
+  };
+
+  SensorsCriticalSection->Lock();
+
+  if (RequestedID >= 0)
+  {
+    TObjectPtr<USensor>* Found = Sensors.Find(RequestedID);
+    const bool bOk = Found && *Found && TypeCompatible((*Found)->GetSensorType());
+    SensorsCriticalSection->Unlock();
+
+    if (!bOk)
+    {
+      UE_LOG(LogTemp, Warning, TEXT("ResolveSensorId: sensor %d missing or wrong type"), RequestedID);
+    }
+    return bOk ? RequestedID : -1;
+  }
+
+  if (int* DefaultID = DefaultSensorOfType.Find(Type))
+  {
+    const int Id = *DefaultID;
+    SensorsCriticalSection->Unlock();
+    return Id;
+  }
+
+  SensorsCriticalSection->Unlock();
+
+  return AddSensorFromServerThread(static_cast<int>(Type));
+}
+
+void ADronePawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes)
+{
+  SensorsCriticalSection->Lock();
+  for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
+  {
+    if (Pair.Value)
+    {
+      OutIds.push_back(Pair.Key);
+      OutTypes.push_back(static_cast<int>(Pair.Value->GetSensorType()));
+    }
+  }
+  SensorsCriticalSection->Unlock();
+}
+
+int ADronePawn::AddSensorFromServerThread(int SensorTypeNum)
+{
+  int NewID = -1;
+
+  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+  Instruction->Function = [SensorTypeNum, &NewID](ADronePawn& Pawn) { NewID = Pawn.AddSensor(SensorTypeNum); };
+  InstructionQueue->Enqueue(Instruction);
+
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  return NewID;
+}
+
+bool ADronePawn::RemoveSensorFromServerThread(int SensorID)
+{
+  bool bRemoved = false;
+
+  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+  Instruction->Function = [SensorID, &bRemoved](ADronePawn& Pawn) { bRemoved = Pawn.RemoveSensor(SensorID); };
+  InstructionQueue->Enqueue(Instruction);
+
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  return bRemoved;
 }
 

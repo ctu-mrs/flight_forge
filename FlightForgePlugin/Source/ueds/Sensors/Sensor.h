@@ -15,6 +15,7 @@ enum class SensorType : int
 	LIDAR_LIVOX = 3,
 	RGB_SEG_CAMERA = 4,
 	STEREO_CAMERA = 5,
+	EVENT_CAMERA = 6,
 	MAX_SENSOR_TYPE
 };
 
@@ -36,6 +37,8 @@ public:
     virtual void GetConfig(std::stringstream& OutputStream) {};
     virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
 	int GetSensorID();
+
+	::SensorType GetSensorType() const { return SensorType; }
 		
 protected:
 	virtual void BeginPlay() override;

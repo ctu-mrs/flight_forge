@@ -108,6 +108,12 @@ enum MessageType : unsigned short
   get_crash_state                 = 21,
   get_lidar_int                   = 22,
   get_rangefinder_data            = 23,
+  add_sensor                      = 24,
+  remove_sensor                   = 25,
+  list_sensors                    = 26,
+  get_event_camera_data           = 27,
+  get_event_camera_config         = 28,
+  set_event_camera_config         = 29,
 };
 
 /* struct LidarConfig //{ */
@@ -315,6 +321,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_rgb_camera_data)) {
   }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -344,6 +357,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_rgb_seg_camera_data)) {
   }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -372,6 +392,13 @@ namespace GetStereoCameraData
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_stereo_camera_data)) {
+  }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
   }
 };
 
@@ -570,7 +597,14 @@ namespace GetRangefinderData
   struct Request : public Common::NetworkRequest
   {
     Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_rangefinder_data)){};
-  };
+  
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
 
   struct Response : public Common::NetworkResponse
   {
@@ -608,6 +642,13 @@ struct LidarData
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_lidar_data)) {
+  }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
   }
 };
 
@@ -658,6 +699,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_lidar_seg)) {
   }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -706,6 +754,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_lidar_int)) {
   }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -739,6 +794,13 @@ namespace GetLidarConfig
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_lidar_config)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -765,11 +827,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_lidar_config)){};
 
+  int sensor_id_ = -1;
+
   LidarConfig config;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
   }
 };
 
@@ -789,6 +853,13 @@ namespace GetRgbCameraConfig
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_rgb_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -815,11 +886,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_rgb_camera_config)){};
 
+  int sensor_id_ = -1;
+
   RgbCameraConfig config;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
   }
 };
 
@@ -839,6 +912,13 @@ namespace GetStereoCameraConfig
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_stereo_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
 };
 
 struct Response : public Common::NetworkResponse
@@ -865,11 +945,13 @@ struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_stereo_camera_config)){};
 
+  int sensor_id_ = -1;
+
   StereoCameraConfig config;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
   }
 };
 
@@ -879,6 +961,231 @@ struct Response : public Common::NetworkResponse
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_stereo_camera_config, _status){};
 };
 }  // namespace SetStereoCameraConfig
+
+//}
+
+/* AddSensor //{ */
+
+// sensor_type_ matches the plugin's SensorType enum: 0 rgb camera, 1 lidar,
+// 2 rangefinder, 3 livox lidar, 4 rgb segmentation camera, 5 stereo camera
+namespace AddSensor
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::add_sensor)){};
+
+  int sensor_type_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_type_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::add_sensor)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::add_sensor, _status){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_id_);
+  }
+};
+}  // namespace AddSensor
+
+//}
+
+/* RemoveSensor //{ */
+
+namespace RemoveSensor
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::remove_sensor)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::remove_sensor)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::remove_sensor, _status){};
+};
+}  // namespace RemoveSensor
+
+//}
+
+/* ListSensors //{ */
+
+namespace ListSensors
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::list_sensors)){};
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::list_sensors)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::list_sensors, _status){};
+
+  std::vector<int> sensor_ids_;
+  std::vector<int> sensor_types_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_ids_, sensor_types_);
+  }
+};
+}  // namespace ListSensors
+
+//}
+
+/* EventCameraConfig //{ */
+
+struct EventCameraConfig
+{
+  bool show_debug_camera_;
+
+  double offset_x_;
+  double offset_y_;
+  double offset_z_;
+
+  double rotation_pitch_;
+  double rotation_yaw_;
+  double rotation_roll_;
+
+  double fov_;
+
+  int width_;
+  int height_;
+
+  // log-intensity contrast thresholds; an event fires each time the pixel's
+  // log intensity moves by one threshold since its last event
+  double contrast_threshold_pos_;
+  double contrast_threshold_neg_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_,
+            contrast_threshold_pos_, contrast_threshold_neg_);
+  }
+};
+
+//}
+
+/* GetEventCameraData //{ */
+
+namespace GetEventCameraData
+{
+struct Event
+{
+  Event() = default;
+
+  unsigned short x;
+  unsigned short y;
+  signed char    polarity;  // +1 brighter, -1 darker
+  double         stamp;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(x, y, polarity, stamp);
+  }
+};
+
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_event_camera_data)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_event_camera_data)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_event_camera_data, _status){};
+
+  std::vector<Event> events_;
+  double             stamp_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), events_, stamp_);
+  }
+};
+}  // namespace GetEventCameraData
+
+//}
+
+/* GetEventCameraConfig //{ */
+
+namespace GetEventCameraConfig
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_event_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_event_camera_config)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_event_camera_config, _status){};
+
+  EventCameraConfig config;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+  }
+};
+}  // namespace GetEventCameraConfig
+
+//}
+
+/* SetEventCameraConfig //{ */
+
+namespace SetEventCameraConfig
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_event_camera_config)){};
+
+  int sensor_id_ = -1;
+
+  EventCameraConfig config;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_event_camera_config)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_event_camera_config, _status){};
+};
+}  // namespace SetEventCameraConfig
 
 //}
 
