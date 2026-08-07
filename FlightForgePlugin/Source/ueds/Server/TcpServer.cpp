@@ -112,7 +112,7 @@ bool TcpServer::Route(const FTCPClient& Client, std::shared_ptr<std::stringstrea
 
 bool TcpServer::Respond(const FTCPClient& Client, const FString& Message) const
 {
-	UE_LOG(LogTemp, Warning, TEXT("OutString: %s"), *Message);
+	//UE_LOG(LogTemp, Warning, TEXT("OutString: %s"), *Message);
 
 	auto OutBytes = new uint8[Client.SendBufferSize];
 	const auto OutBytesSize = StB(Message, OutBytes, SendBufferSize);
@@ -120,29 +120,29 @@ bool TcpServer::Respond(const FTCPClient& Client, const FString& Message) const
 	int32 BytesSent;
 	const bool Sent = Client.Socket->Send(OutBytes, OutBytesSize, BytesSent);
 	delete[] OutBytes;
-	UE_LOG(LogTemp, Warning, TEXT("SendResult: %d"), Sent);
-	UE_LOG(LogTemp, Warning, TEXT("BytesSent: %d"), BytesSent);
+	//UE_LOG(LogTemp, Warning, TEXT("SendResult: %d"), Sent);
+	//UE_LOG(LogTemp, Warning, TEXT("BytesSent: %d"), BytesSent);
 
 	return Sent;
 }
 
 bool TcpServer::Respond(const FTCPClient& Client, const std::string& Message) const
 {
-	auto OutBytes = new uint8[Client.SendBufferSize + 3];
-	for(int i = 0; i < Message.length(); i++)
+	auto OutBytes = new uint8[Message.length() + 3];
+	for(size_t i = 0; i < Message.length(); i++)
 		OutBytes[i] = Message[i];
 
 	OutBytes[Message.length()] = END_OF_MESSAGE; // mark end of message
 	OutBytes[Message.length()+1] = END_OF_MESSAGE; // mark end of message
 	OutBytes[Message.length()+2] = END_OF_MESSAGE; // mark end of message
 
-	UE_LOG(LogTemp, Warning, TEXT("Message.length: %llu"), Message.length()+3);
+	/* UE_LOG(LogTemp, Warning, TEXT("Message.length: %llu"), Message.length()+3); */
 	
 	int32 BytesSent;
 	const bool Sent = Client.Socket->Send(OutBytes, Message.length() + 3, BytesSent);
 	
-	UE_LOG(LogTemp, Warning, TEXT("SendResult: %d"), Sent);
-	UE_LOG(LogTemp, Warning, TEXT("BytesSent: %d"), BytesSent);
+	/* UE_LOG(LogTemp, Warning, TEXT("SendResult: %d"), Sent); */
+	/* UE_LOG(LogTemp, Warning, TEXT("BytesSent: %d"), BytesSent); */
 	delete[] OutBytes;
 	return Sent;
 }

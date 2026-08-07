@@ -3,7 +3,8 @@
 FlightForgePlugin/Binaries
 FlightForgePlugin/Intermediate
 
-UINav3Plugin_5.4/Binaries/
-UINav3Plugin_5.4/Intermediate/
+UINav3Plugin_5.4/Binaries
+UINav3Plugin_5.4/Intermediate
 
-.idea/
+UnrealYAML/Binaries
+UnrealYAML/Intermediate

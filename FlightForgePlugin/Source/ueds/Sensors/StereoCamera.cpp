@@ -50,12 +50,13 @@ void UStereoCamera::BeginPlay()
 	
 	
 	stereo_camera_config_.ShowCameraComponent = false;
-	stereo_camera_config_.Offset              = FVector(0, 0, 0);
-	stereo_camera_config_.Orientation         = FRotator(0, 0, 0);
+	stereo_camera_config_.Offset_left         = FVector(0, 0, 0);
+	stereo_camera_config_.Orientation_left    = FRotator(0, 0, 0);
+	stereo_camera_config_.Offset_right        = FVector(0, 0, 0);
+	stereo_camera_config_.Orientation_right   = FRotator(0, 0, 0);
 	stereo_camera_config_.FOVAngle            = 90;
 	stereo_camera_config_.Width               = 640;
 	stereo_camera_config_.Height              = 480;
-	stereo_camera_config_.baseline            = 0.1;
 	
 	SetStereoCameraConfig(stereo_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
@@ -128,14 +129,14 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   CameraBufferCriticalSection->Lock();
 
   SceneCaptureMeshHolder->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolder->SetRelativeLocation(Config.Offset);
+  SceneCaptureMeshHolder->SetRelativeLocation(Config.Offset_left);
   SceneCaptureMeshHolder->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation_left);
 
   SceneCaptureMeshHolderStereoRight->SetVisibility(Config.ShowCameraComponent);
-  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset + FVector(0.0, 100.0 * Config.baseline, 0.0));
+  SceneCaptureMeshHolderStereoRight->SetRelativeLocation(Config.Offset_right);
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
-  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation);
+  SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
   SceneCaptureComponent2D->FOVAngle  = Config.FOVAngle;
   SceneCaptureComponent2DStereoRight->FOVAngle = Config.FOVAngle;
@@ -259,20 +260,26 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 
 	ResponseStereo.config.show_debug_camera_= stereo_camera_config_.ShowCameraComponent;
 
-	ResponseStereo.config.offset_x_ = stereo_camera_config_.Offset.X;
-	ResponseStereo.config.offset_y_ = stereo_camera_config_.Offset.Y;
-	ResponseStereo.config.offset_z_ = stereo_camera_config_.Offset.Z;
+	ResponseStereo.config.offset_x_left_ = stereo_camera_config_.Offset_left.X;
+	ResponseStereo.config.offset_y_left_ = stereo_camera_config_.Offset_left.Y;
+	ResponseStereo.config.offset_z_left_ = stereo_camera_config_.Offset_left.Z;
 
-	ResponseStereo.config.rotation_pitch_ = stereo_camera_config_.Orientation.Pitch;
-	ResponseStereo.config.rotation_yaw_ = stereo_camera_config_.Orientation.Yaw;
-	ResponseStereo.config.rotation_roll_ = stereo_camera_config_.Orientation.Roll;
+	ResponseStereo.config.offset_x_right_ = stereo_camera_config_.Offset_right.X;
+	ResponseStereo.config.offset_y_right_ = stereo_camera_config_.Offset_right.Y;
+	ResponseStereo.config.offset_z_right_ = stereo_camera_config_.Offset_right.Z;
+
+	ResponseStereo.config.rotation_pitch_left_ = stereo_camera_config_.Orientation_left.Pitch;
+	ResponseStereo.config.rotation_yaw_left_ = stereo_camera_config_.Orientation_left.Yaw;
+	ResponseStereo.config.rotation_roll_left_ = stereo_camera_config_.Orientation_left.Roll;
+
+	ResponseStereo.config.rotation_pitch_right_ = stereo_camera_config_.Orientation_right.Pitch;
+	ResponseStereo.config.rotation_yaw_right_ = stereo_camera_config_.Orientation_right.Yaw;
+	ResponseStereo.config.rotation_roll_right_ = stereo_camera_config_.Orientation_right.Roll;
 
 	ResponseStereo.config.fov_ = stereo_camera_config_.FOVAngle;
 
 	ResponseStereo.config.width_ = stereo_camera_config_.Width;
 	ResponseStereo.config.height_ = stereo_camera_config_.Height;
-
-	ResponseStereo.config.baseline_ = stereo_camera_config_.baseline;
 
 	ResponseStereo.config.enable_temporal_aa_ = stereo_camera_config_.enable_temporal_aa;
 	ResponseStereo.config.enable_hdr_ = stereo_camera_config_.enable_hdr;
@@ -285,19 +292,20 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
 {
 	Serializable::Drone::SetStereoCameraConfig::Request Request;
-				
+	Serialization::SerializeRequest(Request, *InputStream);
+
 	FStereoCameraConfig Config;
 	Config.ShowCameraComponent = Request.config.show_debug_camera_;
 
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset_left = FVector(Request.config.offset_x_left_, Request.config.offset_y_left_, Request.config.offset_z_left_);
+	Config.Offset_right = FVector(Request.config.offset_x_right_, Request.config.offset_y_right_, Request.config.offset_z_right_);
+	Config.Orientation_left = FRotator(Request.config.rotation_pitch_left_, Request.config.rotation_yaw_left_, Request.config.rotation_roll_left_);
+	Config.Orientation_right = FRotator(Request.config.rotation_pitch_right_, Request.config.rotation_yaw_right_, Request.config.rotation_roll_right_);
 
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width = Request.config.width_;
 	Config.Height = Request.config.height_;
-
-	Config.baseline = Request.config.baseline_;
 
 	Config.enable_hdr = Request.config.enable_hdr_;
 	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;

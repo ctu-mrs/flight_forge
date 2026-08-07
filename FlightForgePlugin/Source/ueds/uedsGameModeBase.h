@@ -3,14 +3,19 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "DronePawn.h"
 #include "uedsGameInstance.h"
 #include "Components/SceneCaptureComponent2D.h"
-#include "Server/UedsGameModeServer.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/PackageName.h"
+
+#include "DronePawn.h"
+#include "Server/UedsGameModeServer.h"
+#include <string>
+
 #include "uedsGameModeBase.generated.h"
+
 
 #if PLATFORM_WINDOWS
   #include "Microsoft/AllowMicrosoftPlatformTypes.h"
@@ -80,13 +85,13 @@ private:
 			MyGameInstance->Server->SetCurrentGameMode(this);
 			UE_LOG(LogTemp, Log, TEXT("GameMode connected to server!"));
 		}
-		
+
 		FString NextMapNameStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapName"));
 		FString NextMapPathStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapPath"));
 		if (!NextMapNameStr.IsEmpty() && !NextMapPathStr.IsEmpty())
 		{
 			StartAsyncLoadingTargetMap(NextMapNameStr, NextMapPathStr);
-        
+
 			UE_LOG(LogTemp, Warning, TEXT("Loading screen, switching to: %s"), *NextMapPathStr);
 		}
 		else
@@ -94,9 +99,6 @@ private:
 			UE_LOG(LogTemp, Warning, TEXT("Starting game mode server (Normal Map)"));
 			InitializeDronePool();
 		}
-		
-		// Server->Run();
-		// UE_LOG(LogTemp, Warning, TEXT("Starting game mode server %s"), *GEngine->GetCurrentPlayWorld()->GetName());
 		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
 		// {
 		// 	
@@ -112,7 +114,6 @@ private:
 		// 	L.X += 200;
 		// }
 		//SpawnDrone();
-		// Super::BeginPlay();
 	}
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
@@ -202,7 +203,7 @@ public:
 		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDrone"));
 
 		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS 
+		// First Find pawn point by raycast DOWNWARDS 
 		// if(UWorld* World = GetWorld())
 		// {
 		// 	FHitResult HitResult;
@@ -242,10 +243,9 @@ public:
 		return PlayerPawn->droneServer->GetPort();
 	}
 
-	UFUNCTION(BlueprintCallable)
-	int SpawnDroneAtLocation(FVector Location, int IdMesh)
+	int SpawnDroneAtLocation(FVector Location, std::string MeshName)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDroneAtLocation at location: %lf, %lf, %lf [mesh %d]"), Location.X, Location.Y, Location.Z, IdMesh);
+		UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase::SpawnDroneAtLocation at location: %lf, %lf, %lf [mesh %s]"), Location.X, Location.Y, Location.Z, *FString(MeshName.c_str()));
 		
 		// ADronePawn* PlayerPawn = nullptr;
 		// auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
@@ -307,7 +307,7 @@ public:
 		ReadyDrone.Pawn->droneServer->SetPort(DronePort);
 		ReadyDrone.Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		ReadyDrone.Pawn->StartServer();
-		ReadyDrone.Pawn->SetStaticMesh(IdMesh);
+		ReadyDrone.Pawn->SetStaticMesh(MeshName);
 		ReadyDrone.Pawn->Simulate_UE_Physics(3.0f);
 		
 		DronePawnsCriticalSection->Lock();
@@ -404,81 +404,27 @@ public:
 	}
 
 	//UFUNCTION(BlueprintCallable)
-	bool SwitchWorldLevel(const short& WorldLevelEnum)
+	bool SwitchWorldLevel(const std::string& WorldLevelName)
 	{
-		FName NameOfWorld;
-		FString PackagePath;
-		
-		switch (WorldLevelEnum)
-		{
-		case Serializable::GameMode::WorldLevelEnum::VALLEY:
-			NameOfWorld = "Valley";
-			PackagePath = "/Game/Worlds/Valley/Maps/Valley";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::FOREST:
-			NameOfWorld = "Forest";
-			PackagePath = "/Game/Worlds/Forest/Maps/Forest";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::INFINITE_FOREST:
-			NameOfWorld = "InfinityForest";
-			PackagePath = "/Game/Worlds/Forest/Maps/InfinityForest";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::WAREHOUSE:
-			NameOfWorld = "Warehouse";
-			PackagePath = "/Game/Worlds/Warehouse/Maps/Warehouse";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::CAVE:
-			NameOfWorld = "CaveTunnel";
-			PackagePath = "/Game/Worlds/Cave/Maps/CaveTunnel";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::ERDING_AIRBASE:
-			NameOfWorld = "ErdingAirBase";
-			PackagePath = "/Game/Worlds/ErdingAirBase/Maps/ErdingAirBase";
-			break;
-		case Serializable::GameMode::WorldLevelEnum::TEMESVAR:
-			NameOfWorld = "Temesvar_annotated";
-			PackagePath = "/Game/Worlds/Temesvar/Maps/Temesvar_annotated";
-			break;
-		case 7:
-			NameOfWorld = "ElectricTowers";
-			PackagePath = "/Game/Worlds/ElectricTowers/Maps/ElectricTowers";
-			break;
-		case 8:
-			NameOfWorld = "Race_1";
-			PackagePath = "/Game/Worlds/Warehouse/Maps/Race_1";
-			break;
-		case 9:
-			NameOfWorld = "Race_2";
-			PackagePath = "/Game/Worlds/Warehouse/Maps/Race_2";
-			break;
-	    case 10:
-			NameOfWorld = "IndustialWarehouse";
-			PackagePath = "/Game/Worlds/IndustialWarehouse/Maps/IndustialWarehouse";
-	      break;
-	    case 11:
-			NameOfWorld = "ServiceTunnel";
-			PackagePath = "/Game/Worlds/ServiceTunnel/Maps/ServiceTunnel";
-	      break;
-	    case 12:
-			NameOfWorld = "DeadSpruceForestBiome_Example_Daytime";
-			PackagePath = "/Game/MWDeadSpruceForest/Maps/DeadSpruceForestBiome_Example_Daytime";
-	      break;
-		default:
-			// NameOfWorld = "InfiniteForest"; could not find level named InfiniteForest
-			NameOfWorld = "InfinityForest";
-			PackagePath = "/Game/Worlds/Forest/Maps/InfinityForest";
-			break;
-		}
-		
-		FString Options = FString::Printf(TEXT("?game=/Script/ueds.uedsGameModeBase?NextMapName=%s?NextMapPath=%s"), 
-		*NameOfWorld.ToString(), 
-		*PackagePath);
+		const FString WorldLevelStr = FString(WorldLevelName.c_str());
 
-		//opens empty level, might switch to loading screen
-		UE_LOG(LogTemp, Warning, TEXT("OpenLevel: Empty"));
-		UGameplayStatics::OpenLevel(this, "/Engine/Maps/Entry", true, Options);
-		
-		return true; 
+		// full package path: preload the map through the Entry level for a fast switch
+		if (WorldLevelStr.Contains(TEXT("/")))
+		{
+			const FString NameOfWorld = FPackageName::GetShortName(WorldLevelStr);
+			const FString Options = FString::Printf(TEXT("?game=/Script/ueds.uedsGameModeBase?NextMapName=%s?NextMapPath=%s"),
+				*NameOfWorld,
+				*WorldLevelStr);
+
+			UE_LOG(LogTemp, Warning, TEXT("OpenLevel: Empty"));
+			UGameplayStatics::OpenLevel(this, "/Engine/Maps/Entry", true, Options);
+		}
+		else
+		{
+			UGameplayStatics::OpenLevel(this, FName(WorldLevelStr));
+		}
+
+		return true;
 	}
 
 	void StartAsyncLoadingTargetMap(const FString& NextMapNameStr, const FString& NextMapPathStr)

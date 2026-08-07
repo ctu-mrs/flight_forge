@@ -113,12 +113,14 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
 }
 
 
-void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart) {
+void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
 
     // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
     LidarHitsCriticalSection->Lock();
-  
+
+    auto stamp = FPlatformTime::Seconds();
+
     UpdateLidar(true);
   
     OutLidarData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -133,6 +135,8 @@ void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarDa
     OutStart.X = LidarConfig.Offset.X;
     OutStart.Y = LidarConfig.Offset.Y;
     OutStart.Z = LidarConfig.Offset.Z;
+
+    OutStamp = stamp;
 
     LidarHitsCriticalSection->Unlock();
 }
@@ -219,9 +223,11 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
 }
 
 
-void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart) {
+void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
 
     LidarSegHitsCriticalSection->Lock();
+
+    auto stamp = FPlatformTime::Seconds();
 
     UpdateSegLidar(true);
 
@@ -238,6 +244,8 @@ void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::L
     OutStart.X = LidarConfig.Offset.X;
     OutStart.Y = LidarConfig.Offset.Y;
     OutStart.Z = LidarConfig.Offset.Z;
+
+    OutStamp = stamp;
 
     LidarSegHitsCriticalSection->Unlock();
 }
@@ -357,9 +365,11 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
 }
 
 
-void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart) {
+void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
 
     LidarIntHitsCriticalSection->Lock();
+
+    auto stamp = FPlatformTime::Seconds();
 
     UpdateIntLidar(true);
     OutLidarIntData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
@@ -375,6 +385,8 @@ void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::L
     OutStart.X = LidarConfig.Offset.X;
     OutStart.Y = LidarConfig.Offset.Y;
     OutStart.Z = LidarConfig.Offset.Z;
+
+    OutStamp = stamp;
 
     LidarIntHitsCriticalSection->Unlock();
 }
@@ -620,13 +632,15 @@ void ULidar::GetData(std::stringstream& OutputStream)
         {
             std::vector<Serializable::Drone::GetLidarData::LidarData> LidarData;
             FVector Start;
-            GetLidarHits(LidarData, Start);
+            double stamp;
+            GetLidarHits(LidarData, Start, stamp);
 
             Serializable::Drone::GetLidarData::Response Response(true);
             Response.lidarData = LidarData;
             Response.startX = Start.X;
             Response.startY = Start.Y;
             Response.startZ = Start.Z;
+            Response.stamp_ = stamp;
 
             Serialization::DeserializeResponse(Response, OutputStream);
             break;
@@ -636,13 +650,15 @@ void ULidar::GetData(std::stringstream& OutputStream)
         {
             std::vector<Serializable::Drone::GetLidarSegData::LidarSegData> LidarSegData;
             FVector Start;
-            GetSegLidarHits(LidarSegData, Start);
-        
+            double stamp;
+            GetSegLidarHits(LidarSegData, Start, stamp);
+
             Serializable::Drone::GetLidarSegData::Response Response(true);
             Response.lidarSegData = LidarSegData;
             Response.startX = Start.X;
             Response.startY = Start.Y;
             Response.startZ = Start.Z;
+            Response.stamp_ = stamp;
         
             Serialization::DeserializeResponse(Response, OutputStream);
             break;
@@ -652,13 +668,15 @@ void ULidar::GetData(std::stringstream& OutputStream)
         {
             std::vector<Serializable::Drone::GetLidarIntData::LidarIntData> LidarIntData;
             FVector Start;
-            GetIntLidarHits(LidarIntData, Start);
-        
+            double stamp;
+            GetIntLidarHits(LidarIntData, Start, stamp);
+
             Serializable::Drone::GetLidarIntData::Response Response(true);
             Response.lidarIntData = LidarIntData;
             Response.startX = Start.X;
             Response.startY = Start.Y;
             Response.startZ = Start.Z;
+            Response.stamp_ = stamp;
         
             Serialization::DeserializeResponse(Response, OutputStream);
             break;
