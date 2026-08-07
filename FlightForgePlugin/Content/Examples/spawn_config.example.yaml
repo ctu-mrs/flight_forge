@@ -1,0 +1,51 @@
+# Example spawn configuration for the FlightForge spawn tool.
+#
+# Copy this next to the packaged binary as <Project>/FlightForge/spawn_config.yaml, or
+# send its contents over the API with the spawn_objects_from_yaml command.
+#
+# Poses are right-handed (ROS): metres and degrees. They are converted to Unreal's
+# left-handed centimetres on spawn.
+
+# Package paths searched when "asset" is a bare name. Optional.
+search_paths:
+  - /Game/Worlds/Warehouse/Blueprints/
+  - /FlightForgePlugin/Meshes/
+
+# Directories searched for .glb/.gltf files that are not cooked into the build.
+# Relative paths resolve against this file; over the API they resolve against the
+# project directory. Optional.
+model_paths:
+  - ./models/
+
+# Added to every position below. Useful for shifting a whole layout at once. Optional.
+origin_offset: {x: 0.0, y: 0.0, z: 0.0}
+
+# "origin" (default) places objects relative to the PlayerStart tagged "UAV";
+# "world" places them relative to the level origin. Optional.
+frame: origin
+
+objects:
+  # A Blueprint actor cooked into the build, found by searching search_paths.
+  - asset: BP_a2rl_gate_slim
+    position:    {x: 5.0, y: 0.0, z: 0.0}
+    orientation: {roll: 0, pitch: 0, yaw: 90}
+
+  # An explicit package path, skipping the search.
+  - asset: /Game/Worlds/Warehouse/Blueprints/BP_a2rl_gate_slim_core
+    position:    {x: 12.0, y: -3.0, z: 1.4}
+    orientation: {roll: 0, pitch: 0, yaw: 180}
+
+  # A model loaded from disk at runtime, which is how a packaged binary places
+  # content it was never built with. Resolved through model_paths.
+  - asset: my_barrier.glb
+    position:    {x: 18.0, y: 2.5, z: 0.0}
+    orientation: {roll: 0, pitch: 0, yaw: 0}
+    scale:       {x: 1.5, y: 1.5, z: 1.5}
+
+  # Vectors may also be written as sequences, and "scale" may be a single number.
+  - asset: my_barrier.glb
+    position:    [22.0, 2.5, 0.0]
+    orientation: [0, 0, 45]
+    scale:       2
+    # Fixes the segmentation stencil instead of letting it be assigned automatically.
+    stencil:     231

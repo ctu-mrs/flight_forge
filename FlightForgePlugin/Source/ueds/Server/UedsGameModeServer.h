@@ -4,7 +4,7 @@
 #include "TcpServer.h"
 
 #define API_VERSION_MAJOR 0
-#define API_VERSION_MINOR 12
+#define API_VERSION_MINOR 13
 
 class AuedsGameModeBase;
 
@@ -52,4 +52,8 @@ private:
 	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
 
 	bool SetMutualDroneVisibility(const FTCPClient& Client, Serializable::GameMode::SetMutualVisibility::Request& Request);
+
+	bool SpawnObjectsFromYaml(const FTCPClient& Client, Serializable::GameMode::SpawnObjectsFromYaml::Request& Request);
+
+	bool RemoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::RemoveSpawnedObject::Request& Request);
 };

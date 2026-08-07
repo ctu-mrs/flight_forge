@@ -1,0 +1,196 @@
+#include "SpawnConfig.h"
+
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+#include "yaml.h"
+
+namespace
+{
+
+/* yaml readers //{ */
+
+FString ToFString(const std::string& In)
+{
+  return FString(UTF8_TO_TCHAR(In.c_str()));
+}
+
+double ReadScalar(const YAML::Node& Node, const char* Key, const double Default)
+{
+  return (Node && Node[Key]) ? Node[Key].as<double>(Default) : Default;
+}
+
+// Accepts either a mapping keyed by the three given names or a three-element sequence,
+// so that [x, y, z] and {x: .., y: .., z: ..} are both valid spelling of a vector.
+FVector ReadVector(const YAML::Node& Node, const char* A, const char* B, const char* C, const FVector& Default)
+{
+  if (!Node)
+  {
+    return Default;
+  }
+
+  if (Node.IsSequence() && Node.size() >= 3)
+  {
+    return FVector(Node[0].as<double>(Default.X), Node[1].as<double>(Default.Y), Node[2].as<double>(Default.Z));
+  }
+
+  if (Node.IsMap())
+  {
+    return FVector(ReadScalar(Node, A, Default.X), ReadScalar(Node, B, Default.Y), ReadScalar(Node, C, Default.Z));
+  }
+
+  // A lone scalar is a uniform value, which is what makes "scale: 2" work.
+  if (Node.IsScalar())
+  {
+    const double Uniform = Node.as<double>(Default.X);
+    return FVector(Uniform, Uniform, Uniform);
+  }
+
+  return Default;
+}
+
+TArray<FString> ReadStringArray(const YAML::Node& Node)
+{
+  TArray<FString> Out;
+
+  if (Node && Node.IsSequence())
+  {
+    for (const auto& Element : Node)
+    {
+      Out.Add(ToFString(Element.as<std::string>("")));
+    }
+  }
+
+  return Out;
+}
+
+/* //} */
+
+}  // namespace
+
+/* ParseSpawnConfig() //{ */
+
+bool USpawnConfigUtils::ParseSpawnConfig(const FString& YamlText, FSpawnConfig& OutConfig, FString& OutError)
+{
+  OutConfig = FSpawnConfig();
+  OutError.Empty();
+
+  try
+  {
+    const YAML::Node Root = YAML::Load(TCHAR_TO_UTF8(*YamlText));
+
+    if (!Root || !Root.IsMap())
+    {
+      OutError = TEXT("the document root is not a mapping");
+      return false;
+    }
+
+    if (!Root["objects"] || !Root["objects"].IsSequence())
+    {
+      OutError = TEXT("no 'objects' sequence found");
+      return false;
+    }
+
+    OutConfig.SearchPaths  = ReadStringArray(Root["search_paths"]);
+    OutConfig.ModelPaths   = ReadStringArray(Root["model_paths"]);
+    OutConfig.OriginOffset = ReadVector(Root["origin_offset"], "x", "y", "z", FVector::ZeroVector);
+
+    if (Root["frame"])
+    {
+      OutConfig.bRelativeToWorldOrigin = !ToFString(Root["frame"].as<std::string>("origin")).Equals(TEXT("world"), ESearchCase::IgnoreCase);
+    }
+
+    int32 EntryIndex = 0;
+    for (const auto& Node : Root["objects"])
+    {
+      FSpawnObjectEntry Entry;
+
+      Entry.Asset = ToFString(Node["asset"] ? Node["asset"].as<std::string>("") : "");
+      if (Entry.Asset.IsEmpty())
+      {
+        OutError = FString::Printf(TEXT("object %d has no 'asset'"), EntryIndex);
+        return false;
+      }
+
+      Entry.Position    = ReadVector(Node["position"], "x", "y", "z", FVector::ZeroVector);
+      Entry.Orientation = ReadVector(Node["orientation"], "roll", "pitch", "yaw", FVector::ZeroVector);
+      Entry.Scale       = ReadVector(Node["scale"], "x", "y", "z", FVector::OneVector);
+      Entry.Stencil     = Node["stencil"] ? Node["stencil"].as<int32>(-1) : -1;
+
+      OutConfig.Objects.Add(Entry);
+      ++EntryIndex;
+    }
+  }
+  catch (const YAML::Exception& Exception)
+  {
+    OutError = ToFString(Exception.what());
+    return false;
+  }
+
+  return true;
+}
+
+/* //} */
+
+/* LoadSpawnConfigFile() //{ */
+
+bool USpawnConfigUtils::LoadSpawnConfigFile(const FString& FilePath, FSpawnConfig& OutConfig, FString& OutError)
+{
+  if (!FPaths::FileExists(FilePath))
+  {
+    OutError = FString::Printf(TEXT("'%s' does not exist"), *FilePath);
+    return false;
+  }
+
+  FString FileContent;
+  if (!FFileHelper::LoadFileToString(FileContent, *FilePath))
+  {
+    OutError = FString::Printf(TEXT("'%s' could not be read"), *FilePath);
+    return false;
+  }
+
+  if (!ParseSpawnConfig(FileContent, OutConfig, OutError))
+  {
+    OutError = FString::Printf(TEXT("'%s': %s"), *FilePath, *OutError);
+    return false;
+  }
+
+  // Relative model directories are resolved against the config file, so that a config
+  // and the models it names can be moved around together.
+  const FString ConfigDir = FPaths::GetPath(FilePath);
+  for (FString& ModelPath : OutConfig.ModelPaths)
+  {
+    if (FPaths::IsRelative(ModelPath))
+    {
+      ModelPath = FPaths::Combine(ConfigDir, ModelPath);
+    }
+  }
+
+  if (OutConfig.ModelPaths.IsEmpty())
+  {
+    OutConfig.ModelPaths.Add(ConfigDir);
+  }
+
+  return true;
+}
+
+/* //} */
+
+/* ToUnrealTransform() //{ */
+
+FTransform USpawnConfigUtils::ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, const FVector& WorldOrigin)
+{
+  constexpr double MetresToCentimetres = 100.0;
+
+  const FVector Position = Entry.Position + OriginOffset;
+
+  const FVector Location(WorldOrigin.X + Position.X * MetresToCentimetres,
+                         WorldOrigin.Y - Position.Y * MetresToCentimetres,
+                         WorldOrigin.Z + Position.Z * MetresToCentimetres);
+
+  const FRotator Rotation(-Entry.Orientation.Y, -Entry.Orientation.Z, Entry.Orientation.X);
+
+  return FTransform(Rotation.Quaternion(), Location, Entry.Scale);
+}
+
+/* //} */

@@ -36,5 +36,19 @@
 				"Engine"
 			]
 		}
+	],
+	"Plugins": [
+		{
+			"Name": "ProceduralMeshComponent",
+			"Enabled": true
+		},
+		{
+			"Name": "glTFRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "UnrealYAML",
+			"Enabled": true
+		}
 	]
 }

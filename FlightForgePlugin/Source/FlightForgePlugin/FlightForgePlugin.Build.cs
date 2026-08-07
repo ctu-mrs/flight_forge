@@ -8,6 +8,11 @@ public class FlightForgePlugin : ModuleRules
 	public FlightForgePlugin(ReadOnlyTargetRules Target) : base(Target)
 	{
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "Lidar/mid360.csv"));
+
+		// Loose files rather than uassets, so they are not cooked and have to be staged
+		// explicitly to reach a packaged build.
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "ExternalModels", "*", "*.glb"));
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "ExternalModels", "*", "*.yaml"));
 		
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
