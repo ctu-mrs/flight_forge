@@ -137,10 +137,14 @@ struct LidarConfig
   double FOVVertDown;
   bool Livox;
 
+  // Which non-repetitive scan pattern to replay when Livox is set.
+  // 0 = none, 1 = Mid-360, 2 = Avia. Keep the integers stable.
+  int LivoxSensor;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox); 
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox, LivoxSensor);
   }
 };
 

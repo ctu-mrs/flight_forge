@@ -748,7 +748,7 @@ bool DroneServer::GetLidarConfig(const FTCPClient& Client, Serializable::Drone::
   Response.config.FOVVertUp = LidarConfig.FOVVertUp;
   Response.config.FOVVertDown = LidarConfig.FOVVertDown;
   Response.config.Livox = LidarConfig.Livox;
-
+  Response.config.LivoxSensor = static_cast<int>(LidarConfig.LivoxSensor);
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 	
@@ -781,6 +781,7 @@ bool DroneServer::SetLidarConfig(const FTCPClient& Client, Serializable::Drone::
   Config.FOVVertUp = Request.config.FOVVertUp;
   Config.FOVVertDown = Request.config.FOVVertDown;
   Config.Livox = Request.config.Livox;
+  Config.LivoxSensor = static_cast<ELivoxSensor>(Request.config.LivoxSensor);
   
 	const auto Status = DronePawn->SetLidarConfig(Config);
 

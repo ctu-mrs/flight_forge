@@ -14,84 +14,15 @@
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
-#include <fstream>
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
 #include "Kismet/BlueprintTypeConversions.h"
-#include "Interfaces/IPluginManager.h"
-#include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 
 //}
 
-/*LoadCSVData()//{*/
-bool ADronePawn::LoadCSVData(const FString& FilePath)
-{
-    // Convert FString to std::string for CSV parsing
-    std::string filePathStr = std::string(TCHAR_TO_UTF8(*FilePath));
-    std::ifstream file(filePathStr);
-
-    if (!file.is_open()) {
-        UE_LOG(LogTemp, Error, TEXT("Could not open CSV file: %s"), *FilePath);
-        return false;
-    }
-
-    std::string line;
-    std::getline(file, line); // Skip the header line
-
-    LivoxData.Empty(); // Clear any existing data
-
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string value;
-        FLivoxDataPoint dataPoint;
-        
-        // Read values from the CSV line
-        std::getline(ss, value, ','); // Read Time/s
-        try {
-            dataPoint.Time = std::stod(value);
-        }
-        catch (const std::invalid_argument& e) {
-            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Time): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
-            file.close(); // Close file on read error
-            return false;
-        }
-
-        std::getline(ss, value, ','); // Read Azimuth/deg
-         try {
-            dataPoint.Azimuth = FMath::DegreesToRadians(std::stod(value));  // Convert to radians
-        }
-        catch (const std::invalid_argument& e) {
-           UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Azimuth): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
-           file.close();
-           return false;
-        }
-
-        std::getline(ss, value, ','); // Read Zenith/deg
-        try {
-            dataPoint.Zenith = FMath::DegreesToRadians(std::stod(value));  // Convert to radians
-        } catch (const std::invalid_argument& e) {
-            UE_LOG(LogTemp, Error, TEXT("Invalid data in CSV (Zenith): %s, %s"), UTF8_TO_TCHAR(value.c_str()), UTF8_TO_TCHAR(e.what()));
-            file.close();
-            return false;
-        }
-        
-        LivoxData.Add(dataPoint); // Add the data point to the array
-    }
-
-    file.close();
-
-    if (LivoxData.Num() == 0) {
-        UE_LOG(LogTemp, Warning, TEXT("CSV file is empty or contains no valid data."));
-        return false;  // Return false if no data was loaded
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("Loaded %d data points from CSV."), LivoxData.Num());
-    return true;
-}
-/*//}*/
 
 /* ADronePawn() //{ */
 
@@ -217,31 +148,8 @@ ADronePawn::ADronePawn() {
   LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
   LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)LidarConfig.BeamHorRays;
 
-  LidarConfig.Livox = false;
-
-  StartIndex = 0;
-
-
-  /* CSVFilePath = FString(TEXT("/home/david/mid360.csv")); */
-  /* CSVFilePath = FPaths::ProjectContentDir() + TEXT("mid360.csv"); */ 
-  /* CSVFilePath = FPaths::ProjectSavedDir() + TEXT("mid360.csv"); */
-  /* FString PluginContentDir = FString(TEXT("/Game/../Plugins/flight_forge/FlightForgePlugin/Content/")); */
-
-  /* CSVFilePath = PluginContentDir + TEXT("mid360.csv"); */
-
-    FString PluginName = TEXT("FlightForgePlugin");
-    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(PluginName);
-    if (Plugin.IsValid())
-    {
-        FString PluginContentDir = Plugin->GetContentDir();
-        FString CSVRelativePath = TEXT("Lidar/mid360.csv");
-        CSVFilePath = FPaths::Combine(PluginContentDir, CSVRelativePath);
-
-    }
-    else
-    {
-      UE_LOG(LogTemp, Error, TEXT("Plugin not found"));
-    }
+  LidarConfig.Livox       = false;
+  LidarConfig.LivoxSensor = ELivoxSensor::Mid360;
 
   FTimerHandle OusterTimerHandle;
 
@@ -354,10 +262,6 @@ void ADronePawn::BeginPlay() {
   SetRgbCameraConfig(rgb_camera_config_);
   SetStereoCameraConfig(stereo_camera_config_);
 
-  if (!LoadCSVData(CSVFilePath)) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to load CSV data in BeginPlay."));
-    }
-
 }
 
 //}
@@ -392,6 +296,174 @@ void ADronePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 
 //}
 
+/* materialIntensity() //{ */
+
+namespace
+{
+// Intensity doubles as a material class id here, not a radiometric return.
+int MaterialIntensity(const FString& PhysMatName) {
+
+  if (PhysMatName.Equals("PM_Grass", ESearchCase::IgnoreCase)) {
+    return 1;
+  } else if (PhysMatName.Equals("PM_Road", ESearchCase::IgnoreCase)) {
+    return 2;
+  } else if (PhysMatName.Equals("PM_Tree", ESearchCase::IgnoreCase)) {
+    return 3;
+  } else if (PhysMatName.Equals("PM_Building", ESearchCase::IgnoreCase)) {
+    return 4;
+  } else if (PhysMatName.Equals("PM_Fence", ESearchCase::IgnoreCase)) {
+    return 5;
+  } else if (PhysMatName.Equals("PM_DirtRoad", ESearchCase::IgnoreCase)) {
+    return 6;
+  }
+
+  return 0;
+}
+}  // namespace
+
+//}
+
+/* getLivoxPattern() //{ */
+
+const FLivoxPattern* ADronePawn::GetLivoxPattern() const {
+  return FLivoxPatternLibrary::Get(LidarConfig.LivoxSensor);
+}
+
+//}
+
+/* castLivoxRays() //{ */
+
+// A stalled client would otherwise ask for an unbounded slice on its next poll;
+// one second of Avia is already 240k points.
+#define LIVOX_MAX_INTEGRATION_TIME 1.0
+
+// Rays are traced in chunks this long, each from the drone pose interpolated to
+// the middle of the chunk. 1 ms is ~240 rays on Avia, fine enough that the
+// residual within a chunk is far below the range noise of the real sensor.
+#define LIVOX_SUB_BATCH_TIME 0.001
+
+int32 ADronePawn::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
+                                TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store) {
+
+  const FLivoxPattern* Pattern = GetLivoxPattern();
+
+  if (!Pattern || Pattern->Num() == 0) {
+    return 0;
+  }
+
+  auto World = GetWorld();
+
+  if (!World) {
+    return 0;
+  }
+
+  const double Now = World->GetTimeSeconds();
+
+  // First slice after enabling or reconfiguring: hand out one nominal period so
+  // the client gets a sane message instead of an empty or enormous one.
+  if (Cursor.LastTime < 0.0) {
+    const double NominalPeriod = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
+    Cursor.LastTime            = Now - NominalPeriod;
+  }
+
+  double Elapsed = Now - Cursor.LastTime;
+
+  // World time restarts on a level switch.
+  if (Elapsed < 0.0) {
+    Elapsed = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
+  }
+
+  if (Elapsed > LIVOX_MAX_INTEGRATION_TIME) {
+    UE_LOG(LogTemp, Warning, TEXT("Livox: %.2f s since last request, clamping integration to %.2f s"), Elapsed, LIVOX_MAX_INTEGRATION_TIME);
+    Elapsed = LIVOX_MAX_INTEGRATION_TIME;
+  }
+
+  const int32 NumRays = FMath::Max(1, FMath::RoundToInt(Elapsed * Pattern->PointRate));
+
+  Prepare(NumRays);
+
+  const FTransform DroneTransform = GetActorTransform();
+
+  const FQuat      LidarQuat     = DroneTransform.GetRotation() * LidarConfig.Orientation.Quaternion();
+  const FVector    LidarLocation = DroneTransform.TransformPosition(LidarConfig.Offset);
+  const FTransform RefTransform(LidarQuat, LidarLocation);
+
+  // The slice covers [LastTime, Now]; the pose at each end is known, so poses
+  // inside it are interpolated. Output is expressed in the pose at Now, which is
+  // what the response stamp refers to.
+  const FTransform& FromPose = Cursor.bPoseValid ? Cursor.LastPose : RefTransform;
+
+  const int32 PatternStart   = (int32)FMath::Fmod(Cursor.PatternPos, (double)Pattern->Num());
+  const int32 RaysPerBatch   = FMath::Max(1, FMath::RoundToInt(LIVOX_SUB_BATCH_TIME * Pattern->PointRate));
+  const int32 NumBatches     = FMath::DivideAndRoundUp(NumRays, RaysPerBatch);
+  const double MinRangeCm    = Pattern->MinRangeCm;
+  const double BeamLength    = LidarConfig.BeamLength;
+
+  ParallelFor(NumBatches, [&](int32 BatchIndex) {
+    const double Alpha = NumBatches > 1 ? ((double)BatchIndex + 0.5) / (double)NumBatches : 1.0;
+
+    const FTransform BatchPose(FQuat::Slerp(FromPose.GetRotation(), RefTransform.GetRotation(), Alpha),
+                               FMath::Lerp(FromPose.GetLocation(), RefTransform.GetLocation(), Alpha));
+
+    const FVector BatchOrigin = BatchPose.GetLocation();
+
+    const int32 First = BatchIndex * RaysPerBatch;
+    const int32 Last  = FMath::Min(First + RaysPerBatch, NumRays);
+
+    FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+
+    if (LidarConfig.ShowBeams) {
+      CollisionParams.TraceTag = FName(TEXT("LivoxTraceTag"));
+    }
+
+    for (int32 i = First; i < Last; ++i) {
+
+      const FVector3f& Dir3f = Pattern->Directions[(PatternStart + i) % Pattern->Num()];
+      const FVector    PatternDir(Dir3f.X, Dir3f.Y, Dir3f.Z);
+
+      const FVector RayWorld = BatchPose.TransformVector(PatternDir) * BeamLength;
+
+      // Fallback for a non-return: the nominal ray, expressed in the reference frame.
+      FVector  OutDir = RefTransform.InverseTransformVector(RayWorld);
+      double   OutDistance = -1.0;
+      bool     bHasReturn  = false;
+
+      FHitResult HitResult;
+
+      if (World->LineTraceSingleByChannel(HitResult, BatchOrigin, BatchOrigin + RayWorld, ECC_Visibility, CollisionParams) && HitResult.bBlockingHit) {
+
+        AActor* HitActor = HitResult.GetActor();
+
+        const bool bHiddenDrone = !bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this;
+
+        if (!bHiddenDrone && HitResult.Distance >= MinRangeCm) {
+          // Re-expressing the world hit in the reference frame is what bakes the
+          // intra-scan motion distortion into the geometry, while keeping the
+          // wire format (distance + direction) unchanged.
+          const FVector Local = RefTransform.InverseTransformPosition(HitResult.ImpactPoint);
+
+          OutDistance = Local.Size();
+          OutDir      = Local.GetSafeNormal() * BeamLength;
+          bHasReturn  = true;
+        }
+      }
+
+      Store(i, OutDistance, OutDir, HitResult, bHasReturn);
+    }
+  });
+
+  Cursor.PatternPos = FMath::Fmod(Cursor.PatternPos + NumRays, (double)Pattern->Num());
+  Cursor.LastTime   = Now;
+  Cursor.LastPose = RefTransform;
+  Cursor.bPoseValid = true;
+
+  LidarHitStart.reset(new FVector(LidarLocation));
+
+  return NumRays;
+}
+
+//}
+
 /* updateLidar() //{ */
 void ADronePawn::UpdateLidar(bool isExternallyLocked) {
     if (!isExternallyLocked) {
@@ -412,63 +484,20 @@ void ADronePawn::UpdateLidar(bool isExternallyLocked) {
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
-    LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
     if (LidarConfig.Livox) {
-        // Livox Mode (CSV Data)
-        int pointsPerFrame = 20000;
 
-        ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-            for (int32 col = 0; col < LidarConfig.BeamVertRays; ++col) {
-                int i = row * LidarConfig.BeamVertRays + col;
+        LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>();
 
-                int dataIndex = (StartIndex + i) % LivoxData.Num();
-                const FLivoxDataPoint& dataPoint = LivoxData[dataIndex];
-
-                double azimuth = dataPoint.Azimuth;
-                double zenith = dataPoint.Zenith; 
-
-                // Ray direction in *lidar's local frame
-                FVector rayDirection_local(
-                    FMath::Cos(zenith) * FMath::Cos(azimuth),
-                    FMath::Cos(zenith) * FMath::Sin(azimuth),
-                    FMath::Sin(zenith)
-                );
-
-                // Transform to *world* coordinates
-                FVector rayDirection_world = lidarGlobalTransform.TransformVector(rayDirection_local);
-                rayDirection_world *= LidarConfig.BeamLength;
-
-
-                FHitResult HitResult;
-                auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-                rayDirection_local = lidarGlobalTransform.InverseTransformVector(rayDirection_world);
-                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + rayDirection_world, ECC_Visibility, CollisionParams))
-                {
-                    if (HitResult.bBlockingHit) {
-                        AActor* HitActor = HitResult.GetActor();
-                        if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this) {
-                             // Store distance and *local* ray direction.
-                            (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);
-                        }
-                        else{
-                            (*LidarHits)[i] = std::make_tuple(HitResult.Distance, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z); // CORRECTED
-                        }
-                    } else {
-                        // No hit. Store *local* ray direction.
-                        (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);
-                    }
-                }
-                else{
-                    (*LidarHits)[i] = std::make_tuple(-1.0, rayDirection_local.X, rayDirection_local.Y, rayDirection_local.Z);  // No hit
-                }
-            }
-        });
-
-        StartIndex = (StartIndex + pointsPerFrame) % LivoxData.Num();
-        LidarHitStart.reset(new FVector(lidarLocation));
+        CastLivoxRays(
+            LivoxCursor, [&](int32 NumRays) { LidarHits->resize(NumRays); },
+            [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+                (*LidarHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z);
+            });
 
     } else {
+
+        LidarHits = std::make_unique<std::vector<std::tuple<double, double, double, double>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
         FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
         FVector rightVector   = lidarQuat.RotateVector(FVector::RightVector);
@@ -553,84 +582,30 @@ void ADronePawn::UpdateSegLidar(bool isExternallyLocked) {
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
 
-    LidarSegHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
-
 
   if (LidarConfig.Livox) {
-        // Livox Mode (CSV Data)
-        int pointsPerFrame = 20000;
 
-        ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-            for (int32 col = 0; col < LidarConfig.BeamVertRays; ++col) {
-                int i = row * LidarConfig.BeamVertRays + col;
+        LidarSegHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>();
 
-                int dataIndex = (StartIndex + i) % LivoxData.Num();
-                const FLivoxDataPoint& dataPoint = LivoxData[dataIndex];
+        CastLivoxRays(
+            LivoxSegCursor, [&](int32 NumRays) { LidarSegHits->resize(NumRays); },
+            [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+                int segmentation = -1;
 
-                double azimuth = dataPoint.Azimuth;
-                double zenith = dataPoint.Zenith; 
-
-                // Ray direction in *lidar's local frame
-                FVector rayDirection_local(
-                    FMath::Cos(zenith) * FMath::Cos(azimuth),
-                    FMath::Cos(zenith) * FMath::Sin(azimuth),
-                    FMath::Sin(zenith)
-                );
-
-                // Transform to *world* coordinates
-                FVector rayDirection_world = lidarGlobalTransform.TransformVector(rayDirection_local);
-                rayDirection_world *= LidarConfig.BeamLength;
-
-
-                FHitResult HitResult;
-                auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-                rayDirection_local = lidarGlobalTransform.InverseTransformVector(rayDirection_world);
-                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + rayDirection_world, ECC_Visibility, CollisionParams))
-                {
-                    if (HitResult.bBlockingHit) {
-                        AActor* HitActor = HitResult.GetActor();
-                        if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this) {
-                            std::get<0>((*LidarSegHits)[i]) = -1.0;
-                            std::get<1>((*LidarSegHits)[i]) = rayDirection_local.X;
-                            std::get<2>((*LidarSegHits)[i]) = rayDirection_local.Y;
-                            std::get<3>((*LidarSegHits)[i]) = rayDirection_local.Z;
-                            std::get<4>((*LidarSegHits)[i]) = -1;
-                        }
-                        else{
-                            std::get<0>((*LidarSegHits)[i]) = HitResult.Distance;
-                            std::get<1>((*LidarSegHits)[i]) = rayDirection_local.X;
-                            std::get<2>((*LidarSegHits)[i]) = rayDirection_local.Y;
-                            std::get<3>((*LidarSegHits)[i]) = rayDirection_local.Z;
-                             auto component = Cast<UStaticMeshComponent>(HitResult.GetComponent());
-
-                            if (HitResult.GetComponent()->GetName().Contains("Landscape")) {
-                                std::get<4>((*LidarSegHits)[i]) = 1;
-                            } else {
-                                std::get<4>((*LidarSegHits)[i]) = component->CustomDepthStencilValue;
-                            }
-                        }
-                    } else {
-                        // No hit. 
-                        std::get<0>((*LidarSegHits)[i]) = -1.0;
-                        std::get<1>((*LidarSegHits)[i]) = rayDirection_local.X;
-                        std::get<2>((*LidarSegHits)[i]) = rayDirection_local.Y;
-                        std::get<3>((*LidarSegHits)[i]) = rayDirection_local.Z;
-                        std::get<4>((*LidarSegHits)[i]) = -1;
+                if (bHasReturn && Hit.GetComponent()) {
+                    if (Hit.GetComponent()->GetName().Contains("Landscape")) {
+                        segmentation = 1;
+                    } else if (auto component = Cast<UStaticMeshComponent>(Hit.GetComponent())) {
+                        segmentation = component->CustomDepthStencilValue;
                     }
                 }
-                else{
-                    std::get<0>((*LidarSegHits)[i]) = -1.0;
-                    std::get<1>((*LidarSegHits)[i]) = rayDirection_local.X;
-                    std::get<2>((*LidarSegHits)[i]) = rayDirection_local.Y;
-                    std::get<3>((*LidarSegHits)[i]) = rayDirection_local.Z;
-                    std::get<4>((*LidarSegHits)[i]) = -1;  // No hit
-                }
-            }
-        });
 
-        StartIndex = (StartIndex + pointsPerFrame) % LivoxData.Num();
+                (*LidarSegHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z, segmentation);
+            });
 
     } else {
+
+        LidarSegHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
         // Derive the lidar's world-space axes (these are now consistent)
         FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
@@ -747,101 +722,28 @@ void ADronePawn::UpdateIntLidar(bool isExternallyLocked) {
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
 
-  LidarIntHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
     if (LidarConfig.Livox) {
-        // Livox Mode (CSV Data)
-        int pointsPerFrame = 20000;
 
-        ParallelFor(LidarConfig.BeamHorRays, [&](int32 row) {
-            for (int32 col = 0; col < LidarConfig.BeamVertRays; ++col) {
-                int i = row * LidarConfig.BeamVertRays + col;
+        LidarIntHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>();
 
-                int dataIndex = (StartIndex + i) % LivoxData.Num();
-                const FLivoxDataPoint& dataPoint = LivoxData[dataIndex];
+        CastLivoxRays(
+            LivoxIntCursor, [&](int32 NumRays) { LidarIntHits->resize(NumRays); },
+            [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
+                int intensity = -1;
 
-                double azimuth = dataPoint.Azimuth;
-                double zenith = dataPoint.Zenith; 
-
-                // Ray direction in *lidar's local frame
-                FVector rayDirection_local(
-                    FMath::Cos(zenith) * FMath::Cos(azimuth),
-                    FMath::Cos(zenith) * FMath::Sin(azimuth),
-                    FMath::Sin(zenith)
-                );
-
-                // Transform to *world* coordinates
-                FVector rayDirection_world = lidarGlobalTransform.TransformVector(rayDirection_local);
-                rayDirection_world *= LidarConfig.BeamLength;
-
-
-                FHitResult HitResult;
-                auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-                CollisionParams.bReturnPhysicalMaterial = true;
-                rayDirection_local = lidarGlobalTransform.InverseTransformVector(rayDirection_world);
-                if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + rayDirection_world, ECC_Visibility, CollisionParams))
-                {
-                    if (HitResult.bBlockingHit) {
-                        AActor* HitActor = HitResult.GetActor();
-                        if (!bCanSeeOtherDrone && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != this) {
-                            std::get<0>((*LidarIntHits)[i]) = -1.0;
-                            std::get<1>((*LidarIntHits)[i]) = rayDirection_local.X;
-                            std::get<2>((*LidarIntHits)[i]) = rayDirection_local.Y;
-                            std::get<3>((*LidarIntHits)[i]) = rayDirection_local.Z;
-                            std::get<4>((*LidarIntHits)[i]) = -1;
-                        }
-                        else{
-                            std::get<0>((*LidarIntHits)[i]) = HitResult.Distance;
-                            std::get<1>((*LidarIntHits)[i]) = rayDirection_local.X;
-                            std::get<2>((*LidarIntHits)[i]) = rayDirection_local.Y;
-                            std::get<3>((*LidarIntHits)[i]) = rayDirection_local.Z;
-                            FVector            surfaceNormal = HitResult.ImpactNormal;
-                            UPhysicalMaterial* PhysMat       = HitResult.PhysMaterial.Get();
-                            /* UE_LOG(LogTemp, Warning, TEXT("HitResult.PhysMaterial.Get() %s"), *HitResult.PhysMaterial->GetName()); */
-                            double intensity = -1;
-                            /* double intensity = 1.0 - FMath::Abs(FVector::DotProduct(surfaceNormal, raycastAngle.GetSafeNormal())); */
-                            if (PhysMat) {
-                                FString PhysMatName = PhysMat->GetName();
-                                if (PhysMatName.Equals("PM_Grass", ESearchCase::IgnoreCase)) {
-                                intensity = 1;
-                                } else if (PhysMatName.Equals("PM_Road", ESearchCase::IgnoreCase)) {
-                                intensity = 2;
-                                } else if (PhysMatName.Equals("PM_Tree", ESearchCase::IgnoreCase)) {
-                                intensity = 3;
-                                } else if (PhysMatName.Equals("PM_Building", ESearchCase::IgnoreCase)) {
-                                intensity = 4;
-                                } else if (PhysMatName.Equals("PM_Fence", ESearchCase::IgnoreCase)) {
-                                intensity = 5;
-                                } else if (PhysMatName.Equals("PM_DirtRoad", ESearchCase::IgnoreCase)) {
-                                intensity = 6;
-                                } else {
-                                intensity = 0;
-                                }
-                            }
-                            std::get<4>((*LidarIntHits)[i]) = intensity;
-                        }
-                    } else {
-                        // No hit. 
-                        std::get<0>((*LidarIntHits)[i]) = -1.0;
-                        std::get<1>((*LidarIntHits)[i]) = rayDirection_local.X;
-                        std::get<2>((*LidarIntHits)[i]) = rayDirection_local.Y;
-                        std::get<3>((*LidarIntHits)[i]) = rayDirection_local.Z;
-                        std::get<4>((*LidarIntHits)[i]) = -1;
+                if (bHasReturn) {
+                    if (UPhysicalMaterial* PhysMat = Hit.PhysMaterial.Get()) {
+                        intensity = MaterialIntensity(PhysMat->GetName());
                     }
                 }
-                else{
-                    std::get<0>((*LidarIntHits)[i]) = -1.0;
-                    std::get<1>((*LidarIntHits)[i]) = rayDirection_local.X;
-                    std::get<2>((*LidarIntHits)[i]) = rayDirection_local.Y;
-                    std::get<3>((*LidarIntHits)[i]) = rayDirection_local.Z;
-                    std::get<4>((*LidarIntHits)[i]) = -1;  // No hit
-                }
-            }
-        });
 
-        StartIndex = (StartIndex + pointsPerFrame) % LivoxData.Num();
+                (*LidarIntHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z, intensity);
+            });
 
     }else{
+
+        LidarIntHits = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 
         // Derive the lidar's world-space axes
         FVector forwardVec = lidarQuat.RotateVector(FVector::ForwardVector);
@@ -895,29 +797,9 @@ void ADronePawn::UpdateIntLidar(bool isExternallyLocked) {
                 std::get<2>((*LidarIntHits)[i]) = ray_in_lidar_coord.Y;
                 std::get<3>((*LidarIntHits)[i]) = ray_in_lidar_coord.Z;
 
-                FVector            surfaceNormal = HitResult.ImpactNormal;
-                UPhysicalMaterial* PhysMat       = HitResult.PhysMaterial.Get();
-                /* UE_LOG(LogTemp, Warning, TEXT("HitResult.PhysMaterial.Get() %s"), *HitResult.PhysMaterial->GetName()); */
-                double intensity = -1;
-                /* double intensity = 1.0 - FMath::Abs(FVector::DotProduct(surfaceNormal, raycastAngle.GetSafeNormal())); */
-                if (PhysMat) {
-                    FString PhysMatName = PhysMat->GetName();
-                    if (PhysMatName.Equals("PM_Grass", ESearchCase::IgnoreCase)) {
-                    intensity = 1;
-                    } else if (PhysMatName.Equals("PM_Road", ESearchCase::IgnoreCase)) {
-                    intensity = 2;
-                    } else if (PhysMatName.Equals("PM_Tree", ESearchCase::IgnoreCase)) {
-                    intensity = 3;
-                    } else if (PhysMatName.Equals("PM_Building", ESearchCase::IgnoreCase)) {
-                    intensity = 4;
-                    } else if (PhysMatName.Equals("PM_Fence", ESearchCase::IgnoreCase)) {
-                    intensity = 5;
-                    } else if (PhysMatName.Equals("PM_DirtRoad", ESearchCase::IgnoreCase)) {
-                    intensity = 6;
-                    } else {
-                    intensity = 0;
-                    }
-                }
+                UPhysicalMaterial* PhysMat   = HitResult.PhysMaterial.Get();
+                double             intensity = PhysMat ? MaterialIntensity(PhysMat->GetName()) : -1;
+
                 std::get<4>((*LidarIntHits)[i]) = intensity;
                 } else {
 
@@ -1000,9 +882,11 @@ void ADronePawn::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::Lid
   
   UpdateLidar(true);
   
-  OutLidarData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+  // Livox slices vary in length with the elapsed time they cover, so the
+  // buffer size is authoritative, not the configured beam grid.
+  OutLidarData.resize(LidarHits->size());
 
-  for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+  for (size_t i = 0; i < LidarHits->size(); i++) {
     OutLidarData[i].distance   = std::get<0>((*LidarHits)[i]);
     OutLidarData[i].directionX = std::get<1>((*LidarHits)[i]);
     OutLidarData[i].directionY = std::get<2>((*LidarHits)[i]);
@@ -1030,9 +914,9 @@ void ADronePawn::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegDat
 
   UpdateSegLidar(true);
 
-  OutLidarSegData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+  OutLidarSegData.resize(LidarSegHits->size());
 
-  for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+  for (size_t i = 0; i < LidarSegHits->size(); i++) {
     OutLidarSegData[i].distance     = std::get<0>((*LidarSegHits)[i]);
     OutLidarSegData[i].directionX   = std::get<1>((*LidarSegHits)[i]);
     OutLidarSegData[i].directionY   = std::get<2>((*LidarSegHits)[i]);
@@ -1060,9 +944,9 @@ void ADronePawn::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntDat
   auto stamp = FPlatformTime::Seconds();
 
   UpdateIntLidar(true);
-  OutLidarIntData.resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
+  OutLidarIntData.resize(LidarIntHits->size());
 
-  for (int i = 0; i < LidarConfig.BeamHorRays * LidarConfig.BeamVertRays; i++) {
+  for (size_t i = 0; i < LidarIntHits->size(); i++) {
     OutLidarIntData[i].distance   = std::get<0>((*LidarIntHits)[i]);
     OutLidarIntData[i].directionX = std::get<1>((*LidarIntHits)[i]);
     OutLidarIntData[i].directionY = std::get<2>((*LidarIntHits)[i]);
@@ -1487,10 +1371,32 @@ bool ADronePawn::SetLidarConfig(const FLidarConfig& Config) {
   LidarHitsCriticalSection->Lock();
   LidarSegHitsCriticalSection->Lock();
 
-  LidarConfig.Enable     = Config.Enable;
-  LidarConfig.Livox     = Config.Livox;
-  LidarConfig.ShowBeams  = Config.ShowBeams;
-  LidarConfig.BeamLength = Config.BeamLength;
+  const bool         LivoxWas       = LidarConfig.Livox;
+  const ELivoxSensor LivoxSensorWas = LidarConfig.LivoxSensor;
+
+  LidarConfig.Enable      = Config.Enable;
+  LidarConfig.Livox       = Config.Livox;
+  LidarConfig.LivoxSensor = Config.LivoxSensor;
+  LidarConfig.ShowBeams   = Config.ShowBeams;
+  LidarConfig.BeamLength  = Config.BeamLength;
+
+  // Switching sensor mid-flight would otherwise resume at a pattern index that
+  // belongs to the previous sensor's table.
+  if (LidarConfig.Livox != LivoxWas || LidarConfig.LivoxSensor != LivoxSensorWas) {
+    LivoxCursor    = FLivoxCursor();
+    LivoxSegCursor = FLivoxCursor();
+    LivoxIntCursor = FLivoxCursor();
+
+    if (LidarConfig.Livox) {
+      // Fail loudly at configuration time rather than returning empty clouds.
+      if (const FLivoxPattern* Pattern = GetLivoxPattern()) {
+        UE_LOG(LogTemp, Log, TEXT("Livox: '%s' active, %.0f kHz -> %d points per message at %.1f Hz"), FLivoxPatternLibrary::Name(LidarConfig.LivoxSensor),
+               Pattern->PointRate / 1000.0, FMath::RoundToInt(Pattern->PointRate / FMath::Max(LidarConfig.Frequency, 1.0)), LidarConfig.Frequency);
+      } else {
+        UE_LOG(LogTemp, Error, TEXT("Livox: no scan pattern for sensor %d, lidar will return nothing"), (int32)LidarConfig.LivoxSensor);
+      }
+    }
+  }
 
   if (Config.BeamHorRays > 0 && Config.BeamVertRays > 0) {
     LidarConfig.BeamHorRays  = Config.BeamHorRays;

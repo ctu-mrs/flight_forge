@@ -4,6 +4,7 @@
 
 #include "Server/DroneServer.h"
 #include "Instruction.h"
+#include "LivoxPattern.h"
 
 #include "GameFramework/Pawn.h"
 
@@ -68,7 +69,8 @@ enum CameraMode
 struct FLidarConfig
 {
   bool   Enable;
-  bool Livox; 
+  bool Livox;
+  ELivoxSensor LivoxSensor;
   bool   ShowBeams;
   double BeamLength;
 
@@ -129,12 +131,23 @@ struct FStereoCameraConfig
   bool     enable_raytracing;
 };
 
-struct FLivoxDataPoint {
-    double Time;
-    double Azimuth; // in radians
-    double Zenith;  // in radians
+/* FLivoxCursor //{ */
+
+// Playback state of one Livox stream. The pattern advances with elapsed world
+// time rather than per request, so a client polling at 100 Hz and one polling
+// at 10 Hz walk the same pattern at the same speed - the 10 Hz client just gets
+// ten times as much of it per message. Slices are contiguous and
+// non-overlapping, so merging ten 100 Hz messages reproduces one 10 Hz message
+// exactly.
+struct FLivoxCursor
+{
+  double    PatternPos = 0.0;   // fractional index, monotonic
+  double    LastTime   = -1.0;  // world seconds; <0 until the first slice
+  FTransform LastPose;          // lidar pose at LastTime, for intra-slice interpolation
+  bool      bPoseValid = false;
 };
 
+//}
 
 using Serializable::GameMode::CameraCaptureModeEnum;
 
@@ -296,17 +309,9 @@ public:
 
   void SetVisibilityOtherDrones(bool bEnable);
 
-  bool LoadCSVData(const FString& FilePath);
-  TArray<FLivoxDataPoint> LivoxData;
-  bool bLivox;
-  int StartIndex;
-
-  
-  FString CSVFilePath;
-  
 private:
   bool bCanSeeOtherDrone = true;
-  
+
   void Tick(float DeltaSeconds) override;
 
   void UpdateLidar(bool isExternallyLocked);
@@ -314,6 +319,21 @@ private:
   void UpdateSegLidar(bool isExternallyLocked);
 
   void UpdateIntLidar(bool isExternallyLocked);
+
+  // Traces one elapsed-time slice of the active Livox pattern. Prepare(count) is
+  // called once the slice size is known so the caller can size its buffer, then
+  // Store(index, distance, direction, hit, bHasReturn) reports each ray. Distance
+  // and direction are expressed in the lidar frame at the end of the slice, so a
+  // moving drone yields the same intra-scan distortion a real sensor produces.
+  // Returns the number of rays traced, or 0 if no pattern is available.
+  int32 CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
+                      TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store);
+
+  const FLivoxPattern* GetLivoxPattern() const;
+
+  FLivoxCursor LivoxCursor;
+  FLivoxCursor LivoxSegCursor;
+  FLivoxCursor LivoxIntCursor;
 
   void UpdateCamera(bool isExternallyLocked, int type, double stamp);
 
