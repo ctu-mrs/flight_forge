@@ -1,0 +1,59 @@
+﻿#pragma once
+
+#include <mutex>
+
+#include "MessageSerialization/Public/SerializableExtended.h"
+#include "TcpServer.h"
+
+#define API_VERSION_MAJOR 0
+#define API_VERSION_MINOR 14
+
+class AFlightForgeGameModeBase;
+
+class FlightForgeGameModeServer : public TcpServer
+{
+public:
+	FlightForgeGameModeServer(const int Port, AFlightForgeGameModeBase* InitialGameMode = nullptr): TcpServer(Port), GameMode(InitialGameMode) {};
+
+	void SetCurrentGameMode(AFlightForgeGameModeBase* NewGameMode);
+protected:
+	virtual bool Route(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream) override;
+
+private:
+	AFlightForgeGameModeBase* GameMode;
+	std::mutex GameModeMutex;
+
+	bool GetDrones(const FTCPClient& Client, Serializable::GameMode::GetDrones::Request& Request);
+
+	bool SpawnDrone(const FTCPClient& Client, Serializable::GameMode::SpawnDrone::Request& Request);
+	
+	bool SpawnDroneAtLocation(const FTCPClient& Client, Serializable::GameMode::SpawnDroneAtLocation::Request& Request);
+
+	bool RemoveDrone(const FTCPClient& Client, Serializable::GameMode::RemoveDrone::Request& Request);
+
+	bool GetCameraCaptureMode(const FTCPClient& Client, Serializable::GameMode::GetCameraCaptureMode::Request& Request);
+
+	bool SetCameraCaptureMode(const FTCPClient& Client, Serializable::GameMode::SetCameraCaptureMode::Request& Request);
+
+	bool GetFPS(const FTCPClient& Client, Serializable::GameMode::GetFps::Request& Request);
+
+	bool GetTime(const FTCPClient& Client, Serializable::GameMode::GetTime::Request& Request);
+
+	bool SetGraphicsSettings(const FTCPClient& Client, Serializable::GameMode::SetGraphicsSettings::Request& Request);
+
+	bool SwitchWorldLevel(const FTCPClient& Client, Serializable::GameMode::SwitchWorldLevel::Request& Request);
+
+	bool GetApiVersion(const FTCPClient& Client, Serializable::GameMode::GetApiVersion::Request& Request);
+
+	bool SetForestDensity(const FTCPClient& Client, Serializable::GameMode::SetForestDensity::Request& Request);
+
+	bool SetForestHillyLevel(const FTCPClient& Client, Serializable::GameMode::SetForestHillyLevel::Request& Request);
+
+	bool GetWorldOrigin(const FTCPClient& Client, Serializable::GameMode::GetWorldOrigin::Request& Request);
+
+	bool SetWeather(const FTCPClient& Client, Serializable::GameMode::SetWeather::Request& Request);
+
+	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
+
+	bool SetMutualDroneVisibility(const FTCPClient& Client, Serializable::GameMode::SetMutualVisibility::Request& Request);
+};
