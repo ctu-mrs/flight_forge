@@ -1,11 +1,14 @@
 #include "TcpServer.h"
 
 #include "Common/TcpSocketBuilder.h"
+#include "HAL/PlatformProcess.h"
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "Sockets.h"
 #include "Networking.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+
+#include <exception>
 
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "MessageSerialization/Public/Serialize.h"
@@ -154,6 +157,62 @@ bool TcpServer::Respond(const FTCPClient& Client, const std::stringstream& Messa
 	return Respond(Client, Message.str());
 }
 
+/* ReceiveMessage() //{ */
+
+bool TcpServer::ReceiveMessage(const FTCPClient& Client, TArray<uint8>& OutMessage) const
+{
+	// Anything smaller than this is taken to be complete as soon as the socket goes idle,
+	// which keeps the small commands that dominate the drone servers free of added
+	// latency. Only a payload large enough to plausibly span several TCP segments is
+	// worth waiting on.
+	constexpr int32 SegmentedMessageThreshold = 1024;
+	constexpr int32 MaxIdlePolls              = 8;
+	constexpr float IdlePollSeconds           = 0.0005f;
+
+	OutMessage.Reset();
+
+	int32 IdlePolls = 0;
+	while(true)
+	{
+		uint32 PendingDataSize = 0;
+		if(!Client.Socket->HasPendingData(PendingDataSize) || PendingDataSize == 0)
+		{
+			if(OutMessage.Num() < SegmentedMessageThreshold || IdlePolls >= MaxIdlePolls)
+			{
+				break;
+			}
+
+			++IdlePolls;
+			FPlatformProcess::Sleep(IdlePollSeconds);
+			continue;
+		}
+
+		if(static_cast<int64>(OutMessage.Num()) + PendingDataSize > MaxBufferSize)
+		{
+			UE_LOG(LogTemp, Error, TEXT("FlightForge: request from %s exceeds the %d byte limit, dropping"),
+				*Client.StrAddr, MaxBufferSize);
+			return false;
+		}
+
+		const int32 Offset = OutMessage.Num();
+		OutMessage.SetNumUninitialized(Offset + static_cast<int32>(PendingDataSize));
+
+		int32 ReadBytes = 0;
+		if(!Client.Socket->Recv(OutMessage.GetData() + Offset, PendingDataSize, ReadBytes) || ReadBytes <= 0)
+		{
+			OutMessage.SetNum(Offset);
+			break;
+		}
+
+		OutMessage.SetNum(Offset + ReadBytes);
+		IdlePolls = 0;
+	}
+
+	return OutMessage.Num() > 0;
+}
+
+/* //} */
+
 void TcpServer::Run()
 {
 	if(ServerIsRunning)
@@ -226,7 +285,6 @@ void TcpServer::Run()
 				Client->Socket = std::unique_ptr<FSocket>(ClientSocket);
 				Client->StrAddr = StrAddr;
 				Client->InBuffer = std::make_unique<TArray<uint8>>();
-				Client->InBuffer->SetNumUninitialized(1024);
 				Client->SendBufferSize = SendBufferSize;
 				uint32_t ClientId = ClientIdCounter++;
 				Client->ClientId = ClientId;
@@ -252,21 +310,25 @@ void TcpServer::Run()
 						uint32 PendingDataSize;
 						if(Client->Socket->HasPendingData(PendingDataSize))
 						{
-							//UE_LOG(LogTemp, Warning, TEXT("Client %s has pending data of size %d"), *Client->StrAddr, PendingDataSize);
-
-							int32 ReadBytes;
-							Client->Socket->Recv(Client->InBuffer->GetData(), Client->InBuffer->Num(), ReadBytes);
-							//UE_LOG(LogTemp, Warning, TEXT("Client %s read data of size %d"), *Client->StrAddr, ReadBytes);
-
-							try
+							TArray<uint8>& Message = *Client->InBuffer;
+							if(ReceiveMessage(*Client, Message))
 							{
-								Route(*Client, BytesToStream(Client->InBuffer->GetData(), ReadBytes));
+								try
+								{
+									Route(*Client, BytesToStream(Message.GetData(), Message.Num()));
+								}
+								catch (const std::exception& Exception)
+								{
+									UE_LOG(LogTemp, Error, TEXT("FlightForge: failed to route a %d byte request from %s: %hs"),
+										Message.Num(), *Client->StrAddr, Exception.what());
+								}
+								catch (...)
+								{
+									UE_LOG(LogTemp, Error, TEXT("FlightForge: failed to route a %d byte request from %s"),
+										Message.Num(), *Client->StrAddr);
+								}
 							}
-							catch (...)
-							{
-								// TODO
-							}
-						}	
+						}
 					}
 			}
 

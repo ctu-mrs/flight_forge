@@ -125,6 +125,20 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     return SetMutualDroneVisibility(Client, CustomRequest);
   }
 
+  if(Request.type == Serializable::GameMode::MessageType::spawn_objects_from_yaml)
+  {
+    Serializable::GameMode::SpawnObjectsFromYaml::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SpawnObjectsFromYaml(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::remove_spawned_object)
+  {
+    Serializable::GameMode::RemoveSpawnedObject::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return RemoveSpawnedObject(Client, CustomRequest);
+  }
+
   return false;
 }
 
@@ -487,7 +501,72 @@ bool FlightForgeGameModeServer::SetMutualDroneVisibility(const FTCPClient& Clien
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);
 
-  return Respond(Client, OutputStream); 
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* spawnObjectsFromYaml() //{ */
+
+bool FlightForgeGameModeServer::SpawnObjectsFromYaml(const FTCPClient& Client, Serializable::GameMode::SpawnObjectsFromYaml::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  TArray<int32> SpawnedIds;
+  FString       Error;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &SpawnedIds, &Error](AFlightForgeGameModeBase& _GameMode) {
+    SpawnedIds = _GameMode.SpawnObjectsFromYaml(Request.yaml, Error);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  // An empty result is only a failure when the configuration itself could not be read;
+  // a config that placed nothing still succeeded.
+  auto Response = Serializable::GameMode::SpawnObjectsFromYaml::Response(Error.IsEmpty());
+
+  for (const int32 SpawnedId : SpawnedIds) {
+    Response.object_ids.push_back(SpawnedId);
+  }
+  Response.error = TCHAR_TO_UTF8(*Error);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* removeSpawnedObject() //{ */
+
+bool FlightForgeGameModeServer::RemoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::RemoveSpawnedObject::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  int32 RemovedCount = 0;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &RemovedCount](AFlightForgeGameModeBase& _GameMode) {
+    RemovedCount = Request.object_id < 0 ? _GameMode.RemoveAllSpawnedObjects() : (_GameMode.RemoveSpawnedObject(Request.object_id) ? 1 : 0);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response          = Serializable::GameMode::RemoveSpawnedObject::Response(RemovedCount > 0);
+  Response.removed_count = RemovedCount;
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
 }
 
 //}

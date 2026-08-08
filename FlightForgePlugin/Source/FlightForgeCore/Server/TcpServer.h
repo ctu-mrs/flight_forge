@@ -41,6 +41,11 @@ protected:
 	
 	virtual bool Route(const FTCPClient &Client, std::shared_ptr<std::stringstream> InputStream);
 
+	// Reads one whole request. Requests carry no length prefix or terminator, so a
+	// message is every byte arriving before the client goes idle; this is unambiguous
+	// because a client sends one request and then blocks on the response.
+	bool ReceiveMessage(const FTCPClient& Client, TArray<uint8>& OutMessage) const;
+
 	static TFuture<void> RunLambda(TFunction<void()> Function, bool UseGameThread);
 
 	bool Respond(const FTCPClient& Client, const FString& Message) const;

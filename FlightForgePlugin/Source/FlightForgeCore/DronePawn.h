@@ -20,6 +20,9 @@
 
 #include "GameFramework/Actor.h"
 
+#include "Utils/AssetResolver.h"
+#include "Utils/ExternalModelConfig.h"
+
 #include "DronePawn.generated.h"
 
 class USpringArmComponent;
@@ -131,6 +134,10 @@ public:
 
   void SetStaticMesh(const std::string &frame_name);
 
+  /** Directories searched for user models that are not cooked into the build. */
+  UPROPERTY(EditAnywhere, Category = "FlightForge|External Model")
+  TArray<FString> ExternalModelPaths;
+
   void Simulate_UE_Physics(const float &stop_simulation_delay);
 
   void SetVisibilityOtherDrones(bool bEnable);
@@ -181,6 +188,24 @@ private:
   void Tick(float DeltaSeconds) override;
 
   void SetPropellersTransform(const std::string &frame_name);
+
+  /* external models //{ */
+
+  /** Imports a user model from disk and rebuilds the propellers from its sidecar. */
+  bool LoadExternalModel(const FString &ModelName);
+
+  void ApplyExternalPropellers(const FExternalModelConfig &Config);
+
+  void ClearDynamicPropellers();
+
+  /** Propellers built at runtime for an external model, which has an arbitrary number of them. */
+  UPROPERTY()
+  TArray<TObjectPtr<UStaticMeshComponent>> DynamicPropellers;
+
+  UPROPERTY()
+  TObjectPtr<UAssetResolver> ExternalModelResolver;
+
+  /* //} */
   
   void DisabledPhysics_StartRotatePropellers();
 

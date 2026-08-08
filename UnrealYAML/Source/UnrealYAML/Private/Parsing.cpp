@@ -1,4 +1,7 @@
 ﻿#include "Parsing.h"
+#include "UObject/TextProperty.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 
 DEFINE_LOG_CATEGORY(LogYamlParsing)

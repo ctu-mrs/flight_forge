@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "Runtime/Launch/Resources/Version.h"
 
 #include "node/convert.h"
 

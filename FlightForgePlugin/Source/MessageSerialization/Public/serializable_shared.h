@@ -1548,7 +1548,9 @@ enum MessageType : unsigned short
   spawn_drone_at_location = 15,
   set_weather             = 16,
   set_daytime             = 17,
-  set_mutual_visibility   = 18
+  set_mutual_visibility   = 18,
+  spawn_objects_from_yaml = 19,
+  remove_spawned_object   = 20
 };
 
 namespace GetDrones
@@ -1964,7 +1966,72 @@ namespace SetMutualVisibility
   };
 }
 
-  
+/*SpawnObjectsFromYaml//{*/
+namespace SpawnObjectsFromYaml
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::spawn_objects_from_yaml){};
+
+    // A whole spawn configuration document; see the spawn tool for the schema.
+    std::string yaml;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), yaml);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::spawn_objects_from_yaml)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::spawn_objects_from_yaml, _status){};
+
+    // Handles of the objects that were placed, for later removal.
+    std::vector<int> object_ids;
+
+    // Empty when status is true.
+    std::string error;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), object_ids, error);
+    }
+  };
+}
+/*//}*/
+
+/*RemoveSpawnedObject//{*/
+namespace RemoveSpawnedObject
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::remove_spawned_object){};
+
+    // A negative id removes every object placed by the spawn tool.
+    int object_id;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), object_id);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::remove_spawned_object)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::remove_spawned_object, _status){};
+
+    int removed_count;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), removed_count);
+    }
+  };
+}
+/*//}*/
+
 }  // namespace GameMode
 
 }  // namespace Serializable

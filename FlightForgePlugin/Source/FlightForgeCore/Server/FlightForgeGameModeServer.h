@@ -56,4 +56,8 @@ private:
 	bool SetDatetime(const FTCPClient& Client, Serializable::GameMode::SetDaytime::Request& Request);
 
 	bool SetMutualDroneVisibility(const FTCPClient& Client, Serializable::GameMode::SetMutualVisibility::Request& Request);
+
+	bool SpawnObjectsFromYaml(const FTCPClient& Client, Serializable::GameMode::SpawnObjectsFromYaml::Request& Request);
+
+	bool RemoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::RemoveSpawnedObject::Request& Request);
 };

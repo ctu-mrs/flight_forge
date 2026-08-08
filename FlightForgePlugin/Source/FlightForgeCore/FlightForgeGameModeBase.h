@@ -13,8 +13,11 @@
 
 #include "DronePawn.h"
 #include "Server/FlightForgeGameModeServer.h"
+#include "Utils/SpawnConfig.h"
+#include "Utils/WorldObjectSpawner.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/Paths.h"
 #include <string>
 
 #include "FlightForgeGameModeBase.generated.h"
@@ -56,6 +59,9 @@ private:
 	std::unique_ptr<FCriticalSection> DronePawnsCriticalSection = std::make_unique<FCriticalSection>();
 
 	TMap<int, std::pair<ADronePawn*, APlayerController*>> DronePawns = TMap<int, std::pair<ADronePawn*, APlayerController*>>();
+
+	UPROPERTY()
+	TObjectPtr<UWorldObjectSpawner> ObjectSpawner;
 
 	AFlightForgeGameModeBase(const FObjectInitializer& ObjectInitializer) : AGameModeBase(ObjectInitializer)
 	{
@@ -459,9 +465,72 @@ public:
 
 	FVector GetWorldOrigin()
 	{
+		// A level without a PlayerStart tagged "UAV" falls back to the level origin rather
+		// than crashing; spawning is still useful in that case, just unshifted.
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
+		if(!PlayerStart)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase: no PlayerStart tagged \"UAV\", using the level origin"));
+			return FVector::ZeroVector;
+		}
+
 		return PlayerStart->GetActorLocation();
 	}
+
+	/* object spawning //{ */
+
+	UWorldObjectSpawner* GetObjectSpawner()
+	{
+		if(!ObjectSpawner)
+		{
+			ObjectSpawner = NewObject<UWorldObjectSpawner>(this);
+		}
+
+		return ObjectSpawner;
+	}
+
+	TArray<int32> SpawnObjectsFromConfig(const FSpawnConfig& Config)
+	{
+		return GetObjectSpawner()->SpawnFromConfig(GetWorld(), Config, GetWorldOrigin());
+	}
+
+	// Used by the spawn_objects_from_yaml command, where the document arrives over the
+	// socket and so has no directory of its own to resolve relative model paths against.
+	TArray<int32> SpawnObjectsFromYaml(const std::string& Yaml, FString& OutError)
+	{
+		FSpawnConfig Config;
+		if(!USpawnConfigUtils::ParseSpawnConfig(FString(UTF8_TO_TCHAR(Yaml.c_str())), Config, OutError))
+		{
+			return TArray<int32>();
+		}
+
+		for(FString& ModelPath : Config.ModelPaths)
+		{
+			if(FPaths::IsRelative(ModelPath))
+			{
+				ModelPath = FPaths::Combine(FPaths::ProjectDir(), ModelPath);
+			}
+		}
+
+		if(Config.ModelPaths.IsEmpty())
+		{
+			Config.ModelPaths.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge")));
+		}
+
+		return SpawnObjectsFromConfig(Config);
+	}
+
+	bool RemoveSpawnedObject(const int32 ObjectId)
+	{
+		return GetObjectSpawner()->RemoveObject(ObjectId);
+	}
+
+	int32 RemoveAllSpawnedObjects()
+	{
+		return GetObjectSpawner()->RemoveAllObjects();
+	}
+
+	/* //} */
 
 	bool bMutualDroneVisibilityEnabled_ = true;
 

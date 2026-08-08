@@ -11,6 +11,11 @@ public class FlightForgePlugin : ModuleRules
 		// staged into packaged builds. Wildcarded to pick up any regenerated
 		// locally beyond the two that ship.
 		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "Lidar", "*.ffpat"));
+
+		// Loose files rather than uassets, so they are not cooked and have to be staged
+		// explicitly to reach a packaged build.
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "ExternalModels", "*", "*.glb"));
+		RuntimeDependencies.Add(Path.Combine(PluginDirectory, "Content", "ExternalModels", "*", "*.yaml"));
 		
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		

@@ -13,6 +13,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "TimerManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Misc/Paths.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Runtime/Core/Public/Async/ParallelFor.h"
 #include "Engine/GameInstance.h"
@@ -223,39 +225,157 @@ void ADronePawn::SetPropellersTransform(const std::string& frame_name) {
   PropellerRearRight->SetRelativeTransform(Transforms[frame_id].RearRight);
 }
 
-void ADronePawn::SetStaticMesh(const std::string &frame_name) {
-  FString mesh_path = "/FlightForgePlugin/Meshes/_Drones_/";
+/* SetStaticMesh() //{ */
 
-  /* int predefined_frame_count = FramePropellersTransforms.Num();
-
-  // last "empty" frame is not included in "FramePropellersTransforms"
-  if (predefined_frame_count == frame_id) {
-    return;
-  }
-
-  FString frame_name = FramePropellersTransforms.GetData()[frame_id].FrameName;
- */
-
-  FString frame_name_ = FString(frame_name.c_str()); 
-  mesh_path += frame_name_ + "/" + frame_name_ + "." + frame_name_;
-
-  if (UStaticMesh* FrameMesh = LoadObject<UStaticMesh>(nullptr, *mesh_path)) {
-    RootMeshComponent->SetStaticMesh(FrameMesh);
-  } else if(frame_name_.Contains("empty")){
-    UE_LOG(LogTemp, Warning, TEXT("Setted empty frame"));
-  } else {  
-    UE_LOG(LogTemp, Error, TEXT("The Frame was not loaded! Setted \"x500\" as default frame"));
-    frame_name_ = "x500";
-    mesh_path = "/FlightForgePlugin/Meshes/_Drones_/" + frame_name_ + "/" + frame_name_ + "." + frame_name_;
-  }
-
-  // wing has not propellers
-  if (frame_name_.Contains("wing") || frame_name_.Contains("empty")) {
-    return;
-  }
-
-  SetPropellersTransform(frame_name);
+namespace {
+FString PredefinedFramePath(const FString &FrameName) {
+  return FString::Printf(TEXT("/FlightForgePlugin/Meshes/_Drones_/%s/%s.%s"), *FrameName, *FrameName, *FrameName);
 }
+}  // namespace
+
+void ADronePawn::SetStaticMesh(const std::string &frame_name) {
+
+  const FString FrameName = FString(UTF8_TO_TCHAR(frame_name.c_str()));
+
+  ClearDynamicPropellers();
+
+  if (FrameName.Contains("empty")) {
+    RootMeshComponent->SetStaticMesh(nullptr);
+    return;
+  }
+
+  const auto SetPredefinedPropellersVisible = [this](const bool bVisible) {
+    for (UStaticMeshComponent *Propeller : {PropellerFrontLeft, PropellerFrontRight, PropellerRearLeft, PropellerRearRight}) {
+      Propeller->SetVisibility(bVisible);
+    }
+  };
+
+  if (UStaticMesh *FrameMesh = LoadObject<UStaticMesh>(nullptr, *PredefinedFramePath(FrameName), nullptr, LOAD_NoWarn | LOAD_Quiet)) {
+    RootMeshComponent->SetStaticMesh(FrameMesh);
+    SetPredefinedPropellersVisible(true);
+
+    // wing has not propellers
+    if (!FrameName.Contains("wing")) {
+      SetPropellersTransform(frame_name);
+    }
+
+    return;
+  }
+
+  // Not cooked into the build: the name may refer to a user model sitting on disk, which
+  // is how a packaged binary gets a frame it was never built with.
+  if (LoadExternalModel(FrameName)) {
+    SetPredefinedPropellersVisible(false);
+    return;
+  }
+
+  UE_LOG(LogTemp, Error, TEXT("The frame \"%s\" is neither packed nor on disk, falling back to \"x500\""), *FrameName);
+
+  if (UStaticMesh *DefaultMesh = LoadObject<UStaticMesh>(nullptr, *PredefinedFramePath(TEXT("x500")))) {
+    RootMeshComponent->SetStaticMesh(DefaultMesh);
+    SetPredefinedPropellersVisible(true);
+    SetPropellersTransform(std::string("x500"));
+  }
+}
+
+/* //} */
+
+/* LoadExternalModel() //{ */
+
+bool ADronePawn::LoadExternalModel(const FString &ModelName) {
+
+  if (!ExternalModelResolver) {
+    ExternalModelResolver = NewObject<UAssetResolver>(this);
+  }
+
+  TArray<FString> ModelPaths = ExternalModelPaths;
+
+  if (ModelPaths.IsEmpty()) {
+    ModelPaths.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge/Models")));
+
+    if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("FlightForgePlugin"))) {
+      ModelPaths.Add(FPaths::Combine(Plugin->GetContentDir(), TEXT("ExternalModels")));
+    }
+  }
+
+  FString ModelFilePath;
+  if (!UAssetResolver::FindModelFile(ModelName, ModelPaths, ModelFilePath)) {
+    return false;
+  }
+
+  UStaticMesh *Mesh = ExternalModelResolver->ImportGltf(ModelFilePath);
+  if (!Mesh) {
+    return false;
+  }
+
+  RootMeshComponent->SetStaticMesh(Mesh);
+
+  // The propeller sidecar sits next to the model and shares its name.
+  FExternalModelConfig Config;
+  FString              Error;
+
+  if (ExternalModelConfig::Load(FPaths::ChangeExtension(ModelFilePath, TEXT("yaml")), Config, Error)) {
+    ApplyExternalPropellers(Config);
+  } else {
+    UE_LOG(LogTemp, Warning, TEXT("[DronePawn] \"%s\" has no usable propeller sidecar: %s"), *ModelName, *Error);
+  }
+
+  return true;
+}
+
+/* //} */
+
+/* ApplyExternalPropellers() //{ */
+
+void ADronePawn::ApplyExternalPropellers(const FExternalModelConfig &Config) {
+
+  ClearDynamicPropellers();
+
+  if (Config.Propellers.IsEmpty()) {
+    return;
+  }
+
+  const FString PropellerMeshPath =
+      Config.PropellerMeshPath.IsEmpty() ? TEXT("/FlightForgePlugin/Meshes/Propellers/propeller_X500.propeller_X500") : Config.PropellerMeshPath;
+
+  UStaticMesh *PropellerMesh = LoadObject<UStaticMesh>(nullptr, *PropellerMeshPath);
+  if (!PropellerMesh) {
+    UE_LOG(LogTemp, Error, TEXT("[DronePawn] the propeller mesh \"%s\" could not be loaded"), *PropellerMeshPath);
+    return;
+  }
+
+  for (const FExternalPropellerConfig &PropellerConfig : Config.Propellers) {
+
+    const FName ComponentName = MakeUniqueObjectName(this, UStaticMeshComponent::StaticClass(), FName(*PropellerConfig.Name));
+
+    UStaticMeshComponent *Propeller = NewObject<UStaticMeshComponent>(this, ComponentName);
+    Propeller->SetupAttachment(RootMeshComponent);
+    Propeller->RegisterComponent();
+    Propeller->SetRelativeTransform(PropellerConfig.RelativeTransform);
+    Propeller->SetStaticMesh(PropellerMesh);
+    Propeller->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Propeller->SetCollisionResponseToChannel(ECC_Pawn, bCanSeeOtherDrone ? ECR_Block : ECR_Ignore);
+
+    DynamicPropellers.Add(Propeller);
+  }
+}
+
+/* //} */
+
+/* ClearDynamicPropellers() //{ */
+
+void ADronePawn::ClearDynamicPropellers() {
+
+  for (const TObjectPtr<UStaticMeshComponent> &Propeller : DynamicPropellers) {
+    if (IsValid(Propeller)) {
+      Propeller->DestroyComponent();
+    }
+  }
+
+  DynamicPropellers.Empty();
+}
+
+/* //} */
 
 void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
   // RootMeshComponent->SetSimulatePhysics(true);
@@ -292,6 +412,15 @@ void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
     
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     PropellerRearRight->MarkRenderStateDirty();
+
+    for (const TObjectPtr<UStaticMeshComponent>& Propeller : DynamicPropellers)
+    {
+      if (IsValid(Propeller))
+      {
+        Propeller->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        Propeller->MarkRenderStateDirty();
+      }
+    }
   }
   else
   {
@@ -312,6 +441,15 @@ void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
     
     PropellerRearRight->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
     PropellerRearRight->MarkRenderStateDirty();
+
+    for (const TObjectPtr<UStaticMeshComponent>& Propeller : DynamicPropellers)
+    {
+      if (IsValid(Propeller))
+      {
+        Propeller->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        Propeller->MarkRenderStateDirty();
+      }
+    }
   }
 }
 
@@ -390,6 +528,19 @@ void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, b
 }
 
 void ADronePawn::Tick(float DeltaSeconds) {
+
+  // The predefined propellers are spun by BP_DronePawn off propellers_rotate; components
+  // created at runtime for an external model are not reachable from there.
+  if (propellers_rotate && DynamicPropellers.Num() > 0) {
+
+    const float RotationStep = 2000.0f * DeltaSeconds;
+
+    for (int32 i = 0; i < DynamicPropellers.Num(); ++i) {
+      if (IsValid(DynamicPropellers[i])) {
+        DynamicPropellers[i]->AddLocalRotation(FRotator(0, (i % 2 == 0) ? RotationStep : -RotationStep, 0));
+      }
+    }
+  }
   
   std::shared_ptr<FInstruction<ADronePawn>> Instruction;
 
