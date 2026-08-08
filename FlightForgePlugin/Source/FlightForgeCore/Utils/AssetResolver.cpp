@@ -1,8 +1,12 @@
 #include "AssetResolver.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Engine/Blueprint.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
+#include "HAL/FileManager.h"
 #include "Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
 #include "Misc/Paths.h"
 
 #include "glTFRuntimeAsset.h"
@@ -204,6 +208,77 @@ bool UAssetResolver::Resolve(const FString& AssetName, const TArray<FString>& Se
          *FString::Join(Candidates, TEXT(", ")), *FString::Join(ModelPaths, TEXT(", ")));
 
   return false;
+}
+
+/* //} */
+
+/* ListSpawnableAssets() //{ */
+
+TArray<FString> UAssetResolver::ListSpawnableAssets(const FString& PathPrefix, const FString& NameFilter, const TArray<FString>& ModelPaths,
+                                                    const int32 MaxResults, bool& bOutTruncated)
+{
+  TArray<FString> Names;
+  bOutTruncated = false;
+
+  const auto Matches = [&NameFilter](const FString& Name) { return NameFilter.IsEmpty() || Name.Contains(NameFilter, ESearchCase::IgnoreCase); };
+
+  const auto Add = [&Names, &bOutTruncated, MaxResults](const FString& Name) {
+    if (Names.Num() >= MaxResults)
+    {
+      bOutTruncated = true;
+      return false;
+    }
+    Names.Add(Name);
+    return true;
+  };
+
+  const IAssetRegistry& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+
+  FARFilter Filter;
+  Filter.PackagePaths.Add(PathPrefix.IsEmpty() ? FName(TEXT("/Game")) : FName(*PathPrefix));
+  Filter.bRecursivePaths = true;
+  Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
+  Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
+
+  TArray<FAssetData> Assets;
+  Registry.GetAssets(Filter, Assets);
+
+  for (const FAssetData& Asset : Assets)
+  {
+    if (!Matches(Asset.AssetName.ToString()))
+    {
+      continue;
+    }
+
+    if (!Add(Asset.GetSoftObjectPath().ToString()))
+    {
+      return Names;
+    }
+  }
+
+  // On-disk glTF models are listed by their bare name, exactly as the 'asset' field takes them.
+  for (const FString& ModelPath : ModelPaths)
+  {
+    TArray<FString> Files;
+    IFileManager::Get().FindFilesRecursive(Files, *ModelPath, TEXT("*.glb"), true, false);
+    IFileManager::Get().FindFilesRecursive(Files, *ModelPath, TEXT("*.gltf"), true, false, false);
+
+    for (const FString& File : Files)
+    {
+      const FString Name = FPaths::GetBaseFilename(File);
+      if (!Matches(Name))
+      {
+        continue;
+      }
+
+      if (!Add(Name))
+      {
+        return Names;
+      }
+    }
+  }
+
+  return Names;
 }
 
 /* //} */

@@ -7,6 +7,43 @@
 
 #include "WorldObjectSpawner.generated.h"
 
+/* FSpawnedObjectRecord //{ */
+
+USTRUCT()
+struct FSpawnedObjectRecord
+{
+  GENERATED_BODY()
+
+  UPROPERTY()
+  TObjectPtr<AActor> Actor;
+
+  /** The asset name as it appeared in the spawn config, kept for list/export. */
+  UPROPERTY()
+  FString Asset;
+
+  /** The stencil actually applied (auto-assigned ones included). */
+  UPROPERTY()
+  int32 Stencil = -1;
+};
+
+/* //} */
+
+/* FSpawnedObjectState //{ */
+
+/** A snapshot of one spawned object with its CURRENT pose, back in the config's ROS frame. */
+struct FSpawnedObjectState
+{
+  int32   Id;
+  FString Asset;
+  int32   Stencil;
+
+  FVector Position;
+  FVector Orientation;
+  FVector Scale;
+};
+
+/* //} */
+
 /* UWorldObjectSpawner //{ */
 
 /**
@@ -31,6 +68,14 @@ public:
 
   int32 RemoveAllObjects();
 
+  /** Repositions a spawned object; the pose is in the config's ROS frame. */
+  bool MoveObject(int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale, const FVector& WorldOrigin);
+
+  TArray<FSpawnedObjectState> ListObjects(const FVector& WorldOrigin) const;
+
+  /** Serializes the current objects back into a spawn configuration document. */
+  FString ExportScene(const FVector& WorldOrigin) const;
+
 private:
   AActor* SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform);
 
@@ -40,7 +85,7 @@ private:
   TObjectPtr<UAssetResolver> Resolver;
 
   UPROPERTY()
-  TMap<int32, TObjectPtr<AActor>> SpawnedObjects;
+  TMap<int32, FSpawnedObjectRecord> SpawnedObjects;
 
   int32 NextObjectId = 0;
   int32 NextStencil  = FirstStencilValue;

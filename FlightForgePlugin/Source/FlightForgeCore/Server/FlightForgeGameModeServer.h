@@ -60,4 +60,12 @@ private:
 	bool SpawnObjectsFromYaml(const FTCPClient& Client, Serializable::GameMode::SpawnObjectsFromYaml::Request& Request);
 
 	bool RemoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::RemoveSpawnedObject::Request& Request);
+
+	bool MoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::MoveSpawnedObject::Request& Request);
+
+	bool ListSpawnedObjects(const FTCPClient& Client, Serializable::GameMode::ListSpawnedObjects::Request& Request);
+
+	bool ExportScene(const FTCPClient& Client, Serializable::GameMode::ExportScene::Request& Request);
+
+	bool ListAssets(const FTCPClient& Client, Serializable::GameMode::ListAssets::Request& Request);
 };

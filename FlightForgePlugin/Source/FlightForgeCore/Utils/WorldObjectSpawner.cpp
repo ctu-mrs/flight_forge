@@ -91,10 +91,11 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
       continue;
     }
 
-    ApplyStencil(Actor, Entry.Stencil >= 0 ? Entry.Stencil : NextStencil++);
+    const int32 Stencil = Entry.Stencil >= 0 ? Entry.Stencil : NextStencil++;
+    ApplyStencil(Actor, Stencil);
 
     const int32 ObjectId = NextObjectId++;
-    SpawnedObjects.Add(ObjectId, Actor);
+    SpawnedObjects.Add(ObjectId, FSpawnedObjectRecord{Actor, Entry.Asset, Stencil});
     SpawnedIds.Add(ObjectId);
   }
 
@@ -109,18 +110,18 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
 
 bool UWorldObjectSpawner::RemoveObject(const int32 ObjectId)
 {
-  TObjectPtr<AActor> Actor;
-  if (!SpawnedObjects.RemoveAndCopyValue(ObjectId, Actor))
+  FSpawnedObjectRecord Record;
+  if (!SpawnedObjects.RemoveAndCopyValue(ObjectId, Record))
   {
     return false;
   }
 
-  if (!IsValid(Actor))
+  if (!IsValid(Record.Actor))
   {
     return false;
   }
 
-  Actor->Destroy();
+  Record.Actor->Destroy();
 
   return true;
 }
@@ -133,11 +134,11 @@ int32 UWorldObjectSpawner::RemoveAllObjects()
 {
   int32 Removed = 0;
 
-  for (const auto& [ObjectId, Actor] : SpawnedObjects)
+  for (const auto& [ObjectId, Record] : SpawnedObjects)
   {
-    if (IsValid(Actor))
+    if (IsValid(Record.Actor))
     {
-      Actor->Destroy();
+      Record.Actor->Destroy();
       ++Removed;
     }
   }
@@ -145,6 +146,86 @@ int32 UWorldObjectSpawner::RemoveAllObjects()
   SpawnedObjects.Empty();
 
   return Removed;
+}
+
+/* //} */
+
+/* MoveObject() //{ */
+
+bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale,
+                                     const FVector& WorldOrigin)
+{
+  const FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
+  if (!Record || !IsValid(Record->Actor))
+  {
+    return false;
+  }
+
+  FSpawnObjectEntry Entry;
+  Entry.Position    = Position;
+  Entry.Orientation = Orientation;
+  Entry.Scale       = Scale;
+
+  const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, WorldOrigin);
+
+  return Record->Actor->SetActorTransform(Transform, false, nullptr, ETeleportType::TeleportPhysics);
+}
+
+/* //} */
+
+/* ListObjects() //{ */
+
+TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects(const FVector& WorldOrigin) const
+{
+  TArray<FSpawnedObjectState> States;
+
+  for (const auto& [ObjectId, Record] : SpawnedObjects)
+  {
+    if (!IsValid(Record.Actor))
+    {
+      continue;
+    }
+
+    FSpawnObjectEntry Entry;
+    USpawnConfigUtils::FromUnrealTransform(Record.Actor->GetActorTransform(), WorldOrigin, Entry);
+
+    FSpawnedObjectState State;
+    State.Id          = ObjectId;
+    State.Asset       = Record.Asset;
+    State.Stencil     = Record.Stencil;
+    State.Position    = Entry.Position;
+    State.Orientation = Entry.Orientation;
+    State.Scale       = Entry.Scale;
+
+    States.Add(State);
+  }
+
+  States.Sort([](const FSpawnedObjectState& A, const FSpawnedObjectState& B) { return A.Id < B.Id; });
+
+  return States;
+}
+
+/* //} */
+
+/* ExportScene() //{ */
+
+FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
+{
+  FSpawnConfig Config;
+
+  for (const FSpawnedObjectState& State : ListObjects(WorldOrigin))
+  {
+    FSpawnObjectEntry Entry;
+    Entry.Asset       = State.Asset;
+    Entry.Position    = State.Position;
+    Entry.Orientation = State.Orientation;
+    Entry.Scale       = State.Scale;
+    Entry.Stencil     = State.Stencil;
+
+    Config.Objects.Add(Entry);
+  }
+
+  return USpawnConfigUtils::WriteSpawnConfig(Config);
 }
 
 /* //} */

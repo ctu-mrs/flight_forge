@@ -139,6 +139,34 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     return RemoveSpawnedObject(Client, CustomRequest);
   }
 
+  if(Request.type == Serializable::GameMode::MessageType::move_spawned_object)
+  {
+    Serializable::GameMode::MoveSpawnedObject::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return MoveSpawnedObject(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::list_spawned_objects)
+  {
+    Serializable::GameMode::ListSpawnedObjects::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return ListSpawnedObjects(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::export_scene)
+  {
+    Serializable::GameMode::ExportScene::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return ExportScene(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::list_assets)
+  {
+    Serializable::GameMode::ListAssets::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return ListAssets(Client, CustomRequest);
+  }
+
   return false;
 }
 
@@ -562,6 +590,140 @@ bool FlightForgeGameModeServer::RemoveSpawnedObject(const FTCPClient& Client, Se
 
   auto Response          = Serializable::GameMode::RemoveSpawnedObject::Response(RemovedCount > 0);
   Response.removed_count = RemovedCount;
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* moveSpawnedObject() //{ */
+
+bool FlightForgeGameModeServer::MoveSpawnedObject(const FTCPClient& Client, Serializable::GameMode::MoveSpawnedObject::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  bool bMoved = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &bMoved](AFlightForgeGameModeBase& _GameMode) {
+    const FVector Position(Request.position[0], Request.position[1], Request.position[2]);
+    const FVector Orientation(Request.orientation[0], Request.orientation[1], Request.orientation[2]);
+    const FVector Scale(Request.scale[0], Request.scale[1], Request.scale[2]);
+
+    bMoved = _GameMode.MoveSpawnedObject(Request.object_id, Position, Orientation, Scale);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::MoveSpawnedObject::Response(bMoved);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* listSpawnedObjects() //{ */
+
+bool FlightForgeGameModeServer::ListSpawnedObjects(const FTCPClient& Client, Serializable::GameMode::ListSpawnedObjects::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  TArray<FSpawnedObjectState> States;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&States](AFlightForgeGameModeBase& _GameMode) { States = _GameMode.ListSpawnedObjects(); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::ListSpawnedObjects::Response(true);
+
+  for (const FSpawnedObjectState& State : States) {
+    Serializable::GameMode::SpawnedObjectInfo Info;
+    Info.id          = State.Id;
+    Info.asset       = TCHAR_TO_UTF8(*State.Asset);
+    Info.stencil     = State.Stencil;
+    Info.position    = {State.Position.X, State.Position.Y, State.Position.Z};
+    Info.orientation = {State.Orientation.X, State.Orientation.Y, State.Orientation.Z};
+    Info.scale       = {State.Scale.X, State.Scale.Y, State.Scale.Z};
+
+    Response.objects.push_back(Info);
+  }
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* exportScene() //{ */
+
+bool FlightForgeGameModeServer::ExportScene(const FTCPClient& Client, Serializable::GameMode::ExportScene::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  FString Yaml;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Yaml](AFlightForgeGameModeBase& _GameMode) { Yaml = _GameMode.ExportSceneYaml(); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::ExportScene::Response(true);
+  Response.yaml = TCHAR_TO_UTF8(*Yaml);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* listAssets() //{ */
+
+bool FlightForgeGameModeServer::ListAssets(const FTCPClient& Client, Serializable::GameMode::ListAssets::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  constexpr int32 MaxResults = 5000;
+
+  TArray<FString> Names;
+  bool            bTruncated = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &Names, &bTruncated](AFlightForgeGameModeBase& _GameMode) {
+    Names = _GameMode.ListSpawnableAssets(FString(UTF8_TO_TCHAR(Request.path_prefix.c_str())), FString(UTF8_TO_TCHAR(Request.name_filter.c_str())),
+                                          MaxResults, bTruncated);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::ListAssets::Response(true);
+  Response.truncated = bTruncated;
+
+  for (const FString& Name : Names) {
+    Response.assets.push_back(TCHAR_TO_UTF8(*Name));
+  }
 
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);

@@ -194,3 +194,97 @@ FTransform USpawnConfigUtils::ToUnrealTransform(const FSpawnObjectEntry& Entry, 
 }
 
 /* //} */
+
+/* FromUnrealTransform() //{ */
+
+void USpawnConfigUtils::FromUnrealTransform(const FTransform& Transform, const FVector& WorldOrigin, FSpawnObjectEntry& OutEntry)
+{
+  constexpr double CentimetresToMetres = 0.01;
+
+  const FVector Location = Transform.GetLocation();
+
+  OutEntry.Position = FVector((Location.X - WorldOrigin.X) * CentimetresToMetres,
+                              -(Location.Y - WorldOrigin.Y) * CentimetresToMetres,
+                              (Location.Z - WorldOrigin.Z) * CentimetresToMetres);
+
+  const FRotator Rotation = Transform.GetRotation().Rotator();
+
+  OutEntry.Orientation = FVector(Rotation.Roll, -Rotation.Pitch, -Rotation.Yaw);
+
+  OutEntry.Scale = Transform.GetScale3D();
+}
+
+/* //} */
+
+/* WriteSpawnConfig() //{ */
+
+FString USpawnConfigUtils::WriteSpawnConfig(const FSpawnConfig& Config)
+{
+  YAML::Emitter Out;
+
+  const auto EmitVector = [&Out](const char* Key, const FVector& Vector) {
+    Out << YAML::EmitterManip::Key << Key << YAML::EmitterManip::Value << YAML::EmitterManip::Flow << YAML::EmitterManip::BeginSeq << Vector.X << Vector.Y << Vector.Z << YAML::EmitterManip::EndSeq;
+  };
+
+  Out << YAML::EmitterManip::BeginMap;
+
+  if (!Config.SearchPaths.IsEmpty())
+  {
+    Out << YAML::EmitterManip::Key << "search_paths" << YAML::EmitterManip::Value << YAML::EmitterManip::BeginSeq;
+    for (const FString& Path : Config.SearchPaths)
+    {
+      Out << std::string(TCHAR_TO_UTF8(*Path));
+    }
+    Out << YAML::EmitterManip::EndSeq;
+  }
+
+  if (!Config.ModelPaths.IsEmpty())
+  {
+    Out << YAML::EmitterManip::Key << "model_paths" << YAML::EmitterManip::Value << YAML::EmitterManip::BeginSeq;
+    for (const FString& Path : Config.ModelPaths)
+    {
+      Out << std::string(TCHAR_TO_UTF8(*Path));
+    }
+    Out << YAML::EmitterManip::EndSeq;
+  }
+
+  if (!Config.OriginOffset.IsNearlyZero())
+  {
+    EmitVector("origin_offset", Config.OriginOffset);
+  }
+
+  if (!Config.bRelativeToWorldOrigin)
+  {
+    Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << "world";
+  }
+
+  Out << YAML::EmitterManip::Key << "objects" << YAML::EmitterManip::Value << YAML::EmitterManip::BeginSeq;
+
+  for (const FSpawnObjectEntry& Entry : Config.Objects)
+  {
+    Out << YAML::EmitterManip::BeginMap;
+    Out << YAML::EmitterManip::Key << "asset" << YAML::EmitterManip::Value << std::string(TCHAR_TO_UTF8(*Entry.Asset));
+
+    EmitVector("position", Entry.Position);
+    EmitVector("orientation", Entry.Orientation);
+
+    if (!Entry.Scale.Equals(FVector::OneVector))
+    {
+      EmitVector("scale", Entry.Scale);
+    }
+
+    if (Entry.Stencil >= 0)
+    {
+      Out << YAML::EmitterManip::Key << "stencil" << YAML::EmitterManip::Value << Entry.Stencil;
+    }
+
+    Out << YAML::EmitterManip::EndMap;
+  }
+
+  Out << YAML::EmitterManip::EndSeq;
+  Out << YAML::EmitterManip::EndMap;
+
+  return FString(UTF8_TO_TCHAR(Out.c_str()));
+}
+
+/* //} */

@@ -88,6 +88,14 @@ public:
    */
   UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
   static FTransform ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, const FVector& WorldOrigin);
+
+  /** Exact inverse of ToUnrealTransform (with a zero origin offset). */
+  UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
+  static void FromUnrealTransform(const FTransform& Transform, const FVector& WorldOrigin, FSpawnObjectEntry& OutEntry);
+
+  /** Serializes a config back into the YAML schema ParseSpawnConfig reads. */
+  UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
+  static FString WriteSpawnConfig(const FSpawnConfig& Config);
 };
 
 /* //} */

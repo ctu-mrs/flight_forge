@@ -62,6 +62,15 @@ public:
   /** Locates a .glb/.gltf for an asset name, accepting both <dir>/<name>.glb and <dir>/<name>/<name>.glb. */
   static bool FindModelFile(const FString& AssetName, const TArray<FString>& ModelPaths, FString& OutFilePath);
 
+  /**
+   * Enumerates what the spawn tool could place: cooked static meshes and Blueprints under
+   * PathPrefix (object paths), plus the bare names of .glb/.gltf files under ModelPaths.
+   * NameFilter is a case-insensitive substring match; bOutTruncated is set when MaxResults
+   * cut the listing short.
+   */
+  static TArray<FString> ListSpawnableAssets(const FString& PathPrefix, const FString& NameFilter, const TArray<FString>& ModelPaths, int32 MaxResults,
+                                             bool& bOutTruncated);
+
 private:
   UPROPERTY()
   TMap<FString, TObjectPtr<UStaticMesh>> ImportedMeshes;

@@ -530,6 +530,31 @@ public:
 		return GetObjectSpawner()->RemoveAllObjects();
 	}
 
+	bool MoveSpawnedObject(const int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale)
+	{
+		return GetObjectSpawner()->MoveObject(ObjectId, Position, Orientation, Scale, GetWorldOrigin());
+	}
+
+	TArray<FSpawnedObjectState> ListSpawnedObjects()
+	{
+		return GetObjectSpawner()->ListObjects(GetWorldOrigin());
+	}
+
+	FString ExportSceneYaml()
+	{
+		return GetObjectSpawner()->ExportScene(GetWorldOrigin());
+	}
+
+	TArray<FString> ListSpawnableAssets(const FString& PathPrefix, const FString& NameFilter, const int32 MaxResults, bool& bOutTruncated)
+	{
+		// The same on-disk model directory SpawnObjectsFromYaml falls back to, so the
+		// catalog and the spawner agree on what a bare name means.
+		TArray<FString> ModelPaths;
+		ModelPaths.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge")));
+
+		return UAssetResolver::ListSpawnableAssets(PathPrefix, NameFilter, ModelPaths, MaxResults, bOutTruncated);
+	}
+
 	/* //} */
 
 	bool bMutualDroneVisibilityEnabled_ = true;

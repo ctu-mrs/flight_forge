@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <array>
 #include <vector>
 #include <string>
 
+#include <cereal/types/array.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
@@ -1550,7 +1552,30 @@ enum MessageType : unsigned short
   set_daytime             = 17,
   set_mutual_visibility   = 18,
   spawn_objects_from_yaml = 19,
-  remove_spawned_object   = 20
+  remove_spawned_object   = 20,
+  move_spawned_object     = 21,
+  list_spawned_objects    = 22,
+  export_scene            = 23,
+  list_assets             = 24
+};
+
+// Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
+// (ROS) frame relative to the world origin, metres and degrees. Orientation is roll,
+// pitch, yaw.
+struct SpawnedObjectInfo
+{
+  int         id;
+  std::string asset;
+  int         stencil;
+
+  std::array<double, 3> position;
+  std::array<double, 3> orientation;
+  std::array<double, 3> scale;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(id, asset, stencil, position, orientation, scale);
+  }
 };
 
 namespace GetDrones
@@ -2027,6 +2052,127 @@ namespace RemoveSpawnedObject
     template <class Archive>
     void serialize(Archive& archive) {
       archive(cereal::base_class<Common::NetworkResponse>(this), removed_count);
+    }
+  };
+}
+/*//}*/
+
+/*MoveSpawnedObject//{*/
+namespace MoveSpawnedObject
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::move_spawned_object){};
+
+    int object_id;
+
+    // ROS frame relative to the world origin; metres, degrees (roll, pitch, yaw).
+    std::array<double, 3> position;
+    std::array<double, 3> orientation;
+    std::array<double, 3> scale = {1.0, 1.0, 1.0};
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), object_id, position, orientation, scale);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::move_spawned_object)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::move_spawned_object, _status){};
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this));
+    }
+  };
+}
+/*//}*/
+
+/*ListSpawnedObjects//{*/
+namespace ListSpawnedObjects
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::list_spawned_objects){};
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::list_spawned_objects)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::list_spawned_objects, _status){};
+
+    // Current poses, so moves made since spawning are reflected.
+    std::vector<SpawnedObjectInfo> objects;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), objects);
+    }
+  };
+}
+/*//}*/
+
+/*ExportScene//{*/
+namespace ExportScene
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::export_scene){};
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::export_scene)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::export_scene, _status){};
+
+    // A spawn configuration document reproducing the currently spawned objects,
+    // including stencils, so feeding it back to spawn_objects_from_yaml recreates
+    // the scene exactly.
+    std::string yaml;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), yaml);
+    }
+  };
+}
+/*//}*/
+
+/*ListAssets//{*/
+namespace ListAssets
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::list_assets){};
+
+    // Package path prefix to search under; empty means /Game.
+    std::string path_prefix;
+
+    // Case-insensitive substring filter on the asset name; empty matches everything.
+    std::string name_filter;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), path_prefix, name_filter);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::list_assets)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::list_assets, _status){};
+
+    // Spawnable names: cooked object paths plus bare names of on-disk glTF models,
+    // all accepted verbatim by the spawn tool's 'asset' field. Capped server-side;
+    // 'truncated' says the cap was hit.
+    std::vector<std::string> assets;
+    bool                     truncated = false;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), assets, truncated);
     }
   };
 }
