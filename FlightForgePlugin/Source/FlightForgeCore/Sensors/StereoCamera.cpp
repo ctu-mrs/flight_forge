@@ -143,8 +143,8 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
-  SceneCaptureComponent2D->FOVAngle  = Config.FOVAngle;
-  SceneCaptureComponent2DStereoRight->FOVAngle = Config.FOVAngle;
+  ApplyProjection(SceneCaptureComponent2D, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
+  ApplyProjection(SceneCaptureComponent2DStereoRight, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
 
   if (Config.enable_hdr) {
     SceneCaptureComponent2D->CaptureSource  = SCS_FinalColorHDR;
@@ -309,6 +309,14 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseStereo.config.enable_hdr_ = stereo_camera_config_.enable_hdr;
 	ResponseStereo.config.enable_raytracing_ = stereo_camera_config_.enable_raytracing;
 
+	const FCameraIntrinsics Effective =
+	    EffectiveIntrinsics(stereo_camera_config_.Intrinsics, stereo_camera_config_.FOVAngle, stereo_camera_config_.Width, stereo_camera_config_.Height);
+	ResponseStereo.config.intrinsics_.use_custom_ = stereo_camera_config_.Intrinsics.UseCustom;
+	ResponseStereo.config.intrinsics_.fx_         = Effective.Fx;
+	ResponseStereo.config.intrinsics_.fy_         = Effective.Fy;
+	ResponseStereo.config.intrinsics_.cx_         = Effective.Cx;
+	ResponseStereo.config.intrinsics_.cy_         = Effective.Cy;
+
 	Serialization::DeserializeResponse(ResponseStereo, OutputStream);
 	UE_LOG(LogTemp, Warning, TEXT("Got CameraStereo config"));
 }
@@ -333,7 +341,13 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 
 	Config.enable_hdr = Request.config.enable_hdr_;
 	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
-	Config.enable_raytracing = Request.config.enable_raytracing_; 
+	Config.enable_raytracing = Request.config.enable_raytracing_;
+
+	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
+	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
+	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
 
 	bool Status = false;
 

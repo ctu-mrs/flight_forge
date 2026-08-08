@@ -164,6 +164,28 @@ struct LidarConfig
 
 //}
 
+/* struct CameraIntrinsics //{ */
+
+// pinhole intrinsics in pixels, image origin top-left. With use_custom_ unset the
+// fov_/resolution path drives the projection and Get returns the values the engine
+// derives from them; when set, the projection matrix is built from fx/fy/cx/cy
+// directly (off-axis when cx/cy are off-center) and fov_ is ignored.
+struct CameraIntrinsics
+{
+  bool   use_custom_ = false;
+  double fx_         = 0.0;
+  double fy_         = 0.0;
+  double cx_         = 0.0;
+  double cy_         = 0.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(use_custom_, fx_, fy_, cx_, cy_);
+  }
+};
+
+//}
+
 /* struct CameraExposure //{ */
 
 // physically-based exposure; when manual_ is set the abstract auto-exposure is
@@ -241,11 +263,12 @@ struct RgbCameraConfig
 
   CameraExposure    exposure_;
   CameraLensEffects lens_;
+  CameraIntrinsics  intrinsics_;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_);
+            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_);
   }
 };
 
@@ -282,6 +305,9 @@ struct StereoCameraConfig
   bool enable_raytracing_;
   bool enable_hdr_;
 
+  // shared by both eyes
+  CameraIntrinsics intrinsics_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_,
@@ -290,7 +316,7 @@ struct StereoCameraConfig
             rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
             rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
             fov_, width_, height_,
-            enable_temporal_aa_, enable_raytracing_, enable_hdr_);
+            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_);
   }
 };
 

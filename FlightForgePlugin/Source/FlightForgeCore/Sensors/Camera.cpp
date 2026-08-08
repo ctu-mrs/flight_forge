@@ -3,6 +3,7 @@
 #include "ContentStreaming.h"
 #include "Engine/PostProcessVolume.h"
 #include "EngineUtils.h"
+#include "UnrealEngine.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 #include "FlightForgeCore/DronePawn.h"
@@ -248,6 +249,56 @@ void UCamera::ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture)
 			Capture->PostProcessBlendWeight = It->BlendWeight;
 			return;
 		}
+	}
+}
+
+//}
+
+/* intrinsics projection //{ */
+
+FMatrix UCamera::IntrinsicsProjectionMatrix(const FCameraIntrinsics& Intrinsics, const int32 Width, const int32 Height)
+{
+	// Reversed-Z with an infinite far plane, matching FReversedZPerspectiveMatrix; in
+	// the centered case (cx = W/2, cy = H/2, fx per the FOV) the two are identical.
+	// The off-axis terms shift NDC so that pixel (u,v) = (fx·X/Z + cx, fy·(-Y)/Z + cy)
+	// with the image origin top-left and view-space Y up.
+	return FMatrix(
+	    FPlane(2.0 * Intrinsics.Fx / Width, 0.0, 0.0, 0.0),
+	    FPlane(0.0, 2.0 * Intrinsics.Fy / Height, 0.0, 0.0),
+	    FPlane(2.0 * Intrinsics.Cx / Width - 1.0, 1.0 - 2.0 * Intrinsics.Cy / Height, 0.0, 1.0),
+	    FPlane(0.0, 0.0, GNearClippingPlane, 0.0));
+}
+
+FCameraIntrinsics UCamera::EffectiveIntrinsics(const FCameraIntrinsics& Intrinsics, const double FovDeg, const int32 Width, const int32 Height)
+{
+	if (Intrinsics.UseCustom && Intrinsics.Fx > 0.0 && Intrinsics.Fy > 0.0)
+	{
+		return Intrinsics;
+	}
+
+	FCameraIntrinsics Effective;
+	Effective.Fx = (Width * 0.5) / FMath::Tan(FMath::DegreesToRadians(FovDeg) * 0.5);
+	Effective.Fy = Effective.Fx;
+	Effective.Cx = Width * 0.5;
+	Effective.Cy = Height * 0.5;
+
+	return Effective;
+}
+
+void UCamera::ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, const double FovDeg, const int32 Width,
+                              const int32 Height)
+{
+	// FOVAngle stays meaningful either way: it drives culling bounds and is the
+	// fallback when the custom matrix is disabled again.
+	Capture->FOVAngle = FovDeg;
+
+	const bool bValid = Intrinsics.UseCustom && Intrinsics.Fx > 0.0 && Intrinsics.Fy > 0.0 && Width > 0 && Height > 0;
+
+	Capture->bUseCustomProjectionMatrix = bValid;
+
+	if (bValid)
+	{
+		Capture->CustomProjectionMatrix = IntrinsicsProjectionMatrix(Intrinsics, Width, Height);
 	}
 }
 

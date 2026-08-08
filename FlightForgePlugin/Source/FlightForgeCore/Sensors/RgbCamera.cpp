@@ -157,7 +157,7 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureMeshHolder->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
 
-  SceneCaptureComponent2D->FOVAngle = Config.FOVAngle;
+  ApplyProjection(SceneCaptureComponent2D, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
 
   if (Config.enable_hdr) {
     SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
@@ -309,6 +309,14 @@ void URgbCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.lens_.white_tint_               = rgb_camera_config_.Lens.WhiteTint;
 	ResponseRGB.config.lens_.motion_blur_from_shutter_ = rgb_camera_config_.Lens.MotionBlurFromShutter;
 
+	const FCameraIntrinsics Effective =
+	    EffectiveIntrinsics(rgb_camera_config_.Intrinsics, rgb_camera_config_.FOVAngle, rgb_camera_config_.Width, rgb_camera_config_.Height);
+	ResponseRGB.config.intrinsics_.use_custom_ = rgb_camera_config_.Intrinsics.UseCustom;
+	ResponseRGB.config.intrinsics_.fx_         = Effective.Fx;
+	ResponseRGB.config.intrinsics_.fy_         = Effective.Fy;
+	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx;
+	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGB config"));
 }
@@ -352,6 +360,12 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 	Config.Lens.WhiteTemp             = Request.config.lens_.white_temp_;
 	Config.Lens.WhiteTint             = Request.config.lens_.white_tint_;
 	Config.Lens.MotionBlurFromShutter = Request.config.lens_.motion_blur_from_shutter_;
+
+	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
+	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
+	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
 
 	bool Status = false;
 

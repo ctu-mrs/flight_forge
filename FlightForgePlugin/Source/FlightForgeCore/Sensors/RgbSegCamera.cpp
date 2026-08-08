@@ -92,7 +92,7 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 
 	CameraBufferCriticalSection->Lock();
 
-	SceneCaptureComponent2D->FOVAngle = Config.FOVAngle;
+	ApplyProjection(SceneCaptureComponent2D, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
 
 	SceneCaptureComponent2D->TextureTarget                = RenderTarget2D;
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
@@ -202,6 +202,14 @@ void URgbSegCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.motion_blur_distortion_ = rgb_camera_config_.motion_blur_distortion;
 	ResponseRGB.config.motion_blur_amount_ = rgb_camera_config_.motion_blur_amount;
 
+	const FCameraIntrinsics Effective =
+	    EffectiveIntrinsics(rgb_camera_config_.Intrinsics, rgb_camera_config_.FOVAngle, rgb_camera_config_.Width, rgb_camera_config_.Height);
+	ResponseRGB.config.intrinsics_.use_custom_ = rgb_camera_config_.Intrinsics.UseCustom;
+	ResponseRGB.config.intrinsics_.fx_         = Effective.Fx;
+	ResponseRGB.config.intrinsics_.fy_         = Effective.Fy;
+	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx;
+	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGBSeg config"));
 }
@@ -229,6 +237,12 @@ void URgbSegCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.enable_motion_blur = Request.config.enable_motion_blur_;
 	Config.motion_blur_amount = Request.config.motion_blur_amount_;
 	Config.motion_blur_distortion = Request.config.motion_blur_distortion_;
+
+	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
+	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
+	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
 
 	bool Status = false;
 

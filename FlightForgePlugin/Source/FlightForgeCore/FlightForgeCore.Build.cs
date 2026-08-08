@@ -24,6 +24,12 @@ public class FlightForgeCore : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime"});
 		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent", "UnrealYAML", "AssetRegistry" });
 
+		if (Target.bBuildEditor)
+		{
+			// the hit-proxy segmentation ground truth (SegmentationGroundTruth.cpp) reads editor viewports
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
+
 		string thirdPartyIncludePath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/include"));
 		PublicIncludePaths.AddRange(new string[] {thirdPartyIncludePath});
 	}

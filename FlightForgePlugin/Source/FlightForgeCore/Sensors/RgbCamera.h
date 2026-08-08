@@ -55,6 +55,7 @@ struct FRgbCameraConfig
 
 	FCameraExposure    Exposure;
 	FCameraLensEffects Lens;
+	FCameraIntrinsics  Intrinsics;
 };
 
 

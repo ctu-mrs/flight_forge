@@ -21,6 +21,9 @@ struct FStereoCameraConfig
 	bool     enable_temporal_aa;
 	bool     enable_hdr;
 	bool     enable_raytracing;
+
+	// shared by both eyes
+	FCameraIntrinsics Intrinsics;
 };
 
 

@@ -36,6 +36,22 @@ struct FCameraReadback
 
 //}
 
+/* FCameraIntrinsics //{ */
+
+// pinhole intrinsics in pixels, image origin top-left; when UseCustom the capture's
+// projection matrix is built from these (off-axis when cx/cy are off-center) instead
+// of from the FOV angle
+struct FCameraIntrinsics
+{
+	bool   UseCustom = false;
+	double Fx        = 0.0;
+	double Fy        = 0.0;
+	double Cx        = 0.0;
+	double Cy        = 0.0;
+};
+
+//}
+
 UCLASS()
 class FLIGHTFORGECORE_API UCamera : public USensor
 {
@@ -91,6 +107,20 @@ protected:
 	// the level's look so sensor output matches the viewport, with per-camera
 	// config overrides applied on top afterwards
 	void ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture);
+
+public:
+	// reversed-Z off-axis projection equivalent to the pinhole K = [fx 0 cx; 0 fy cy]
+	static FMatrix IntrinsicsProjectionMatrix(const FCameraIntrinsics& Intrinsics, int32 Width, int32 Height);
+
+	// the intrinsics the rendered image actually has: the custom ones when set and
+	// valid, otherwise fx = fy derived from the horizontal FOV with a centered
+	// principal point
+	static FCameraIntrinsics EffectiveIntrinsics(const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
+
+	// sets either the custom projection matrix or the plain FOV path on the capture
+	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
+
+protected:
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
