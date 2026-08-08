@@ -82,6 +82,16 @@ protected:
 	std::atomic<uint64> FrameCounter{0};
 	FEvent* FrameReadyEvent = nullptr;
 
+	// registers this camera as a streaming view each tick while active, so
+	// textures near it keep full mips even when the player viewport is
+	// elsewhere or absent; without it off-pawn cameras render low-mip blur
+	void PushStreamingViewHint();
+
+	// scene captures ignore unbound PostProcessVolumes; seed the capture with
+	// the level's look so sensor output matches the viewport, with per-camera
+	// config overrides applied on top afterwards
+	void ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture);
+
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 	// game thread: advances the pending readback and publishes a completed frame; true when published

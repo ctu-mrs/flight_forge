@@ -60,6 +60,9 @@ void UStereoCamera::BeginPlay()
 	stereo_camera_config_.Width               = 640;
 	stereo_camera_config_.Height              = 480;
 	
+	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
+	ApplyLevelPostProcessBaseline(SceneCaptureComponent2DStereoRight);
+
 	SetStereoCameraConfig(stereo_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
 }

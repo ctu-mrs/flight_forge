@@ -102,6 +102,11 @@ void UFisheyeCamera::BeginPlay()
 
 	RenderTarget2D = FaceRenderTargets[0];
 
+	for (int32 Face = 0; Face < NumFaces; ++Face)
+	{
+		ApplyLevelPostProcessBaseline(FaceCaptures[Face]);
+	}
+
 	SetFisheyeCameraConfig(fisheye_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
 }

@@ -43,6 +43,8 @@ void URgbCamera::BeginPlay()
 	rgb_camera_config_.motion_blur_amount     = 1.0;
 	rgb_camera_config_.motion_blur_distortion = 50.0;
 
+	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
+
 	SetRgbCameraConfig(rgb_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
 }

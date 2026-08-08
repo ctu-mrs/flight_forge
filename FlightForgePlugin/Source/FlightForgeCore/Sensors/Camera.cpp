@@ -1,5 +1,8 @@
 #include "Camera.h"
 
+#include "ContentStreaming.h"
+#include "Engine/PostProcessVolume.h"
+#include "EngineUtils.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 #include "FlightForgeCore/DronePawn.h"
@@ -200,8 +203,55 @@ bool UCamera::WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds)
 
 void UCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	PushStreamingViewHint();
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
+
+/* streaming + post-process baseline //{ */
+
+void UCamera::PushStreamingViewHint()
+{
+	if (!SceneCaptureComponent2D || !RenderTarget2D)
+	{
+		return;
+	}
+
+	const bool bActive = SceneCaptureComponent2D->bCaptureEveryFrame || (FPlatformTime::Seconds() - camera_last_request_time_) < 2.0;
+
+	if (!bActive)
+	{
+		return;
+	}
+
+	const float ScreenSize    = (float)RenderTarget2D->SizeX;
+	const float HalfFovRad    = FMath::DegreesToRadians(FMath::Clamp(SceneCaptureComponent2D->FOVAngle, 1.0f, 170.0f) * 0.5f);
+	const float FOVScreenSize = ScreenSize / FMath::Tan(HalfFovRad);
+
+	IStreamingManager::Get().AddViewInformation(SceneCaptureComponent2D->GetComponentLocation(), ScreenSize, FOVScreenSize);
+}
+
+void UCamera::ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture)
+{
+	UWorld* World = GetWorld();
+
+	if (!Capture || !World)
+	{
+		return;
+	}
+
+	for (TActorIterator<APostProcessVolume> It(World); It; ++It)
+	{
+		if (It->bEnabled && It->bUnbound)
+		{
+			Capture->PostProcessSettings    = It->Settings;
+			Capture->PostProcessBlendWeight = It->BlendWeight;
+			return;
+		}
+	}
+}
+
+//}
 
 
 void UCamera::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
