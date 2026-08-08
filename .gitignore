@@ -8,3 +8,10 @@ UINav3Plugin_5.4/Intermediate
 
 UnrealYAML/Binaries
 UnrealYAML/Intermediate
+
+# gitman-managed dependencies
+.gitman/
+/glTFRuntime
+
+# sibling client checkout
+/mrs_flight_forge_connector/
