@@ -62,8 +62,20 @@ public:
 
 	void TagActor(AActor* Actor);
 
+	/** Stable per-actor instance id (starting at 1) for the SegId pass; 0 stays "background". */
+	uint32 GetOrAssignInstanceId(const AActor* Actor);
+
+	/**
+	 * Snapshot for one ID-pass render: every static mesh component's proxy with its
+	 * owner's id color, plus the id -> actor-path map that pairs with the image.
+	 */
+	void CollectInstanceItems(TArray<struct FSegIdDrawItem>& OutItems, TArray<TPair<int32, FString>>& OutMap);
+
 private:
 	FDelegateHandle ActorSpawnedHandle;
+
+	TMap<TWeakObjectPtr<const AActor>, uint32> InstanceIds;
+	uint32 NextInstanceId = 1;
 
 	const FSegmentationTagRule* FindRule(const AActor* Actor, const UPrimitiveComponent* Component) const;
 };

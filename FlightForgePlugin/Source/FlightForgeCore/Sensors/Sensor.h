@@ -17,6 +17,7 @@ enum class SensorType : int
 	STEREO_CAMERA = 5,
 	EVENT_CAMERA = 6,
 	FISHEYE_CAMERA = 7,
+	INSTANCE_SEG_CAMERA = 8,
 	MAX_SENSOR_TYPE
 };
 

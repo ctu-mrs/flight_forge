@@ -121,6 +121,8 @@ enum MessageType : unsigned short
   set_fisheye_camera_config       = 32,
   add_device                      = 33,
   list_devices                    = 34,
+  get_instance_seg_data           = 35,
+  get_instance_seg_map            = 36,
 };
 
 /* struct LidarConfig //{ */
@@ -1619,6 +1621,94 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace GetCrashState
+
+//}
+
+/* GetInstanceSegData //{ */
+
+// The instance-segmentation camera: a plugin-owned mesh pass renders each actor's
+// 24-bit instance id (little-endian in RGB, 0 = background) with correct occlusion.
+// The image is PNG (lossless); decode ids as R + (G<<8) + (B<<16).
+namespace GetInstanceSegData
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_instance_seg_data)) {
+  }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_instance_seg_data)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_instance_seg_data, _status) {
+  }
+
+  std::vector<unsigned char> image_;
+  double                     stamp_;
+  uint32_t                   size_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_, size_);
+  }
+};
+}  // namespace GetInstanceSegData
+
+//}
+
+/* GetInstanceSegMap //{ */
+
+struct InstanceSegMapEntry
+{
+  int         id;
+  std::string actor;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(id, actor);
+  }
+};
+
+// The id -> actor mapping snapshotted at the same instant as the last requested
+// instance-segmentation image, so the two are always consistent.
+namespace GetInstanceSegMap
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_instance_seg_map)) {
+  }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_instance_seg_map)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_instance_seg_map, _status) {
+  }
+
+  std::vector<InstanceSegMapEntry> entries_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), entries_);
+  }
+};
+}  // namespace GetInstanceSegMap
 
 //}
 

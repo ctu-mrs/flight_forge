@@ -22,7 +22,7 @@ public class FlightForgeCore : ModuleRules
     bEnableExceptions = true;
     //bUseRTTI = true;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime"});
-		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent", "UnrealYAML", "AssetRegistry" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent", "UnrealYAML", "AssetRegistry", "Renderer" });
 
 		if (Target.bBuildEditor)
 		{

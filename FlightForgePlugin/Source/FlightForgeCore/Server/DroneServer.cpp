@@ -302,6 +302,31 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 		return ListDevices(Client);
 	}
 
+	if(Request.type == Serializable::Drone::MessageType::get_instance_seg_data) {
+		Serializable::Drone::GetInstanceSegData::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::INSTANCE_SEG_CAMERA, CustomRequest.sensor_id_);
+
+		return GetSensorData(Client, SensorID);
+	}
+
+	if(Request.type == Serializable::Drone::MessageType::get_instance_seg_map) {
+		Serializable::Drone::GetInstanceSegMap::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::INSTANCE_SEG_CAMERA, CustomRequest.sensor_id_);
+
+		if (USegIdCamera* SegIdCamera = Cast<USegIdCamera>(DronePawn->FindSensorById(SensorID)))
+		{
+			std::stringstream OutputStream;
+			SegIdCamera->GetMapData(OutputStream);
+			return Respond(Client, OutputStream);
+		}
+
+		return false;
+	}
+
 	return false;
 }
 
