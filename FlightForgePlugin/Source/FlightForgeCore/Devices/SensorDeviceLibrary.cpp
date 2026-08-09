@@ -151,6 +151,20 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRgb(S, O, R, 69, 1280, 720); };
 		D.Sensors.Add(Rgb);
 
+		// no depth stream: the D435i's depth is stereo matching, not a native
+		// measurement - emulate it by matching the stereo pair. Ground-truth
+		// depth is its own sensor (or a ToF preset like azure_kinect_dk).
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("azure_kinect_dk");
+		D.Description      = TEXT("Azure Kinect DK: ToF depth NFOV 640x576 75deg + RGB 1280x720 90deg (depth currently ideal - no ToF noise model yet)");
+		D.MeshShape        = EDeviceMeshShape::Box;
+		D.MeshDimensionsCm = FVector(10.3, 12.6, 3.9);
+
 		FDeviceSensorEntry Depth;
 		Depth.Type      = SensorType::DEPTH_CAMERA;
 		Depth.Configure = [](USensor* S, const FVector& O, const FRotator& R)
@@ -160,13 +174,19 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 				FRgbCameraConfig Config = Camera->GetDepthCameraConfig();
 				Config.Offset           = O;
 				Config.Orientation      = R;
-				Config.FOVAngle         = 87;
-				Config.Width            = 848;
-				Config.Height           = 480;
+				Config.FOVAngle         = 75;
+				Config.Width            = 640;
+				Config.Height           = 576;
 				Camera->SetDepthCameraConfig(Config);
 			}
 		};
 		D.Sensors.Add(Depth);
+
+		FDeviceSensorEntry Rgb;
+		Rgb.Type      = SensorType::RGB_CAMERA;
+		Rgb.RelOffset = FVector(0, -3.2, 0);  // color module offset from the depth aperture
+		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRgb(S, O, R, 90, 1280, 720); };
+		D.Sensors.Add(Rgb);
 
 		Devices.Add(D);
 	}
