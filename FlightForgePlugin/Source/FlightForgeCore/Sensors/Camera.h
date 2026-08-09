@@ -52,6 +52,36 @@ struct FCameraIntrinsics
 
 //}
 
+/* FCameraDistortion / FDistortionLUT //{ */
+
+// Brown-Conrady lens distortion (OpenCV convention: radial k1..k3, tangential p1, p2)
+// applied to the same normalized coordinates the intrinsics K describes
+struct FCameraDistortion
+{
+	bool   Enable = false;
+	double K1     = 0.0;
+	double K2     = 0.0;
+	double K3     = 0.0;
+	double P1     = 0.0;
+	double P2     = 0.0;
+};
+
+// Precomputed output-pixel -> source-pixel map. The source image is an ideal pinhole
+// render padded by Pad on each side (overscan), so barrel distortion can pull in
+// content from outside the nominal frustum. Rebuilt only on config changes; the serve
+// threads resample through it per frame.
+struct FDistortionLUT
+{
+	FIntPoint OutputSize = FIntPoint::ZeroValue;
+	FIntPoint SourceSize = FIntPoint::ZeroValue;
+	FIntPoint Pad        = FIntPoint::ZeroValue;
+
+	// per output pixel, source coords in array-index space (0 = first pixel center)
+	TArray<FVector2f> Source;
+};
+
+//}
+
 UCLASS()
 class FLIGHTFORGECORE_API UCamera : public USensor
 {
@@ -120,7 +150,24 @@ public:
 	// sets either the custom projection matrix or the plain FOV path on the capture
 	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
+	// LUT for undoing BuildDistortionLUT's view: output pixel -> where in the padded
+	// ideal-pinhole source that pixel's ray lands; null when distortion is off
+	static TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> BuildDistortionLUT(const FCameraDistortion& Distortion, const FCameraIntrinsics& EffectiveK,
+	                                                                                int32 Width, int32 Height);
+
+	// bilinear for imagery; nearest for label images so classes never blend
+	static void ResampleImage(const FDistortionLUT& LUT, const TArray<FColor>& Source, TArray<FColor>& OutResampled, bool bNearestNeighbor);
+
 protected:
+	// One-stop projection setup shared by the RGB/seg/stereo Set paths: without
+	// distortion it applies the plain (or custom-K) projection at the nominal size;
+	// with it, it renders the padded overscan frustum and stores the warp LUT.
+	// Caller must hold CameraBufferCriticalSection (DistortionLUT is written here,
+	// serve threads read it under the same lock).
+	void SetupCaptureProjection(const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion, double FovDeg, int32 Width, int32 Height,
+	                            std::initializer_list<USceneCaptureComponent2D*> Captures, std::initializer_list<UTextureRenderTarget2D*> Targets);
+
+	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> DistortionLUT;
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);

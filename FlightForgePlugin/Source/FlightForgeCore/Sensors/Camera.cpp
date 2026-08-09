@@ -304,6 +304,193 @@ void UCamera::ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIn
 
 //}
 
+/* distortion LUT //{ */
+
+TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> UCamera::BuildDistortionLUT(const FCameraDistortion& Distortion, const FCameraIntrinsics& EffectiveK,
+                                                                                  const int32 Width, const int32 Height)
+{
+	if (Width <= 0 || Height <= 0 || EffectiveK.Fx <= 0.0 || EffectiveK.Fy <= 0.0)
+	{
+		return nullptr;
+	}
+
+	TSharedRef<FDistortionLUT, ESPMode::ThreadSafe> LUT = MakeShared<FDistortionLUT, ESPMode::ThreadSafe>();
+	LUT->OutputSize                                     = FIntPoint(Width, Height);
+	LUT->Source.SetNumUninitialized(Width * Height);
+
+	// For each output pixel of the distorted image, invert the Brown-Conrady model
+	// (fixed-point iteration, the standard cv::undistortPoints scheme) to find the
+	// ideal-pinhole ray, i.e. where that pixel's content lives in the clean render.
+	TArray<FVector2d> Pinhole;
+	Pinhole.SetNumUninitialized(Width * Height);
+
+	double MinX = TNumericLimits<double>::Max(), MaxX = -TNumericLimits<double>::Max();
+	double MinY = TNumericLimits<double>::Max(), MaxY = -TNumericLimits<double>::Max();
+
+	for (int32 V = 0; V < Height; ++V)
+	{
+		for (int32 U = 0; U < Width; ++U)
+		{
+			const double Xd = (U + 0.5 - EffectiveK.Cx) / EffectiveK.Fx;
+			const double Yd = (V + 0.5 - EffectiveK.Cy) / EffectiveK.Fy;
+
+			double Xu = Xd;
+			double Yu = Yd;
+
+			for (int32 Iteration = 0; Iteration < 8; ++Iteration)
+			{
+				const double R2     = Xu * Xu + Yu * Yu;
+				const double Radial = 1.0 + R2 * (Distortion.K1 + R2 * (Distortion.K2 + R2 * Distortion.K3));
+				const double Dx     = 2.0 * Distortion.P1 * Xu * Yu + Distortion.P2 * (R2 + 2.0 * Xu * Xu);
+				const double Dy     = Distortion.P1 * (R2 + 2.0 * Yu * Yu) + 2.0 * Distortion.P2 * Xu * Yu;
+
+				Xu = (Xd - Dx) / Radial;
+				Yu = (Yd - Dy) / Radial;
+			}
+
+			const double Sx = Xu * EffectiveK.Fx + EffectiveK.Cx;
+			const double Sy = Yu * EffectiveK.Fy + EffectiveK.Cy;
+
+			MinX = FMath::Min(MinX, Sx);
+			MaxX = FMath::Max(MaxX, Sx);
+			MinY = FMath::Min(MinY, Sy);
+			MaxY = FMath::Max(MaxY, Sy);
+
+			Pinhole[V * Width + U] = FVector2d(Sx, Sy);
+		}
+	}
+
+	// Overscan sized from the actual excursion outside the nominal image, +1px of
+	// bilinear margin, capped so pathological coefficients cannot explode the target.
+	const int32 PadX = FMath::Clamp(FMath::CeilToInt32(FMath::Max3(0.0, -MinX, MaxX - Width)) + 1, 0, Width / 2);
+	const int32 PadY = FMath::Clamp(FMath::CeilToInt32(FMath::Max3(0.0, -MinY, MaxY - Height)) + 1, 0, Height / 2);
+
+	LUT->Pad        = FIntPoint(PadX, PadY);
+	LUT->SourceSize = FIntPoint(Width + 2 * PadX, Height + 2 * PadY);
+
+	for (int32 Index = 0; Index < Pinhole.Num(); ++Index)
+	{
+		// pixel-center coordinates to array-index space: index = center - 0.5
+		LUT->Source[Index] = FVector2f(Pinhole[Index].X + PadX - 0.5, Pinhole[Index].Y + PadY - 0.5);
+	}
+
+	return LUT;
+}
+
+void UCamera::ResampleImage(const FDistortionLUT& LUT, const TArray<FColor>& Source, TArray<FColor>& OutResampled, const bool bNearestNeighbor)
+{
+	const int32 SrcW = LUT.SourceSize.X;
+	const int32 SrcH = LUT.SourceSize.Y;
+
+	OutResampled.SetNumUninitialized(LUT.Source.Num());
+
+	const FColor* Src = Source.GetData();
+	FColor*       Dst = OutResampled.GetData();
+
+	for (int32 Index = 0; Index < LUT.Source.Num(); ++Index)
+	{
+		const float X = LUT.Source[Index].X;
+		const float Y = LUT.Source[Index].Y;
+
+		if (bNearestNeighbor)
+		{
+			const int32 U = FMath::Clamp(FMath::RoundToInt32(X), 0, SrcW - 1);
+			const int32 V = FMath::Clamp(FMath::RoundToInt32(Y), 0, SrcH - 1);
+
+			Dst[Index] = Src[V * SrcW + U];
+			continue;
+		}
+
+		const int32 U0 = FMath::Clamp(FMath::FloorToInt32(X), 0, SrcW - 1);
+		const int32 V0 = FMath::Clamp(FMath::FloorToInt32(Y), 0, SrcH - 1);
+		const int32 U1 = FMath::Min(U0 + 1, SrcW - 1);
+		const int32 V1 = FMath::Min(V0 + 1, SrcH - 1);
+
+		const float FracX = FMath::Clamp(X - U0, 0.0f, 1.0f);
+		const float FracY = FMath::Clamp(Y - V0, 0.0f, 1.0f);
+
+		const FColor& C00 = Src[V0 * SrcW + U0];
+		const FColor& C10 = Src[V0 * SrcW + U1];
+		const FColor& C01 = Src[V1 * SrcW + U0];
+		const FColor& C11 = Src[V1 * SrcW + U1];
+
+		const auto Lerp2 = [FracX, FracY](const uint8 A00, const uint8 A10, const uint8 A01, const uint8 A11) {
+			const float Top    = A00 + (A10 - A00) * FracX;
+			const float Bottom = A01 + (A11 - A01) * FracX;
+			return static_cast<uint8>(FMath::RoundToInt32(Top + (Bottom - Top) * FracY));
+		};
+
+		Dst[Index] = FColor(Lerp2(C00.R, C10.R, C01.R, C11.R), Lerp2(C00.G, C10.G, C01.G, C11.G), Lerp2(C00.B, C10.B, C01.B, C11.B), 255);
+	}
+}
+
+void UCamera::SetupCaptureProjection(const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion, const double FovDeg, const int32 Width,
+                                     const int32 Height, std::initializer_list<USceneCaptureComponent2D*> Captures,
+                                     std::initializer_list<UTextureRenderTarget2D*> Targets)
+{
+	if (Width <= 0 || Height <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid dimensions for RenderTarget2D. Width and Height should be greater than 0."));
+		return;
+	}
+
+	if (!Distortion.Enable)
+	{
+		DistortionLUT.Reset();
+
+		for (USceneCaptureComponent2D* Capture : Captures)
+		{
+			ApplyProjection(Capture, Intrinsics, FovDeg, Width, Height);
+		}
+		for (UTextureRenderTarget2D* Target : Targets)
+		{
+			Target->ResizeTarget(Width, Height);
+		}
+
+		return;
+	}
+
+	const FCameraIntrinsics EffectiveK = EffectiveIntrinsics(Intrinsics, FovDeg, Width, Height);
+
+	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> LUT = BuildDistortionLUT(Distortion, EffectiveK, Width, Height);
+	if (!LUT)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UCamera: could not build the distortion LUT, rendering undistorted"));
+		DistortionLUT.Reset();
+
+		for (USceneCaptureComponent2D* Capture : Captures)
+		{
+			ApplyProjection(Capture, Intrinsics, FovDeg, Width, Height);
+		}
+		for (UTextureRenderTarget2D* Target : Targets)
+		{
+			Target->ResizeTarget(Width, Height);
+		}
+
+		return;
+	}
+
+	// The clean source render: same focal lengths, principal point shifted by the
+	// padding, rendered at the padded size — the wider frustum the warp samples from.
+	FCameraIntrinsics PaddedK = EffectiveK;
+	PaddedK.UseCustom         = true;
+	PaddedK.Cx += LUT->Pad.X;
+	PaddedK.Cy += LUT->Pad.Y;
+
+	for (USceneCaptureComponent2D* Capture : Captures)
+	{
+		ApplyProjection(Capture, PaddedK, FovDeg, LUT->SourceSize.X, LUT->SourceSize.Y);
+	}
+	for (UTextureRenderTarget2D* Target : Targets)
+	{
+		Target->ResizeTarget(LUT->SourceSize.X, LUT->SourceSize.Y);
+	}
+
+	DistortionLUT = LUT;
+}
+
+//}
+
 
 void UCamera::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
 

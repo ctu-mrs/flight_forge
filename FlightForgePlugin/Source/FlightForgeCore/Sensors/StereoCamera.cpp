@@ -143,8 +143,8 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
-  ApplyProjection(SceneCaptureComponent2D, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
-  ApplyProjection(SceneCaptureComponent2DStereoRight, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
+  SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height,
+                         {SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight}, {RenderTarget2D, RenderTarget2DStereoRight});
 
   if (Config.enable_hdr) {
     SceneCaptureComponent2D->CaptureSource  = SCS_FinalColorHDR;
@@ -160,12 +160,6 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   SceneCaptureComponent2D->bUseRayTracingIfEnabled  = Config.enable_raytracing;
   SceneCaptureComponent2DStereoRight->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
-  if (Config.Width > 0 && Config.Height > 0) {
-    RenderTarget2D->ResizeTarget(Config.Width, Config.Height);
-    RenderTarget2DStereoRight->ResizeTarget(Config.Width, Config.Height);
-  } else {
-    UE_LOG(LogTemp, Warning, TEXT("Invalid dimensions for RenderTarget2D. Width and Height should be greater than 0."));
-  }
 
   CameraBufferCriticalSection->Unlock();
 
@@ -250,9 +244,10 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 		}
 	}
 
-	TArray<FColor> RawLeft;
-	TArray<FColor> RawRight;
-	FIntPoint      RawSize;
+	TArray<FColor>                                        RawLeft;
+	TArray<FColor>                                        RawRight;
+	FIntPoint                                             RawSize;
+	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> LUT;
 	{
 		CameraBufferCriticalSection->Lock();
 
@@ -266,11 +261,21 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 		RawRight = StereoRightCameraBuffer;
 		RawSize  = CameraBufferSize;
 		stamp    = stamp_;
+		LUT      = DistortionLUT;
 
 		CameraBufferCriticalSection->Unlock();
 	}
 
-	// compress outside the lock so the game thread's publish path never blocks on PNG encoding
+	// warp + compress outside the lock so the game thread's publish path never blocks
+	if (LUT && RawSize == LUT->SourceSize) {
+		TArray<FColor> Warped;
+		ResampleImage(*LUT, RawLeft, Warped, false);
+		RawLeft = MoveTemp(Warped);
+		ResampleImage(*LUT, RawRight, Warped, false);
+		RawRight = MoveTemp(Warped);
+		RawSize  = LUT->OutputSize;
+	}
+
 	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawLeft, image_left);
 	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawRight, image_right);
 
@@ -317,6 +322,13 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseStereo.config.intrinsics_.cx_         = Effective.Cx;
 	ResponseStereo.config.intrinsics_.cy_         = Effective.Cy;
 
+	ResponseStereo.config.distortion_.enable_ = stereo_camera_config_.Distortion.Enable;
+	ResponseStereo.config.distortion_.k1_     = stereo_camera_config_.Distortion.K1;
+	ResponseStereo.config.distortion_.k2_     = stereo_camera_config_.Distortion.K2;
+	ResponseStereo.config.distortion_.k3_     = stereo_camera_config_.Distortion.K3;
+	ResponseStereo.config.distortion_.p1_     = stereo_camera_config_.Distortion.P1;
+	ResponseStereo.config.distortion_.p2_     = stereo_camera_config_.Distortion.P2;
+
 	Serialization::DeserializeResponse(ResponseStereo, OutputStream);
 	UE_LOG(LogTemp, Warning, TEXT("Got CameraStereo config"));
 }
@@ -348,6 +360,13 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
 	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
 	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+
+	Config.Distortion.Enable = Request.config.distortion_.enable_;
+	Config.Distortion.K1     = Request.config.distortion_.k1_;
+	Config.Distortion.K2     = Request.config.distortion_.k2_;
+	Config.Distortion.K3     = Request.config.distortion_.k3_;
+	Config.Distortion.P1     = Request.config.distortion_.p1_;
+	Config.Distortion.P2     = Request.config.distortion_.p2_;
 
 	bool Status = false;
 

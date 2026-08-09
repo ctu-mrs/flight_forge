@@ -24,6 +24,7 @@ struct FStereoCameraConfig
 
 	// shared by both eyes
 	FCameraIntrinsics Intrinsics;
+	FCameraDistortion Distortion;
 };
 
 

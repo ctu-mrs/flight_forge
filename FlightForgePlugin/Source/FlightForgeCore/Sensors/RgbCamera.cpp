@@ -157,7 +157,7 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureMeshHolder->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
 
-  ApplyProjection(SceneCaptureComponent2D, Config.Intrinsics, Config.FOVAngle, Config.Width, Config.Height);
+  SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height, {SceneCaptureComponent2D}, {RenderTarget2D});
 
   if (Config.enable_hdr) {
     SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
@@ -193,12 +193,6 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 
   ApplyExposureAndLens(Config.Exposure, Config.Lens, PPSettings);
 
-
-  if (Config.Width > 0 && Config.Height > 0) {
-    RenderTarget2D->ResizeTarget(Config.Width, Config.Height);
-  } else {
-    UE_LOG(LogTemp, Warning, TEXT("Invalid dimensions for RenderTarget2D. Width and Height should be greater than 0."));
-  }
 
   CameraBufferCriticalSection->Unlock();
 
@@ -241,8 +235,9 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 		}
 	}
 
-	TArray<FColor> RawCopy;
-	FIntPoint      RawSize;
+	TArray<FColor>                                        RawCopy;
+	FIntPoint                                             RawSize;
+	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> LUT;
 	{
 		CameraBufferCriticalSection->Lock();
 
@@ -255,11 +250,19 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 		RawCopy = CameraBuffer;
 		RawSize = CameraBufferSize;
 		stamp   = stamp_;
+		LUT     = DistortionLUT;
 
 		CameraBufferCriticalSection->Unlock();
 	}
 
-	// compress outside the lock so the game thread's publish path never blocks on PNG encoding
+	// warp + compress outside the lock so the game thread's publish path never blocks
+	if (LUT && RawSize == LUT->SourceSize) {
+		TArray<FColor> Warped;
+		ResampleImage(*LUT, RawCopy, Warped, false);
+		RawCopy = MoveTemp(Warped);
+		RawSize = LUT->OutputSize;
+	}
+
 	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
 
 	return true;
@@ -317,6 +320,13 @@ void URgbCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx;
 	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy;
 
+	ResponseRGB.config.distortion_.enable_ = rgb_camera_config_.Distortion.Enable;
+	ResponseRGB.config.distortion_.k1_     = rgb_camera_config_.Distortion.K1;
+	ResponseRGB.config.distortion_.k2_     = rgb_camera_config_.Distortion.K2;
+	ResponseRGB.config.distortion_.k3_     = rgb_camera_config_.Distortion.K3;
+	ResponseRGB.config.distortion_.p1_     = rgb_camera_config_.Distortion.P1;
+	ResponseRGB.config.distortion_.p2_     = rgb_camera_config_.Distortion.P2;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGB config"));
 }
@@ -366,6 +376,13 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
 	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
 	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+
+	Config.Distortion.Enable = Request.config.distortion_.enable_;
+	Config.Distortion.K1     = Request.config.distortion_.k1_;
+	Config.Distortion.K2     = Request.config.distortion_.k2_;
+	Config.Distortion.K3     = Request.config.distortion_.k3_;
+	Config.Distortion.P1     = Request.config.distortion_.p1_;
+	Config.Distortion.P2     = Request.config.distortion_.p2_;
 
 	bool Status = false;
 

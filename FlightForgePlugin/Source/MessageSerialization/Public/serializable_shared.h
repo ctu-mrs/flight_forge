@@ -186,6 +186,29 @@ struct CameraIntrinsics
 
 //}
 
+/* struct CameraDistortion //{ */
+
+// Brown-Conrady lens distortion, OpenCV convention (radial k1..k3, tangential p1, p2),
+// applied in the normalized coordinates described by the intrinsics. The server
+// renders an automatically-sized overscan frustum and warps, so segmentation stays
+// pixel-exact (nearest-neighbor) and RGB is bilinear.
+struct CameraDistortion
+{
+  bool   enable_ = false;
+  double k1_     = 0.0;
+  double k2_     = 0.0;
+  double k3_     = 0.0;
+  double p1_     = 0.0;
+  double p2_     = 0.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(enable_, k1_, k2_, k3_, p1_, p2_);
+  }
+};
+
+//}
+
 /* struct CameraExposure //{ */
 
 // physically-based exposure; when manual_ is set the abstract auto-exposure is
@@ -264,11 +287,12 @@ struct RgbCameraConfig
   CameraExposure    exposure_;
   CameraLensEffects lens_;
   CameraIntrinsics  intrinsics_;
+  CameraDistortion  distortion_;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_);
+            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_, distortion_);
   }
 };
 
@@ -307,6 +331,7 @@ struct StereoCameraConfig
 
   // shared by both eyes
   CameraIntrinsics intrinsics_;
+  CameraDistortion distortion_;
 
   template <class Archive>
   void serialize(Archive& archive) {
@@ -316,7 +341,7 @@ struct StereoCameraConfig
             rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
             rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
             fov_, width_, height_,
-            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_);
+            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_, distortion_);
   }
 };
 

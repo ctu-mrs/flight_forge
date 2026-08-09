@@ -656,9 +656,12 @@ USensor* ADronePawn::FindSensorById(int SensorID)
 
 int ADronePawn::ResolveSensorId(SensorType Type, int RequestedID)
 {
-  // the generic lidar messages also drive a dedicated livox instance
+  // the generic lidar messages also drive a dedicated livox instance, and the rgb
+  // config messages also address seg cameras (same config struct on the wire) so
+  // seg resolution/intrinsics/distortion are settable by explicit id
   auto TypeCompatible = [Type](SensorType Actual) {
-    return Actual == Type || (Type == SensorType::LIDAR && Actual == SensorType::LIDAR_LIVOX);
+    return Actual == Type || (Type == SensorType::LIDAR && Actual == SensorType::LIDAR_LIVOX) ||
+           (Type == SensorType::RGB_CAMERA && Actual == SensorType::RGB_SEG_CAMERA);
   };
 
   SensorsCriticalSection->Lock();
