@@ -1,0 +1,251 @@
+// Automation tests for the pure math that only exists engine-side: frame
+// conversions, spawn-config YAML round-trip, intrinsics, the distortion LUT
+// inverse and noise determinism. Run from the editor's Automation tab or:
+//   UnrealEditor-Cmd <project> -ExecCmds="Automation RunTests FlightForge" -unattended -nopause
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Misc/AutomationTest.h"
+
+#include "FlightForgeCore/Sensors/Camera.h"
+#include "FlightForgeCore/Utils/SpawnConfig.h"
+
+/* spawn transform inverse //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeSpawnTransformInverseTest, "FlightForge.Math.SpawnTransformInverse",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeSpawnTransformInverseTest::RunTest(const FString& Parameters)
+{
+	const FVector WorldOrigin(1234.0, -567.0, 89.0);
+
+	const FVector Positions[]    = {FVector::ZeroVector, FVector(5.0, -2.0, 1.5), FVector(-10.0, 10.0, 0.25)};
+	const FVector Orientations[] = {FVector::ZeroVector, FVector(10.0, -20.0, 45.0), FVector(-5.0, 15.0, -120.0)};
+
+	for (const FVector& Position : Positions)
+	{
+		for (const FVector& Orientation : Orientations)
+		{
+			FSpawnObjectEntry Entry;
+			Entry.Position    = Position;
+			Entry.Orientation = Orientation;
+			Entry.Scale       = FVector(2.0, 0.5, 1.0);
+
+			const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, WorldOrigin);
+
+			FSpawnObjectEntry Recovered;
+			USpawnConfigUtils::FromUnrealTransform(Transform, WorldOrigin, Recovered);
+
+			TestTrue(TEXT("position recovered"), Recovered.Position.Equals(Entry.Position, 1.0e-4));
+			TestTrue(TEXT("scale recovered"), Recovered.Scale.Equals(Entry.Scale, 1.0e-4));
+
+			// orientations may come back as an equivalent rotation; compare quaternions
+			const FTransform Again = USpawnConfigUtils::ToUnrealTransform(Recovered, FVector::ZeroVector, WorldOrigin);
+			TestTrue(TEXT("orientation recovered"),
+			         Again.GetRotation().AngularDistance(Transform.GetRotation()) < 1.0e-4);
+		}
+	}
+
+	return true;
+}
+
+/* //} */
+
+/* spawn yaml round-trip //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeSpawnYamlRoundTripTest, "FlightForge.Math.SpawnYamlRoundTrip",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeSpawnYamlRoundTripTest::RunTest(const FString& Parameters)
+{
+	FSpawnConfig Config;
+	Config.SearchPaths = {TEXT("/Game/Worlds")};
+
+	FSpawnObjectEntry Entry;
+	Entry.Asset       = TEXT("Cube");
+	Entry.Position    = FVector(5.25, -2.5, 1.0);
+	Entry.Orientation = FVector(10.0, 0.0, 45.0);
+	Entry.Scale       = FVector(2.0, 2.0, 0.5);
+	Entry.Stencil     = 203;
+	Config.Objects.Add(Entry);
+
+	const FString Yaml = USpawnConfigUtils::WriteSpawnConfig(Config);
+
+	FSpawnConfig Parsed;
+	FString      Error;
+	TestTrue(TEXT("written yaml parses"), USpawnConfigUtils::ParseSpawnConfig(Yaml, Parsed, Error));
+	TestEqual(TEXT("no parse error"), Error, FString());
+
+	if (Parsed.Objects.Num() == 1)
+	{
+		const FSpawnObjectEntry& Out = Parsed.Objects[0];
+		TestEqual(TEXT("asset"), Out.Asset, Entry.Asset);
+		TestTrue(TEXT("position"), Out.Position.Equals(Entry.Position, 1.0e-6));
+		TestTrue(TEXT("orientation"), Out.Orientation.Equals(Entry.Orientation, 1.0e-6));
+		TestTrue(TEXT("scale"), Out.Scale.Equals(Entry.Scale, 1.0e-6));
+		TestEqual(TEXT("stencil"), Out.Stencil, Entry.Stencil);
+	}
+	else
+	{
+		AddError(TEXT("expected exactly one parsed object"));
+	}
+
+	return true;
+}
+
+/* //} */
+
+/* intrinsics //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeIntrinsicsTest, "FlightForge.Math.Intrinsics",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeIntrinsicsTest::RunTest(const FString& Parameters)
+{
+	// 90 deg horizontal FOV at 640 wide: fx = 320 / tan(45 deg) = 320
+	const FCameraIntrinsics Derived = UCamera::EffectiveIntrinsics(FCameraIntrinsics{}, 90.0, 640, 480);
+	TestTrue(TEXT("fx from fov"), FMath::IsNearlyEqual(Derived.Fx, 320.0, 1.0e-6));
+	TestTrue(TEXT("fy equals fx"), FMath::IsNearlyEqual(Derived.Fy, Derived.Fx, 1.0e-9));
+	TestTrue(TEXT("centered principal point"), FMath::IsNearlyEqual(Derived.Cx, 320.0, 1.0e-9) && FMath::IsNearlyEqual(Derived.Cy, 240.0, 1.0e-9));
+
+	// custom values pass through untouched
+	FCameraIntrinsics Custom;
+	Custom.UseCustom = true;
+	Custom.Fx        = 500.0;
+	Custom.Fy        = 505.0;
+	Custom.Cx        = 300.0;
+	Custom.Cy        = 250.0;
+	const FCameraIntrinsics Passed = UCamera::EffectiveIntrinsics(Custom, 90.0, 640, 480);
+	TestTrue(TEXT("custom passthrough"), Passed.Fx == 500.0 && Passed.Fy == 505.0 && Passed.Cx == 300.0 && Passed.Cy == 250.0);
+
+	// centered custom matrix must match the engine's reversed-Z perspective matrix
+	const FMatrix Ours   = UCamera::IntrinsicsProjectionMatrix(Derived, 640, 480);
+	const FMatrix Engine = FReversedZPerspectiveMatrix(FMath::DegreesToRadians(45.0f), 640.0f, 480.0f, GNearClippingPlane);
+	TestTrue(TEXT("centered matrix matches FReversedZPerspectiveMatrix"), Ours.Equals(Engine, 1.0e-4));
+
+	return true;
+}
+
+/* //} */
+
+/* distortion LUT //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeDistortionLutTest, "FlightForge.Math.DistortionLut",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeDistortionLutTest::RunTest(const FString& Parameters)
+{
+	const int32             Width  = 64;
+	const int32             Height = 48;
+	const FCameraIntrinsics K      = UCamera::EffectiveIntrinsics(FCameraIntrinsics{}, 90.0, Width, Height);
+
+	// zero coefficients: the LUT must be the identity (up to the pad shift)
+	{
+		FCameraDistortion Zero;
+		Zero.Enable = true;
+
+		const auto LUT = UCamera::BuildDistortionLUT(Zero, K, Width, Height);
+		TestTrue(TEXT("zero-coefficient LUT built"), LUT.IsValid());
+
+		if (LUT.IsValid())
+		{
+			bool bIdentity = true;
+			for (int32 V = 0; V < Height && bIdentity; ++V)
+			{
+				for (int32 U = 0; U < Width; ++U)
+				{
+					const FVector2f Source = LUT->Source[V * Width + U];
+					if (!FMath::IsNearlyEqual(Source.X - LUT->Pad.X, (float)U, 1.0e-3f) || !FMath::IsNearlyEqual(Source.Y - LUT->Pad.Y, (float)V, 1.0e-3f))
+					{
+						bIdentity = false;
+						break;
+					}
+				}
+			}
+			TestTrue(TEXT("zero-coefficient LUT is the identity"), bIdentity);
+		}
+	}
+
+	// real coefficients: pushing the LUT's pinhole coordinate through the FORWARD
+	// model must land back on the output pixel (validates the iterative inverse)
+	{
+		FCameraDistortion Distortion;
+		Distortion.Enable = true;
+		Distortion.K1     = -0.28;
+		Distortion.K2     = 0.07;
+		Distortion.P1     = 0.001;
+		Distortion.P2     = -0.0005;
+
+		const auto LUT = UCamera::BuildDistortionLUT(Distortion, K, Width, Height);
+		TestTrue(TEXT("LUT built"), LUT.IsValid());
+
+		if (LUT.IsValid())
+		{
+			double MaxError = 0.0;
+
+			for (int32 V = 0; V < Height; ++V)
+			{
+				for (int32 U = 0; U < Width; ++U)
+				{
+					const FVector2f Source = LUT->Source[V * Width + U];
+
+					const double Xu = (Source.X + 0.5 - LUT->Pad.X - K.Cx) / K.Fx;
+					const double Yu = (Source.Y + 0.5 - LUT->Pad.Y - K.Cy) / K.Fy;
+
+					const double R2     = Xu * Xu + Yu * Yu;
+					const double Radial = 1.0 + R2 * (Distortion.K1 + R2 * (Distortion.K2 + R2 * Distortion.K3));
+					const double Xd     = Xu * Radial + 2.0 * Distortion.P1 * Xu * Yu + Distortion.P2 * (R2 + 2.0 * Xu * Xu);
+					const double Yd     = Yu * Radial + Distortion.P1 * (R2 + 2.0 * Yu * Yu) + 2.0 * Distortion.P2 * Xu * Yu;
+
+					const double BackU = Xd * K.Fx + K.Cx - 0.5;
+					const double BackV = Yd * K.Fy + K.Cy - 0.5;
+
+					MaxError = FMath::Max(MaxError, FMath::Max(FMath::Abs(BackU - U), FMath::Abs(BackV - V)));
+				}
+			}
+
+			TestTrue(FString::Printf(TEXT("forward model recovers every pixel (max error %f px)"), MaxError), MaxError < 1.0e-2);
+		}
+	}
+
+	return true;
+}
+
+/* //} */
+
+/* noise determinism //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeNoiseDeterminismTest, "FlightForge.Math.NoiseDeterminism",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeNoiseDeterminismTest::RunTest(const FString& Parameters)
+{
+	const FIntPoint Size(32, 24);
+
+	TArray<FColor> Base;
+	Base.Init(FColor(120, 90, 200, 255), Size.X * Size.Y);
+
+	FCameraNoise Noise;
+	Noise.Enable    = true;
+	Noise.ShotScale = 3.0e-4;
+	Noise.ReadSigma = 4.0e-3;
+	Noise.RowSigma  = 1.0e-3;
+
+	TArray<FColor> A = Base;
+	TArray<FColor> B = Base;
+	TArray<FColor> C = Base;
+
+	UCamera::ApplyNoise(A, Size, Noise, 12345);
+	UCamera::ApplyNoise(B, Size, Noise, 12345);
+	UCamera::ApplyNoise(C, Size, Noise, 54321);
+
+	TestTrue(TEXT("same seed is bit-identical"), A == B);
+	TestTrue(TEXT("different seed differs"), !(A == C));
+	TestTrue(TEXT("noise actually perturbs"), !(A == Base));
+
+	return true;
+}
+
+/* //} */
+
+#endif  // WITH_DEV_AUTOMATION_TESTS
