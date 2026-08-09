@@ -123,6 +123,7 @@ enum MessageType : unsigned short
   list_devices                    = 34,
   get_instance_seg_data           = 35,
   get_instance_seg_map            = 36,
+  get_depth_camera_data           = 37,
 };
 
 /* struct LidarConfig //{ */
@@ -1621,6 +1622,47 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace GetCrashState
+
+//}
+
+/* GetDepthCameraData //{ */
+
+// Depth in uint16 millimetres (0 = invalid/too close, 65535 = clamp), row-major
+// width_ x height_, uncompressed. The Kinect/RealSense convention, so depth
+// consumers need no conversion.
+namespace GetDepthCameraData
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_depth_camera_data)) {
+  }
+
+  int sensor_id_ = -1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_depth_camera_data)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_depth_camera_data, _status) {
+  }
+
+  std::vector<uint16_t> image_;
+  int                   width_;
+  int                   height_;
+  double                stamp_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), image_, width_, height_, stamp_);
+  }
+};
+}  // namespace GetDepthCameraData
 
 //}
 

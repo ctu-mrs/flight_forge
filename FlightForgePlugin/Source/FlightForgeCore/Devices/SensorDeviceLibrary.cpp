@@ -1,5 +1,6 @@
 #include "SensorDeviceLibrary.h"
 
+#include "FlightForgeCore/Sensors/DepthCamera.h"
 #include "FlightForgeCore/Sensors/EventCamera.h"
 #include "FlightForgeCore/Sensors/FisheyeCamera.h"
 #include "FlightForgeCore/Sensors/Lidar.h"
@@ -149,6 +150,23 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 		Rgb.RelOffset = FVector(0, -4.0, 0);  // RGB module outboard of the left imager
 		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRgb(S, O, R, 69, 1280, 720); };
 		D.Sensors.Add(Rgb);
+
+		FDeviceSensorEntry Depth;
+		Depth.Type      = SensorType::DEPTH_CAMERA;
+		Depth.Configure = [](USensor* S, const FVector& O, const FRotator& R)
+		{
+			if (UDepthCamera* Camera = Cast<UDepthCamera>(S))
+			{
+				FRgbCameraConfig Config = Camera->GetDepthCameraConfig();
+				Config.Offset           = O;
+				Config.Orientation      = R;
+				Config.FOVAngle         = 87;
+				Config.Width            = 848;
+				Config.Height           = 480;
+				Camera->SetDepthCameraConfig(Config);
+			}
+		};
+		D.Sensors.Add(Depth);
 
 		Devices.Add(D);
 	}

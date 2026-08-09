@@ -76,7 +76,7 @@ void UCamera::BeginDestroy()
 
 /* async readback machinery //{ */
 
-TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega)
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16)
 {
 	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
 
@@ -89,6 +89,7 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	Slot->Size     = FIntPoint(RT->SizeX, RT->SizeY);
 	Slot->Stamp    = Stamp;
 	Slot->Omega    = Omega;
+	Slot->bFloat16 = bFloat16;
 	Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeCameraReadback"));
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeEnqueueReadback)(
@@ -121,19 +122,41 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 			{
 				const int32 W = Slot->Size.X;
 				const int32 H = Slot->Size.Y;
-				Slot->Pixels.SetNumUninitialized(W * H);
 
-				const FColor* Src = static_cast<const FColor*>(Data);
-
-				if (RowPitchInPixels == W)
+				if (Slot->bFloat16)
 				{
-					FMemory::Memcpy(Slot->Pixels.GetData(), Src, (int64)W * H * sizeof(FColor));
+					Slot->Float16Pixels.SetNumUninitialized(W * H);
+
+					const FFloat16* Src = static_cast<const FFloat16*>(Data);
+
+					if (RowPitchInPixels == W)
+					{
+						FMemory::Memcpy(Slot->Float16Pixels.GetData(), Src, (int64)W * H * sizeof(FFloat16));
+					}
+					else
+					{
+						for (int32 Row = 0; Row < H; ++Row)
+						{
+							FMemory::Memcpy(Slot->Float16Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FFloat16));
+						}
+					}
 				}
 				else
 				{
-					for (int32 Row = 0; Row < H; ++Row)
+					Slot->Pixels.SetNumUninitialized(W * H);
+
+					const FColor* Src = static_cast<const FColor*>(Data);
+
+					if (RowPitchInPixels == W)
 					{
-						FMemory::Memcpy(Slot->Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FColor));
+						FMemory::Memcpy(Slot->Pixels.GetData(), Src, (int64)W * H * sizeof(FColor));
+					}
+					else
+					{
+						for (int32 Row = 0; Row < H; ++Row)
+						{
+							FMemory::Memcpy(Slot->Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FColor));
+						}
 					}
 				}
 			}
@@ -154,10 +177,11 @@ bool UCamera::PumpReadback()
 	{
 		CameraBufferCriticalSection->Lock();
 		CameraBuffer     = MoveTemp(PendingReadback->Pixels);
+		CameraBufferF16  = MoveTemp(PendingReadback->Float16Pixels);
 		CameraBufferSize = PendingReadback->Size;
 		stamp_           = PendingReadback->Stamp;
 		capture_omega_   = PendingReadback->Omega;
-		CameraRendered   = CameraBuffer.Num() > 0;
+		CameraRendered   = CameraBuffer.Num() > 0 || CameraBufferF16.Num() > 0;
 		CameraBufferCriticalSection->Unlock();
 
 		PendingReadback.Reset();

@@ -28,6 +28,11 @@ struct FCameraReadback
 {
 	TUniquePtr<FRHIGPUTextureReadback> Readback;
 	TArray<FColor>    Pixels;
+
+	// R16F targets (depth) resolve here instead of Pixels
+	bool              bFloat16 = false;
+	TArray<FFloat16>  Float16Pixels;
+
 	FIntPoint         Size = FIntPoint::ZeroValue;
 	double            Stamp = 0.0;
 
@@ -131,6 +136,9 @@ public:
 
 	TArray<FColor> CameraBuffer;
 
+	// published instead of CameraBuffer for float16 (depth) captures
+	TArray<FFloat16> CameraBufferF16;
+
 	// dimensions of the published CameraBuffer, not of the (possibly resized) render target
 	FIntPoint CameraBufferSize = FIntPoint::ZeroValue;
 
@@ -206,7 +214,8 @@ protected:
 	// published with the frame in PumpReadback, read by serve threads under the buffer lock
 	FVector capture_omega_ = FVector::ZeroVector;
 
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector);
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector,
+	                                                                 bool bFloat16 = false);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 	// game thread: advances the pending readback and publishes a completed frame; true when published
 	bool PumpReadback();

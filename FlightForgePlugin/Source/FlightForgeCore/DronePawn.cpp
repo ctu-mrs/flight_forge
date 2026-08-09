@@ -578,6 +578,7 @@ int ADronePawn::AddSensor(int SensorTypeNum){
     case SensorType::EVENT_CAMERA:   SensorClass = UEventCamera::StaticClass(); break;
     case SensorType::FISHEYE_CAMERA: SensorClass = UFisheyeCamera::StaticClass();break;
     case SensorType::INSTANCE_SEG_CAMERA: SensorClass = USegIdCamera::StaticClass(); break;
+    case SensorType::DEPTH_CAMERA:   SensorClass = UDepthCamera::StaticClass();  break;
     default: return -2;
   }
   
@@ -662,7 +663,8 @@ int ADronePawn::ResolveSensorId(SensorType Type, int RequestedID)
   // seg resolution/intrinsics/distortion are settable by explicit id
   auto TypeCompatible = [Type](SensorType Actual) {
     return Actual == Type || (Type == SensorType::LIDAR && Actual == SensorType::LIDAR_LIVOX) ||
-           (Type == SensorType::RGB_CAMERA && (Actual == SensorType::RGB_SEG_CAMERA || Actual == SensorType::INSTANCE_SEG_CAMERA));
+           (Type == SensorType::RGB_CAMERA &&
+            (Actual == SensorType::RGB_SEG_CAMERA || Actual == SensorType::INSTANCE_SEG_CAMERA || Actual == SensorType::DEPTH_CAMERA));
   };
 
   SensorsCriticalSection->Lock();

@@ -16,6 +16,7 @@
 #include "Sensors/EventCamera.h"
 #include "Sensors/FisheyeCamera.h"
 #include "Sensors/SegIdCamera.h"
+#include "Sensors/DepthCamera.h"
 
 #include "GameFramework/Pawn.h"
 
