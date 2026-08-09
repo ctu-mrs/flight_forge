@@ -30,6 +30,11 @@ struct FCameraReadback
 	TArray<FColor>    Pixels;
 	FIntPoint         Size = FIntPoint::ZeroValue;
 	double            Stamp = 0.0;
+
+	// camera-frame angular velocity at capture time (x right, y down, z forward;
+	// rad/s), carried with the frame for the rolling-shutter warp
+	FVector           Omega = FVector::ZeroVector;
+
 	std::atomic<bool> bResolveIssued{false};
 	std::atomic<bool> bCopied{false};
 };
@@ -64,6 +69,25 @@ struct FCameraDistortion
 	double K3     = 0.0;
 	double P1     = 0.0;
 	double P2     = 0.0;
+};
+
+// Heteroscedastic sensor noise applied in the linearized domain:
+// sigma = sqrt(ShotScale * signal + ReadSigma^2) per channel, plus an optional
+// per-row offset (CMOS banding)
+struct FCameraNoise
+{
+	bool   Enable    = false;
+	double ShotScale = 2.0e-4;
+	double ReadSigma = 3.0e-3;
+	double RowSigma  = 0.0;
+};
+
+// First-order (rotation-only) rolling shutter: rows are shifted by the
+// rotational image flow accumulated over their readout delay
+struct FCameraRollingShutter
+{
+	bool   Enable      = false;
+	double ReadoutTime = 0.03;  // seconds, top-to-bottom
 };
 
 // Precomputed output-pixel -> source-pixel map. The source image is an ideal pinhole
@@ -158,6 +182,16 @@ public:
 	// bilinear for imagery; nearest for label images so classes never blend
 	static void ResampleImage(const FDistortionLUT& LUT, const TArray<FColor>& Source, TArray<FColor>& OutResampled, bool bNearestNeighbor);
 
+	// One combined bilinear resample: distortion LUT (optional) plus the per-pixel
+	// first-order rolling-shutter displacement computed from OmegaCamera (camera
+	// frame: x right, y down, z forward) and the per-row readout delay.
+	static void WarpFrame(const TArray<FColor>& Source, FIntPoint SourceSize, TArray<FColor>& OutFrame, FIntPoint OutputSize, const FDistortionLUT* LUT,
+	                      const FCameraIntrinsics& EffectiveK, const FVector& OmegaCamera, double ReadoutTime);
+
+	// linearize (sRGB), add shot + read + row noise, re-encode; Seed makes a
+	// served frame's noise deterministic for its stamp
+	static void ApplyNoise(TArray<FColor>& Pixels, FIntPoint Size, const FCameraNoise& Noise, uint32 Seed);
+
 protected:
 	// One-stop projection setup shared by the RGB/seg/stereo Set paths: without
 	// distortion it applies the plain (or custom-K) projection at the nominal size;
@@ -169,7 +203,10 @@ protected:
 
 	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> DistortionLUT;
 
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp);
+	// published with the frame in PumpReadback, read by serve threads under the buffer lock
+	FVector capture_omega_ = FVector::ZeroVector;
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 	// game thread: advances the pending readback and publishes a completed frame; true when published
 	bool PumpReadback();

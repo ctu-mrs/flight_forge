@@ -209,6 +209,46 @@ struct CameraDistortion
 
 //}
 
+/* struct CameraNoise //{ */
+
+// Sensor noise applied in the linearized domain after the geometric warps:
+// heteroscedastic Gaussian approximating shot + read noise
+// (sigma = sqrt(shot_scale * signal + read_sigma^2), signal in [0,1]),
+// plus optional per-row offsets (CMOS banding). Deterministic per frame stamp.
+struct CameraNoise
+{
+  bool   enable_     = false;
+  double shot_scale_ = 2.0e-4;
+  double read_sigma_ = 3.0e-3;
+  double row_sigma_  = 0.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(enable_, shot_scale_, read_sigma_, row_sigma_);
+  }
+};
+
+//}
+
+/* struct CameraRollingShutter //{ */
+
+// First-order rolling shutter: each row is shifted by the rotational image flow
+// accumulated over its readout delay (top row -readout/2, bottom +readout/2),
+// using the camera's angular velocity measured between captures. Translation
+// (parallax) is ignored - the standard gyro-only approximation.
+struct CameraRollingShutter
+{
+  bool   enable_       = false;
+  double readout_time_ = 0.03;  // seconds, top-to-bottom
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(enable_, readout_time_);
+  }
+};
+
+//}
+
 /* struct CameraExposure //{ */
 
 // physically-based exposure; when manual_ is set the abstract auto-exposure is
@@ -284,15 +324,18 @@ struct RgbCameraConfig
   double   motion_blur_amount_;
   double   motion_blur_distortion_;
 
-  CameraExposure    exposure_;
-  CameraLensEffects lens_;
-  CameraIntrinsics  intrinsics_;
-  CameraDistortion  distortion_;
+  CameraExposure      exposure_;
+  CameraLensEffects   lens_;
+  CameraIntrinsics    intrinsics_;
+  CameraDistortion    distortion_;
+  CameraNoise         noise_;
+  CameraRollingShutter rolling_shutter_;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_, distortion_);
+            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_, distortion_,
+            noise_, rolling_shutter_);
   }
 };
 

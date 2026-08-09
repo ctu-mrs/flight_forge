@@ -53,10 +53,12 @@ struct FRgbCameraConfig
 	double   motion_blur_amount;
 	double   motion_blur_distortion;
 
-	FCameraExposure    Exposure;
-	FCameraLensEffects Lens;
-	FCameraIntrinsics  Intrinsics;
-	FCameraDistortion  Distortion;
+	FCameraExposure       Exposure;
+	FCameraLensEffects    Lens;
+	FCameraIntrinsics     Intrinsics;
+	FCameraDistortion     Distortion;
+	FCameraNoise          Noise;
+	FCameraRollingShutter RollingShutter;
 };
 
 
@@ -76,6 +78,10 @@ protected:
 	bool GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double &stamp);
 	
 	FRgbCameraConfig rgb_camera_config_;
+
+	// consecutive-capture pose delta, for the rolling-shutter angular velocity
+	FQuat  LastCaptureQuat = FQuat::Identity;
+	double LastCaptureTime = 0.0;
 	
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,

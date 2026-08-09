@@ -76,7 +76,7 @@ void UCamera::BeginDestroy()
 
 /* async readback machinery //{ */
 
-TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp)
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega)
 {
 	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
 
@@ -88,6 +88,7 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = MakeShared<FCameraReadback, ESPMode::ThreadSafe>();
 	Slot->Size     = FIntPoint(RT->SizeX, RT->SizeY);
 	Slot->Stamp    = Stamp;
+	Slot->Omega    = Omega;
 	Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeCameraReadback"));
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeEnqueueReadback)(
@@ -155,6 +156,7 @@ bool UCamera::PumpReadback()
 		CameraBuffer     = MoveTemp(PendingReadback->Pixels);
 		CameraBufferSize = PendingReadback->Size;
 		stamp_           = PendingReadback->Stamp;
+		capture_omega_   = PendingReadback->Omega;
 		CameraRendered   = CameraBuffer.Num() > 0;
 		CameraBufferCriticalSection->Unlock();
 
@@ -490,6 +492,158 @@ void UCamera::SetupCaptureProjection(const FCameraIntrinsics& Intrinsics, const 
 }
 
 //}
+
+/* WarpFrame() //{ */
+
+namespace
+{
+
+FORCEINLINE FColor SampleBilinear(const FColor* Src, const int32 SrcW, const int32 SrcH, const float X, const float Y)
+{
+	const int32 U0 = FMath::Clamp(FMath::FloorToInt32(X), 0, SrcW - 1);
+	const int32 V0 = FMath::Clamp(FMath::FloorToInt32(Y), 0, SrcH - 1);
+	const int32 U1 = FMath::Min(U0 + 1, SrcW - 1);
+	const int32 V1 = FMath::Min(V0 + 1, SrcH - 1);
+
+	const float FracX = FMath::Clamp(X - U0, 0.0f, 1.0f);
+	const float FracY = FMath::Clamp(Y - V0, 0.0f, 1.0f);
+
+	const FColor& C00 = Src[V0 * SrcW + U0];
+	const FColor& C10 = Src[V0 * SrcW + U1];
+	const FColor& C01 = Src[V1 * SrcW + U0];
+	const FColor& C11 = Src[V1 * SrcW + U1];
+
+	const auto Lerp2 = [FracX, FracY](const uint8 A00, const uint8 A10, const uint8 A01, const uint8 A11) {
+		const float Top    = A00 + (A10 - A00) * FracX;
+		const float Bottom = A01 + (A11 - A01) * FracX;
+		return static_cast<uint8>(FMath::RoundToInt32(Top + (Bottom - Top) * FracY));
+	};
+
+	return FColor(Lerp2(C00.R, C10.R, C01.R, C11.R), Lerp2(C00.G, C10.G, C01.G, C11.G), Lerp2(C00.B, C10.B, C01.B, C11.B), 255);
+}
+
+}  // namespace
+
+void UCamera::WarpFrame(const TArray<FColor>& Source, const FIntPoint SourceSize, TArray<FColor>& OutFrame, const FIntPoint OutputSize,
+                        const FDistortionLUT* LUT, const FCameraIntrinsics& EffectiveK, const FVector& OmegaCamera, const double ReadoutTime)
+{
+	const int32 Width  = OutputSize.X;
+	const int32 Height = OutputSize.Y;
+
+	OutFrame.SetNumUninitialized(Width * Height);
+
+	const FColor* Src = Source.GetData();
+	FColor*       Dst = OutFrame.GetData();
+
+	const bool bRollingShutter = ReadoutTime > 0.0 && !OmegaCamera.IsNearlyZero();
+
+	const double Wx = OmegaCamera.X;
+	const double Wy = OmegaCamera.Y;
+	const double Wz = OmegaCamera.Z;
+
+	for (int32 V = 0; V < Height; ++V)
+	{
+		// row delay relative to the mid-frame render: top -readout/2, bottom +readout/2
+		const double Tau = bRollingShutter ? ReadoutTime * ((V + 0.5) / Height - 0.5) : 0.0;
+
+		for (int32 U = 0; U < Width; ++U)
+		{
+			const int32 Index = V * Width + U;
+
+			float X = LUT ? LUT->Source[Index].X : static_cast<float>(U);
+			float Y = LUT ? LUT->Source[Index].Y : static_cast<float>(V);
+
+			if (bRollingShutter)
+			{
+				// rotational optical flow in normalized coords (x right, y down, z forward)
+				const double Xn = (U + 0.5 - EffectiveK.Cx) / EffectiveK.Fx;
+				const double Yn = (V + 0.5 - EffectiveK.Cy) / EffectiveK.Fy;
+
+				const double FlowX = Xn * Yn * Wx - (1.0 + Xn * Xn) * Wy + Yn * Wz;
+				const double FlowY = (1.0 + Yn * Yn) * Wx - Xn * Yn * Wy - Xn * Wz;
+
+				X += static_cast<float>(EffectiveK.Fx * FlowX * Tau);
+				Y += static_cast<float>(EffectiveK.Fy * FlowY * Tau);
+			}
+
+			Dst[Index] = SampleBilinear(Src, SourceSize.X, SourceSize.Y, X, Y);
+		}
+	}
+}
+
+/* //} */
+
+/* ApplyNoise() //{ */
+
+void UCamera::ApplyNoise(TArray<FColor>& Pixels, const FIntPoint Size, const FCameraNoise& Noise, const uint32 Seed)
+{
+	// linearization tables built once; sRGB in, sRGB out with a finer inverse table
+	static const struct FTables
+	{
+		float  ToLinear[256];
+		uint8  ToSrgb[2048];
+
+		FTables()
+		{
+			for (int32 Index = 0; Index < 256; ++Index)
+			{
+				const float C   = Index / 255.0f;
+				ToLinear[Index] = C <= 0.04045f ? C / 12.92f : FMath::Pow((C + 0.055f) / 1.055f, 2.4f);
+			}
+			for (int32 Index = 0; Index < 2048; ++Index)
+			{
+				const float L  = Index / 2047.0f;
+				const float C  = L <= 0.0031308f ? L * 12.92f : 1.055f * FMath::Pow(L, 1.0f / 2.4f) - 0.055f;
+				ToSrgb[Index]  = static_cast<uint8>(FMath::RoundToInt32(FMath::Clamp(C, 0.0f, 1.0f) * 255.0f));
+			}
+		}
+	} Tables;
+
+	FRandomStream Stream(static_cast<int32>(Seed));
+
+	// Box-Muller pairs
+	bool  bHaveSpare = false;
+	float Spare      = 0.0f;
+	const auto Gauss = [&Stream, &bHaveSpare, &Spare]() {
+		if (bHaveSpare)
+		{
+			bHaveSpare = false;
+			return Spare;
+		}
+		const float U1 = FMath::Max(Stream.FRand(), 1.0e-7f);
+		const float U2 = Stream.FRand();
+		const float R  = FMath::Sqrt(-2.0f * FMath::Loge(U1));
+		Spare          = R * FMath::Sin(2.0f * PI * U2);
+		bHaveSpare     = true;
+		return R * FMath::Cos(2.0f * PI * U2);
+	};
+
+	const float ShotScale = Noise.ShotScale;
+	const float ReadVar   = Noise.ReadSigma * Noise.ReadSigma;
+
+	FColor* Data = Pixels.GetData();
+
+	for (int32 V = 0; V < Size.Y; ++V)
+	{
+		const float RowOffset = Noise.RowSigma > 0.0 ? Gauss() * static_cast<float>(Noise.RowSigma) : 0.0f;
+
+		for (int32 U = 0; U < Size.X; ++U)
+		{
+			FColor& Pixel = Data[V * Size.X + U];
+
+			const auto Perturb = [&](const uint8 Channel) {
+				float Linear      = Tables.ToLinear[Channel];
+				const float Sigma = FMath::Sqrt(ShotScale * Linear + ReadVar);
+				Linear            = FMath::Clamp(Linear + Gauss() * Sigma + RowOffset, 0.0f, 1.0f);
+				return Tables.ToSrgb[static_cast<int32>(Linear * 2047.0f)];
+			};
+
+			Pixel = FColor(Perturb(Pixel.R), Perturb(Pixel.G), Perturb(Pixel.B), 255);
+		}
+	}
+}
+
+/* //} */
 
 
 void UCamera::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {

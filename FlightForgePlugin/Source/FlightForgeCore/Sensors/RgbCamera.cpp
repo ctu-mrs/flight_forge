@@ -212,7 +212,26 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		SceneCaptureComponent2D->CaptureScene();
 	}
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp);
+	// camera-frame angular velocity between captures, remapped from UE axes
+	// (X fwd, Y right, Z up) to the image convention (x right, y down, z forward)
+	FVector     OmegaCamera = FVector::ZeroVector;
+	const FQuat CurrentQuat = SceneCaptureComponent2D->GetComponentQuat();
+	const double DeltaTime  = stamp - LastCaptureTime;
+
+	if (LastCaptureTime > 0.0 && DeltaTime > 1.0e-4 && DeltaTime < 1.0)
+	{
+		FVector Axis;
+		double  Angle;
+		(LastCaptureQuat.Inverse() * CurrentQuat).ToAxisAndAngle(Axis, Angle);
+
+		const FVector OmegaUE = Axis * (Angle / DeltaTime);
+		OmegaCamera           = FVector(OmegaUE.Y, -OmegaUE.Z, OmegaUE.X);
+	}
+
+	LastCaptureQuat = CurrentQuat;
+	LastCaptureTime = stamp;
+
+	PendingReadback = EnqueueReadback(RenderTarget2D, stamp, OmegaCamera);
 }
 
 bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp)
@@ -238,6 +257,9 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 	TArray<FColor>                                        RawCopy;
 	FIntPoint                                             RawSize;
 	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> LUT;
+	FVector                                               Omega;
+	FCameraNoise                                          NoiseConfig;
+	FCameraRollingShutter                                 RollingShutterConfig;
 	{
 		CameraBufferCriticalSection->Lock();
 
@@ -247,20 +269,35 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 			return false;
 		}
 
-		RawCopy = CameraBuffer;
-		RawSize = CameraBufferSize;
-		stamp   = stamp_;
-		LUT     = DistortionLUT;
+		RawCopy              = CameraBuffer;
+		RawSize              = CameraBufferSize;
+		stamp                = stamp_;
+		LUT                  = DistortionLUT;
+		Omega                = capture_omega_;
+		NoiseConfig          = rgb_camera_config_.Noise;
+		RollingShutterConfig = rgb_camera_config_.RollingShutter;
 
 		CameraBufferCriticalSection->Unlock();
 	}
 
-	// warp + compress outside the lock so the game thread's publish path never blocks
-	if (LUT && RawSize == LUT->SourceSize) {
+	// warp + noise + compress outside the lock so the game thread's publish path never blocks
+	const bool bLutValid       = LUT && RawSize == LUT->SourceSize;
+	const bool bRollingShutter = RollingShutterConfig.Enable && RollingShutterConfig.ReadoutTime > 0.0 && !Omega.IsNearlyZero();
+
+	if (bLutValid || bRollingShutter) {
+		const FCameraIntrinsics EffectiveK =
+		    EffectiveIntrinsics(rgb_camera_config_.Intrinsics, rgb_camera_config_.FOVAngle, rgb_camera_config_.Width, rgb_camera_config_.Height);
+		const FIntPoint OutSize = bLutValid ? LUT->OutputSize : RawSize;
+
 		TArray<FColor> Warped;
-		ResampleImage(*LUT, RawCopy, Warped, false);
+		WarpFrame(RawCopy, RawSize, Warped, OutSize, bLutValid ? LUT.Get() : nullptr, EffectiveK, bRollingShutter ? Omega : FVector::ZeroVector,
+		          bRollingShutter ? RollingShutterConfig.ReadoutTime : 0.0);
 		RawCopy = MoveTemp(Warped);
-		RawSize = LUT->OutputSize;
+		RawSize = OutSize;
+	}
+
+	if (NoiseConfig.Enable) {
+		ApplyNoise(RawCopy, RawSize, NoiseConfig, static_cast<uint32>(stamp * 1.0e6));
 	}
 
 	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
@@ -327,6 +364,14 @@ void URgbCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.distortion_.p1_     = rgb_camera_config_.Distortion.P1;
 	ResponseRGB.config.distortion_.p2_     = rgb_camera_config_.Distortion.P2;
 
+	ResponseRGB.config.noise_.enable_     = rgb_camera_config_.Noise.Enable;
+	ResponseRGB.config.noise_.shot_scale_ = rgb_camera_config_.Noise.ShotScale;
+	ResponseRGB.config.noise_.read_sigma_ = rgb_camera_config_.Noise.ReadSigma;
+	ResponseRGB.config.noise_.row_sigma_  = rgb_camera_config_.Noise.RowSigma;
+
+	ResponseRGB.config.rolling_shutter_.enable_       = rgb_camera_config_.RollingShutter.Enable;
+	ResponseRGB.config.rolling_shutter_.readout_time_ = rgb_camera_config_.RollingShutter.ReadoutTime;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGB config"));
 }
@@ -383,6 +428,14 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 	Config.Distortion.K3     = Request.config.distortion_.k3_;
 	Config.Distortion.P1     = Request.config.distortion_.p1_;
 	Config.Distortion.P2     = Request.config.distortion_.p2_;
+
+	Config.Noise.Enable    = Request.config.noise_.enable_;
+	Config.Noise.ShotScale = Request.config.noise_.shot_scale_;
+	Config.Noise.ReadSigma = Request.config.noise_.read_sigma_;
+	Config.Noise.RowSigma  = Request.config.noise_.row_sigma_;
+
+	Config.RollingShutter.Enable      = Request.config.rolling_shutter_.enable_;
+	Config.RollingShutter.ReadoutTime = Request.config.rolling_shutter_.readout_time_;
 
 	bool Status = false;
 
