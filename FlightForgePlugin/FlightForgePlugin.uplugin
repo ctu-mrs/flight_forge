@@ -23,7 +23,7 @@
 		{
 			"Name": "FlightForgeCore",
 			"Type": "Runtime",
-			"LoadingPhase": "Default",
+			"LoadingPhase": "PostConfigInit",
 			"AdditionalDependencies": [
 				"Engine"
 			]

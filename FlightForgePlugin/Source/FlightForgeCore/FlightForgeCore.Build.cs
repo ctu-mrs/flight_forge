@@ -22,7 +22,13 @@ public class FlightForgeCore : ModuleRules
     bEnableExceptions = true;
     //bUseRTTI = true;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime"});
-		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "ProceduralMeshComponent", "UnrealYAML", "AssetRegistry", "Renderer" });
+		// no ProceduralMeshComponent: unused, and as a Default-phase plugin it cannot be linked
+		// by a PostConfigInit module (SegIdPass registers shader types, which must happen early)
+		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "UnrealYAML", "AssetRegistry", "Renderer" });
+
+		// FPostProcessingInputs (SegIdPass) sits in Renderer/Internal, which UBT propagates only to
+		// engine-scoped modules; without this the plugin builds via BuildPlugin but not from a project.
+		PrivateIncludePaths.Add(Path.Combine(EngineDirectory, "Source", "Runtime", "Renderer", "Internal"));
 
 		if (Target.bBuildEditor)
 		{

@@ -3,9 +3,11 @@
 #include "MaterialDomain.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialRenderProxy.h"
+#include "InstanceCulling/InstanceCullingContext.h"
 #include "MeshPassProcessor.h"
 #include "MeshPassProcessor.inl"
 #include "PostProcess/PostProcessInputs.h"
+#include "SimpleMeshDrawCommandPass.h"
 #include "PrimitiveSceneInfo.h"
 #include "PrimitiveSceneProxy.h"
 #include "RenderGraphBuilder.h"
@@ -178,10 +180,15 @@ bool FSegIdViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionCo
 	return PendingJobs.load() > 0;
 }
 
+// Off by default: the pass draws, but the draw crashes in the Vulkan bindless descriptor path
+// (UpdateBindlessDescriptors), so a client asking for instance segmentation would kill the sim.
+static TAutoConsoleVariable<int32> CVarSegIdEnable(TEXT("FlightForge.SegId.Enable"), 0,
+                                                   TEXT("Enable the experimental instance-segmentation mesh pass (unstable)."), ECVF_RenderThreadSafe);
+
 void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter, const FIntPoint Size, TArray<FSegIdDrawItem>&& Items,
                                                const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
 {
-	if (!TargetFilter || !Slot.IsValid())
+	if (!TargetFilter || !Slot.IsValid() || CVarSegIdEnable.GetValueOnGameThread() == 0)
 	{
 		return;
 	}
@@ -199,6 +206,13 @@ void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter
 		    Job.Slot       = Slot;
 	    });
 }
+
+// AddSimpleMeshPass fills InstanceCullingDrawParams; the mesh shaders read the InstanceCulling
+// uniform buffer through it, and the RHI fatals if the pass omits it.
+BEGIN_SHADER_PARAMETER_STRUCT(FSegIdPassParameters, )
+SHADER_PARAMETER_STRUCT_INCLUDE(FInstanceCullingDrawParams, InstanceCullingDrawParams)
+RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
 
 void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& InView, const FPostProcessingInputs& Inputs)
 {
@@ -231,7 +245,7 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 
 	TArray<FSegIdDrawItem>* ItemsOnPass = GraphBuilder.AllocObject<TArray<FSegIdDrawItem>>(MoveTemp(Job.Items));
 
-	auto* PassParameters             = GraphBuilder.AllocParameters<FRenderTargetParameters>();
+	auto* PassParameters             = GraphBuilder.AllocParameters<FSegIdPassParameters>();
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(IdTexture, ERenderTargetLoadAction::EClear);
 
 	if (SceneDepth)
@@ -242,53 +256,37 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 
 	const FIntPoint Size = Job.Size;
 
-	GraphBuilder.AddPass(RDG_EVENT_NAME("FlightForgeSegId"), PassParameters, ERDGPassFlags::Raster,
-	                     [&InView, ItemsOnPass, Size](FRHICommandList& RHICmdList)
-	                     {
-		                     RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, Size.X, Size.Y, 1.0f);
+	const FScene* Scene = InView.Family->Scene ? InView.Family->Scene->GetRenderScene() : nullptr;
 
-		                     FMeshCommandOneFrameArray          VisibleMeshDrawCommands;
-		                     FDynamicMeshDrawCommandStorage     DynamicMeshDrawCommandStorage;
-		                     FGraphicsMinimalPipelineStateSet   PipelineStateSet;
-		                     bool                               bNeedsShaderInitialisation = false;
+	AddSimpleMeshPass(GraphBuilder, PassParameters, Scene, InView, nullptr, RDG_EVENT_NAME("FlightForgeSegId"), FIntRect(0, 0, Size.X, Size.Y),
+	                  [ItemsOnPass, Scene, &InView](FDynamicPassMeshDrawListContext* DrawListContext)
+	                  {
+		                  FSegIdMeshProcessor Processor(Scene, &InView, DrawListContext);
 
-		                     FDynamicPassMeshDrawListContext DrawListContext(DynamicMeshDrawCommandStorage, VisibleMeshDrawCommands, PipelineStateSet,
-		                                                                     bNeedsShaderInitialisation);
+		                  for (const FSegIdDrawItem& Item : *ItemsOnPass)
+		                  {
+			                  if (!Item.Proxy)
+			                  {
+				                  continue;
+			                  }
 
-		                     const FScene* Scene = InView.Family->Scene ? InView.Family->Scene->GetRenderScene() : nullptr;
+			                  const FPrimitiveSceneInfo* SceneInfo = Item.Proxy->GetPrimitiveSceneInfo();
+			                  if (!SceneInfo)
+			                  {
+				                  continue;
+			                  }
 
-		                     FSegIdMeshProcessor Processor(Scene, &InView, &DrawListContext);
+			                  Processor.CurrentId = Item.IdColor;
 
-		                     for (const FSegIdDrawItem& Item : *ItemsOnPass)
-		                     {
-			                     if (!Item.Proxy)
-			                     {
-				                     continue;
-			                     }
-
-			                     const FPrimitiveSceneInfo* SceneInfo = Item.Proxy->GetPrimitiveSceneInfo();
-			                     if (!SceneInfo)
-			                     {
-				                     continue;
-			                     }
-
-			                     Processor.CurrentId = Item.IdColor;
-
-			                     for (const FStaticMeshBatch& Mesh : SceneInfo->StaticMeshes)
-			                     {
-				                     if (Mesh.LODIndex == 0)
-				                     {
-					                     Processor.AddMeshBatch(Mesh, ~0ull, Item.Proxy);
-				                     }
-			                     }
-		                     }
-
-		                     if (VisibleMeshDrawCommands.Num() > 0)
-		                     {
-			                     DrawDynamicMeshPassPrivate(InView, RHICmdList, VisibleMeshDrawCommands, DynamicMeshDrawCommandStorage, PipelineStateSet,
-			                                                bNeedsShaderInitialisation, 1);
-		                     }
-	                     });
+			                  for (const FStaticMeshBatch& Mesh : SceneInfo->StaticMeshes)
+			                  {
+				                  if (Mesh.LODIndex == 0)
+				                  {
+					                  Processor.AddMeshBatch(Mesh, ~0ull, Item.Proxy);
+				                  }
+			                  }
+		                  }
+	                  });
 
 	AddEnqueueCopyPass(GraphBuilder, Job.Slot->Readback.Get(), IdTexture, FResolveRect());
 }

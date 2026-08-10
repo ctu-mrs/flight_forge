@@ -10,6 +10,7 @@
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/PackageName.h"
+#include "UObject/ConstructorHelpers.h"
 
 #include "DronePawn.h"
 #include "Server/FlightForgeGameModeServer.h"
@@ -67,6 +68,14 @@ private:
 	{
 		PrimaryActorTick.bCanEverTick = true;
 
+		// Every spawn path casts the default pawn to ADronePawn; without this the class
+		// stays ADefaultPawn and each cast yields null. Blueprint subclasses override it.
+		static ConstructorHelpers::FClassFinder<APawn> DronePawnFinder(TEXT("/FlightForgePlugin/Blueprints/BP_DronePawn"));
+		if (DronePawnFinder.Succeeded())
+		{
+			DefaultPawnClass = DronePawnFinder.Class;
+		}
+
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>>();
 
 		// Per-drone servers start at "-FlightForgeDroneStartPort=<port>" (default 4000) and
@@ -86,6 +95,12 @@ private:
 	virtual void BeginPlay() override
 	{
 		Super::BeginPlay();
+
+		// A Blueprint that fills in DronePawnClass wins over the class the constructor found.
+		if (DronePawnClass)
+		{
+			DefaultPawnClass = DronePawnClass;
+		}
 
 		UFlightForgeGameInstance* MyGameInstance = Cast<UFlightForgeGameInstance>(GetGameInstance());
 		if (MyGameInstance && MyGameInstance->Server)
@@ -204,11 +219,17 @@ public:
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone"));
 		
-		AActor* PlayerStart = FindPlayerStart(0, FString("UAV")); 
+		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
 		ADronePawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
-		
+
 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone"));
+
+		if (PlayerStart == nullptr)
+		{
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: no PlayerStart in the level, use SpawnDroneAtLocation instead"));
+			return -1;
+		}
 
 		// Realistic spawner
 		// First Find pawn point by raycast DOWNWARDS 
@@ -237,6 +258,12 @@ public:
 		{
 			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
 			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at PlayerStart"));
+		}
+
+		if (PlayerPawn == nullptr)
+		{
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: DefaultPawnClass is not an ADronePawn, nothing spawned"));
+			return -1;
 		}
 
 		const auto DronePort = GetAvailableDronePort();
@@ -310,7 +337,13 @@ public:
 			ReadyDrone.Pawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Location)));
 			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at defined Location"));
 		}
-		
+
+		if (ReadyDrone.Pawn == nullptr)
+		{
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation: DefaultPawnClass is not an ADronePawn, nothing spawned"));
+			return -1;
+		}
+
 		const auto DronePort = GetAvailableDronePort();
 		ReadyDrone.Pawn->droneServer->SetPort(DronePort);
 		ReadyDrone.Pawn->SetCameraCaptureMode(this->CameraCaptureMode);

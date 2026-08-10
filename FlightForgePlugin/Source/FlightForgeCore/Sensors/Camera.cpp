@@ -363,15 +363,27 @@ TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> UCamera::BuildDistortionLU
 			double Xu = Xd;
 			double Yu = Yd;
 
-			for (int32 Iteration = 0; Iteration < 8; ++Iteration)
+			// The LUT is rebuilt only when the config changes, so run the fixed point to
+			// convergence; a fixed count leaves the corners short under strong barrel terms.
+			for (int32 Iteration = 0; Iteration < 64; ++Iteration)
 			{
 				const double R2     = Xu * Xu + Yu * Yu;
 				const double Radial = 1.0 + R2 * (Distortion.K1 + R2 * (Distortion.K2 + R2 * Distortion.K3));
 				const double Dx     = 2.0 * Distortion.P1 * Xu * Yu + Distortion.P2 * (R2 + 2.0 * Xu * Xu);
 				const double Dy     = Distortion.P1 * (R2 + 2.0 * Yu * Yu) + 2.0 * Distortion.P2 * Xu * Yu;
 
-				Xu = (Xd - Dx) / Radial;
-				Yu = (Yd - Dy) / Radial;
+				const double NextXu = (Xd - Dx) / Radial;
+				const double NextYu = (Yd - Dy) / Radial;
+
+				const bool bSettled = FMath::Abs(NextXu - Xu) < 1.0e-12 && FMath::Abs(NextYu - Yu) < 1.0e-12;
+
+				Xu = NextXu;
+				Yu = NextYu;
+
+				if (bSettled)
+				{
+					break;
+				}
 			}
 
 			const double Sx = Xu * EffectiveK.Fx + EffectiveK.Cx;
