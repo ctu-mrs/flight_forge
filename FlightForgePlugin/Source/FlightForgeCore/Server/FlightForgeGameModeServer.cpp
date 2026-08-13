@@ -588,7 +588,11 @@ bool FlightForgeGameModeServer::RemoveSpawnedObject(const FTCPClient& Client, Se
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
 
-  auto Response          = Serializable::GameMode::RemoveSpawnedObject::Response(RemovedCount > 0);
+  // Clearing everything is idempotent: an already-empty scene is the requested state, not a
+  // failure. Removing one specific id still fails when that id is not there.
+  const bool bRemoved = Request.object_id < 0 ? true : RemovedCount > 0;
+
+  auto Response          = Serializable::GameMode::RemoveSpawnedObject::Response(bRemoved);
   Response.removed_count = RemovedCount;
 
   std::stringstream OutputStream;
