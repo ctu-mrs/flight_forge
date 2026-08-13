@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "SceneViewExtension.h"
 
-#include "FlightForgeCore/Sensors/Camera.h"
+#include "CameraReadback.h"
 
 class FPrimitiveSceneProxy;
 class FRenderTarget;
@@ -39,7 +39,7 @@ struct FSegIdDrawItem
  * into the camera's FCameraReadback slot. The capture's own color output is
  * never used, so no tonemapper or gamma can touch the IDs.
  */
-class FSegIdViewExtension : public FSceneViewExtensionBase
+class FLIGHTFORGESHADERS_API FSegIdViewExtension : public FSceneViewExtensionBase
 {
 public:
 	FSegIdViewExtension(const FAutoRegister& AutoRegister);
