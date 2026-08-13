@@ -204,6 +204,14 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
     if (Cursor.LastTime < 0.0) {
         const double NominalPeriod = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
         Cursor.LastTime            = Now - NominalPeriod;
+
+        // Start each sensor at its own point in the pattern. Two units on one rig are
+        // independent oscillators with no phase relationship; starting them all at zero
+        // makes them walk the pattern in lockstep, so a two-lidar rig samples the same
+        // directions at the same instants instead of complementary ones. Derived from the
+        // sensor id rather than randomised, so a run stays reproducible.
+        const uint32 Scramble = static_cast<uint32>(GetSensorID()) * 2654435761u;
+        Cursor.PatternPos     = static_cast<double>(Scramble % static_cast<uint32>(FMath::Max(1, Pattern->Num())));
     }
 
     double Elapsed = Now - Cursor.LastTime;
@@ -250,7 +258,11 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         const int32 First = BatchIndex * RaysPerBatch;
         const int32 Last  = FMath::Min(First + RaysPerBatch, NumRays);
 
+        // The sensor sits on the airframe, so without this the first thing every beam
+        // meets is the drone's own body - and because that hit is inside MinRangeCm it is
+        // dropped, so the ray is consumed and reported as no return at all.
         FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+        CollisionParams.AddIgnoredActor(Owner);
         CollisionParams.bReturnPhysicalMaterial = true;
 
         if (LidarConfig.ShowBeams) {
@@ -390,7 +402,8 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
         FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
         {
-            auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+            FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+            CollisionParams.AddIgnoredActor(Owner);
             if (LidarConfig.ShowBeams) {
                 const FName TraceTag(FString::Printf(TEXT("LidarTraceTag_%d"), 0));
                 CollisionParams.TraceTag = TraceTag;
@@ -532,8 +545,8 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
         FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
         {
-        auto CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-
+        FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+        CollisionParams.AddIgnoredActor(Owner);
         // Calculate the vertical angle for the current ray
         double vertAngle = -LidarConfig.FOVVertDown + (totalVertFov * (double)col / (double)(LidarConfig.BeamVertRays - 1.0));
 
@@ -701,7 +714,8 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
         FVector rotatedRight   = rightVector.RotateAngleAxis(horAngle, upVec);
 
         {
-        auto CollisionParams                    = FCollisionQueryParams::DefaultQueryParam;
+        FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+        CollisionParams.AddIgnoredActor(Owner);
         CollisionParams.bReturnPhysicalMaterial = true;
 
         // Calculate the vertical angle for the current ray
