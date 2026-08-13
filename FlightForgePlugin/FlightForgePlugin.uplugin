@@ -21,9 +21,17 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "FlightForgeCore",
+			"Name": "FlightForgeShaders",
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "FlightForgeCore",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"Engine"
 			]

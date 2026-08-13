@@ -3,7 +3,7 @@
 #include "TextureResource.h"
 
 #include "FlightForgeCore/DronePawn.h"
-#include "FlightForgeCore/Segmentation/SegIdPass.h"
+#include "SegIdPass.h"
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "Serialize.h"
 

@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "CoreMinimal.h"
+#include "CameraReadback.h"
 #include "FlightForgeCore/Instruction.h"
 #include "ImageUtils.h"
 #include "Components/SceneCaptureComponent2D.h"
@@ -16,35 +17,6 @@
 
 
 using Serializable::GameMode::CameraCaptureModeEnum;
-
-/* FCameraReadback //{ */
-
-// One in-flight GPU->CPU copy of a render target. The game thread enqueues the
-// copy right after the capture and keeps ticking; render-thread commands fill
-// Pixels and flip bCopied when the transfer lands, typically a frame later.
-// Shared ownership: the render commands hold a reference, so the slot outlives
-// the component even if it is torn down mid-flight.
-struct FCameraReadback
-{
-	TUniquePtr<FRHIGPUTextureReadback> Readback;
-	TArray<FColor>    Pixels;
-
-	// R16F targets (depth) resolve here instead of Pixels
-	bool              bFloat16 = false;
-	TArray<FFloat16>  Float16Pixels;
-
-	FIntPoint         Size = FIntPoint::ZeroValue;
-	double            Stamp = 0.0;
-
-	// camera-frame angular velocity at capture time (x right, y down, z forward;
-	// rad/s), carried with the frame for the rolling-shutter warp
-	FVector           Omega = FVector::ZeroVector;
-
-	std::atomic<bool> bResolveIssued{false};
-	std::atomic<bool> bCopied{false};
-};
-
-//}
 
 /* FCameraIntrinsics //{ */
 
