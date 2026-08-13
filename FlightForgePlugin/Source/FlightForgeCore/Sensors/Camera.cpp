@@ -2,6 +2,7 @@
 
 #include "ContentStreaming.h"
 #include "Engine/PostProcessVolume.h"
+#include "ImageUtils.h"
 #include "EngineUtils.h"
 #include "UnrealEngine.h"
 #include "RenderingThread.h"
@@ -676,6 +677,32 @@ void UCamera::ApplyNoise(TArray<FColor>& Pixels, const FIntPoint Size, const FCa
 
 			Pixel = FColor(Perturb(Pixel.R), Perturb(Pixel.G), Perturb(Pixel.B), 255);
 		}
+	}
+}
+
+/* //} */
+
+/* CompressFrame() //{ */
+
+void UCamera::CompressFrame(const TArray<FColor>& Pixels, const FIntPoint Size, const FCameraCompression& Compression, const bool bLossless,
+                            TArray<uint8>& OutBytes)
+{
+	OutBytes.Reset();
+
+	if (Pixels.Num() < Size.X * Size.Y || Size.X <= 0 || Size.Y <= 0)
+	{
+		return;
+	}
+
+	const bool  bJpeg   = Compression.bJpeg && !bLossless;
+	const int32 Quality = FMath::Clamp(Compression.Quality, 1, 100);
+
+	const FImageView Image(Pixels.GetData(), Size.X, Size.Y, EGammaSpace::sRGB);
+
+	TArray64<uint8> Compressed;
+	if (FImageUtils::CompressImage(Compressed, bJpeg ? TEXT("jpg") : TEXT("png"), Image, bJpeg ? Quality : 0))
+	{
+		OutBytes.Append(Compressed.GetData(), Compressed.Num());
 	}
 }
 

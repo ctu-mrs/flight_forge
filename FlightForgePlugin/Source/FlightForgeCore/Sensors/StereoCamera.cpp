@@ -248,6 +248,7 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 	TArray<FColor>                                        RawRight;
 	FIntPoint                                             RawSize;
 	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> LUT;
+	FCameraCompression                                    CompressionConfig;
 	{
 		CameraBufferCriticalSection->Lock();
 
@@ -257,11 +258,12 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 			return false;
 		}
 
-		RawLeft  = CameraBuffer;
-		RawRight = StereoRightCameraBuffer;
-		RawSize  = CameraBufferSize;
-		stamp    = stamp_;
-		LUT      = DistortionLUT;
+		RawLeft           = CameraBuffer;
+		RawRight          = StereoRightCameraBuffer;
+		RawSize           = CameraBufferSize;
+		stamp             = stamp_;
+		LUT               = DistortionLUT;
+		CompressionConfig = stereo_camera_config_.Compression;
 
 		CameraBufferCriticalSection->Unlock();
 	}
@@ -276,8 +278,8 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 		RawSize  = LUT->OutputSize;
 	}
 
-	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawLeft, image_left);
-	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawRight, image_right);
+	CompressFrame(RawLeft, RawSize, CompressionConfig, false, image_left);
+	CompressFrame(RawRight, RawSize, CompressionConfig, false, image_right);
 
 	return true;
 }
@@ -329,6 +331,10 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseStereo.config.distortion_.p1_     = stereo_camera_config_.Distortion.P1;
 	ResponseStereo.config.distortion_.p2_     = stereo_camera_config_.Distortion.P2;
 
+	ResponseStereo.config.compression_.format_ =
+	    stereo_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
+	ResponseStereo.config.compression_.quality_ = stereo_camera_config_.Compression.Quality;
+
 	Serialization::DeserializeResponse(ResponseStereo, OutputStream);
 	UE_LOG(LogTemp, Warning, TEXT("Got CameraStereo config"));
 }
@@ -367,6 +373,9 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.Distortion.K3     = Request.config.distortion_.k3_;
 	Config.Distortion.P1     = Request.config.distortion_.p1_;
 	Config.Distortion.P2     = Request.config.distortion_.p2_;
+
+	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
+	Config.Compression.Quality = Request.config.compression_.quality_;
 
 	bool Status = false;
 

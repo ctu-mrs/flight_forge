@@ -13,6 +13,7 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "SceneInterface.h"
+#include "SceneRendererInterface.h"
 #include "SceneView.h"
 #include "StaticMeshBatch.h"
 
@@ -180,10 +181,10 @@ bool FSegIdViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionCo
 	return PendingJobs.load() > 0;
 }
 
-// Off by default: the pass draws, but the draw crashes in the Vulkan bindless descriptor path
-// (UpdateBindlessDescriptors), so a client asking for instance segmentation would kill the sim.
-static TAutoConsoleVariable<int32> CVarSegIdEnable(TEXT("FlightForge.SegId.Enable"), 0,
-                                                   TEXT("Enable the experimental instance-segmentation mesh pass (unstable)."), ECVF_RenderThreadSafe);
+// Kept as an off-switch: this pass renders through engine internals, so a hardware or engine
+// regression here should be silenceable without a rebuild.
+static TAutoConsoleVariable<int32> CVarSegIdEnable(TEXT("FlightForge.SegId.Enable"), 1,
+                                                   TEXT("Enable the instance-segmentation mesh pass."), ECVF_RenderThreadSafe);
 
 void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter, const FIntPoint Size, TArray<FSegIdDrawItem>&& Items,
                                                const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
@@ -207,9 +208,12 @@ void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter
 	    });
 }
 
-// AddSimpleMeshPass fills InstanceCullingDrawParams; the mesh shaders read the InstanceCulling
-// uniform buffer through it, and the RHI fatals if the pass omits it.
+// Mesh material shaders read View and Scene (GPU Scene primitive data) as well as the
+// InstanceCulling buffer AddSimpleMeshPass fills; leaving any of them off the struct means
+// nothing binds them, and the bindless descriptor update then walks unbound state.
 BEGIN_SHADER_PARAMETER_STRUCT(FSegIdPassParameters, )
+SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneUniformParameters, Scene)
 SHADER_PARAMETER_STRUCT_INCLUDE(FInstanceCullingDrawParams, InstanceCullingDrawParams)
 RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
@@ -246,6 +250,8 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	TArray<FSegIdDrawItem>* ItemsOnPass = GraphBuilder.AllocObject<TArray<FSegIdDrawItem>>(MoveTemp(Job.Items));
 
 	auto* PassParameters             = GraphBuilder.AllocParameters<FSegIdPassParameters>();
+	PassParameters->View             = InView.ViewUniformBuffer;
+	PassParameters->Scene            = GetSceneUniformBufferRef(GraphBuilder, InView);
 	PassParameters->RenderTargets[0] = FRenderTargetBinding(IdTexture, ERenderTargetLoadAction::EClear);
 
 	if (SceneDepth)

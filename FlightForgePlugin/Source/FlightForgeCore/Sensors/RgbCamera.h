@@ -59,6 +59,7 @@ struct FRgbCameraConfig
 	FCameraDistortion     Distortion;
 	FCameraNoise          Noise;
 	FCameraRollingShutter RollingShutter;
+	FCameraCompression    Compression;
 };
 
 

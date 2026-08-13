@@ -1,5 +1,7 @@
 #include "RgbSegCamera.h"
 
+#include "HAL/IConsoleManager.h"
+#include "Materials/Material.h"
 #include "TextureResource.h"
 
 #include "Serialize.h"
@@ -31,7 +33,32 @@ void URgbSegCamera::BeginPlay()
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
 	SceneCaptureComponent2D->bUseRayTracingIfEnabled      = false;
-	SceneCaptureComponent2D->AddOrUpdateBlendable(PostProcessMaterial, 1);
+	// PostProcessMaterial is an EditAnywhere property, which only a Blueprint-placed
+	// component would fill in; sensors are built at runtime, so load the plugin's own
+	// material here. Without it the capture is an ordinary render, not a mask.
+	if (!PostProcessMaterial)
+	{
+		PostProcessMaterial = LoadObject<UMaterial>(nullptr, TEXT("/FlightForgePlugin/PP_segmentationMat.PP_segmentationMat"));
+	}
+
+	if (PostProcessMaterial)
+	{
+		SceneCaptureComponent2D->AddOrUpdateBlendable(PostProcessMaterial, 1);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("URgbSegCamera: could not load PP_segmentationMat; this camera will return an unlabelled scene render"));
+	}
+
+	// Stencil segmentation needs r.CustomDepth=3 ("with stencil"); at 1 the stencil buffer
+	// is never written, SetCustomDepthStencilValue does nothing, and this camera quietly
+	// returns an ordinary render instead of a mask.
+	if (static IConsoleVariable* CustomDepth = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CustomDepth")); CustomDepth && CustomDepth->GetInt() != 3)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("URgbSegCamera: r.CustomDepth is %d, needs 3 (Custom Depth-Stencil Pass = 'Enabled with Stencil'); "
+		                              "segmentation output will be an unlabelled scene render"),
+		       CustomDepth->GetInt());
+	}
 
 	rgb_camera_config_.ShowCameraComponent    = false;
 	rgb_camera_config_.Offset                 = FVector(0, 0, 0);
@@ -92,6 +119,10 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 
 	CameraBufferCriticalSection->Lock();
 
+	SceneCaptureMeshHolder->SetVisibility(Config.ShowCameraComponent);
+	SceneCaptureMeshHolder->SetRelativeLocation(Config.Offset);
+	SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
+
 	SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height, {SceneCaptureComponent2D}, {RenderTarget2D});
 
 	SceneCaptureComponent2D->TextureTarget                = RenderTarget2D;
@@ -99,6 +130,16 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
 	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+
+	// Re-assert the segmentation material: anything that assigns PostProcessSettings
+	// wholesale (a level post-process baseline, for one) replaces WeightedBlendables and
+	// silently turns this back into an ordinary colour camera.
+	if (PostProcessMaterial)
+	{
+		SceneCaptureComponent2D->AddOrUpdateBlendable(PostProcessMaterial, 1);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("URgbSegCamera: %d blendable(s) on the capture"), SceneCaptureComponent2D->PostProcessSettings.WeightedBlendables.Array.Num());
 
 	CameraBufferCriticalSection->Unlock();
 	

@@ -95,6 +95,14 @@ struct FCameraRollingShutter
 	double ReadoutTime = 0.03;  // seconds, top-to-bottom
 };
 
+// Wire encoding of a served frame. JPEG by default: PNG costs tens of milliseconds and
+// several times the bytes per frame, for detail no vision pipeline sees.
+struct FCameraCompression
+{
+	bool  bJpeg   = true;
+	int32 Quality = 90;  // 1-100, JPEG only
+};
+
 // Precomputed output-pixel -> source-pixel map. The source image is an ideal pinhole
 // render padded by Pad on each side (overscan), so barrel distortion can pull in
 // content from outside the nominal frustum. Rebuilt only on config changes; the serve
@@ -199,6 +207,10 @@ public:
 	// linearize (sRGB), add shot + read + row noise, re-encode; Seed makes a
 	// served frame's noise deterministic for its stamp
 	static void ApplyNoise(TArray<FColor>& Pixels, FIntPoint Size, const FCameraNoise& Noise, uint32 Seed);
+
+	// Encodes the served frame. bLossless forces PNG whatever the config says, for the
+	// label cameras whose pixel values are ids rather than colour.
+	static void CompressFrame(const TArray<FColor>& Pixels, FIntPoint Size, const FCameraCompression& Compression, bool bLossless, TArray<uint8>& OutBytes);
 
 protected:
 	// One-stop projection setup shared by the RGB/seg/stereo Set paths: without

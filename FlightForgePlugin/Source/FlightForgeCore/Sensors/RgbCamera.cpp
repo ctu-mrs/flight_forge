@@ -260,6 +260,7 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 	FVector                                               Omega;
 	FCameraNoise                                          NoiseConfig;
 	FCameraRollingShutter                                 RollingShutterConfig;
+	FCameraCompression                                    CompressionConfig;
 	{
 		CameraBufferCriticalSection->Lock();
 
@@ -276,6 +277,7 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 		Omega                = capture_omega_;
 		NoiseConfig          = rgb_camera_config_.Noise;
 		RollingShutterConfig = rgb_camera_config_.RollingShutter;
+		CompressionConfig    = rgb_camera_config_.Compression;
 
 		CameraBufferCriticalSection->Unlock();
 	}
@@ -300,7 +302,7 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 		ApplyNoise(RawCopy, RawSize, NoiseConfig, static_cast<uint32>(stamp * 1.0e6));
 	}
 
-	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
+	CompressFrame(RawCopy, RawSize, CompressionConfig, false, OutArray);
 
 	return true;
 }
@@ -372,6 +374,10 @@ void URgbCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.rolling_shutter_.enable_       = rgb_camera_config_.RollingShutter.Enable;
 	ResponseRGB.config.rolling_shutter_.readout_time_ = rgb_camera_config_.RollingShutter.ReadoutTime;
 
+	ResponseRGB.config.compression_.format_ =
+	    rgb_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
+	ResponseRGB.config.compression_.quality_ = rgb_camera_config_.Compression.Quality;
+
 	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
 	UE_LOG(LogTemp, Log, TEXT("Got CameraRGB config"));
 }
@@ -436,6 +442,9 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 
 	Config.RollingShutter.Enable      = Request.config.rolling_shutter_.enable_;
 	Config.RollingShutter.ReadoutTime = Request.config.rolling_shutter_.readout_time_;
+
+	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
+	Config.Compression.Quality = Request.config.compression_.quality_;
 
 	bool Status = false;
 

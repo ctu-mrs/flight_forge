@@ -252,6 +252,31 @@ struct CameraRollingShutter
 
 //}
 
+/* struct CameraCompression //{ */
+
+// Wire format for the served frame. JPEG is the default for imagery: PNG costs tens of
+// milliseconds per frame and several times the bytes, for detail no vision pipeline sees.
+// The label cameras (segmentation, instance segmentation) ignore this and always send PNG -
+// their pixel values ARE the labels, so any lossy codec invents ids that were never rendered.
+struct CameraCompression
+{
+  enum Format : int
+  {
+    PNG  = 0,
+    JPEG = 1,
+  };
+
+  int format_  = JPEG;
+  int quality_ = 90;  // 1-100, JPEG only
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(format_, quality_);
+  }
+};
+
+//}
+
 /* struct CameraExposure //{ */
 
 // physically-based exposure; when manual_ is set the abstract auto-exposure is
@@ -333,12 +358,13 @@ struct RgbCameraConfig
   CameraDistortion    distortion_;
   CameraNoise         noise_;
   CameraRollingShutter rolling_shutter_;
+  CameraCompression   compression_;
 
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
             enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_, distortion_,
-            noise_, rolling_shutter_);
+            noise_, rolling_shutter_, compression_);
   }
 };
 
@@ -376,8 +402,9 @@ struct StereoCameraConfig
   bool enable_hdr_;
 
   // shared by both eyes
-  CameraIntrinsics intrinsics_;
-  CameraDistortion distortion_;
+  CameraIntrinsics  intrinsics_;
+  CameraDistortion  distortion_;
+  CameraCompression compression_;
 
   template <class Archive>
   void serialize(Archive& archive) {
@@ -387,7 +414,7 @@ struct StereoCameraConfig
             rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
             rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
             fov_, width_, height_,
-            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_, distortion_);
+            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_, distortion_, compression_);
   }
 };
 
@@ -1372,9 +1399,12 @@ struct FisheyeCameraConfig
   // 2 stereographic (r = 2f*tan(theta/2))
   int lens_model_;
 
+  CameraCompression compression_;
+
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, lens_model_);
+    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, lens_model_,
+            compression_);
   }
 };
 

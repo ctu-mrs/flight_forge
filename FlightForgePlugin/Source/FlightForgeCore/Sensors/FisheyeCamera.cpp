@@ -105,6 +105,26 @@ void UFisheyeCamera::BeginPlay()
 	for (int32 Face = 0; Face < NumFaces; ++Face)
 	{
 		ApplyLevelPostProcessBaseline(FaceCaptures[Face]);
+
+		// Screen-space post effects are computed per face, so anything that varies with
+		// what a face happens to see leaves a straight seam along the face boundary and
+		// the result reads as the inside of a box. Exposure is the worst of them: a face
+		// full of sky adapts differently from one full of ground. Lock them all.
+		FPostProcessSettings& Settings = FaceCaptures[Face]->PostProcessSettings;
+
+		Settings.bOverride_AutoExposureMinBrightness = true;
+		Settings.bOverride_AutoExposureMaxBrightness = true;
+		Settings.AutoExposureMinBrightness           = 1.0f;
+		Settings.AutoExposureMaxBrightness           = 1.0f;
+
+		Settings.bOverride_VignetteIntensity = true;
+		Settings.VignetteIntensity           = 0.0f;
+
+		Settings.bOverride_BloomIntensity = true;
+		Settings.BloomIntensity           = 0.0f;
+
+		Settings.bOverride_SceneFringeIntensity = true;
+		Settings.SceneFringeIntensity           = 0.0f;
 	}
 
 	SetFisheyeCameraConfig(fisheye_camera_config_);
@@ -440,7 +460,7 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArra
 		}
 	});
 
-	FImageUtils::ThumbnailCompressImageArray(OutSize.X, OutSize.Y, OutImage, OutArray);
+	CompressFrame(OutImage, OutSize, fisheye_camera_config_.Compression, false, OutArray);
 
 	return true;
 }
@@ -503,6 +523,10 @@ void UFisheyeCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.height_     = fisheye_camera_config_.Height;
 	Response.config.lens_model_ = static_cast<int>(fisheye_camera_config_.LensModel);
 
+	Response.config.compression_.format_ =
+	    fisheye_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
+	Response.config.compression_.quality_ = fisheye_camera_config_.Compression.Quality;
+
 	Serialization::DeserializeResponse(Response, OutputStream);
 }
 
@@ -521,6 +545,9 @@ void UFisheyeCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<
 	Config.Width     = Request.config.width_;
 	Config.Height    = Request.config.height_;
 	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 2));
+
+	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
+	Config.Compression.Quality = Request.config.compression_.quality_;
 
 	bool Status = false;
 

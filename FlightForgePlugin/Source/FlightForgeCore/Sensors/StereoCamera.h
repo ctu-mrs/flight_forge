@@ -23,8 +23,9 @@ struct FStereoCameraConfig
 	bool     enable_raytracing;
 
 	// shared by both eyes
-	FCameraIntrinsics Intrinsics;
-	FCameraDistortion Distortion;
+	FCameraIntrinsics  Intrinsics;
+	FCameraDistortion  Distortion;
+	FCameraCompression Compression;
 };
 
 

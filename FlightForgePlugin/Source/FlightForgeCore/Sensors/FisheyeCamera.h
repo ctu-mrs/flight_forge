@@ -26,6 +26,8 @@ struct FFisheyeCameraConfig
 	int Height;
 
 	EFisheyeLensModel LensModel;
+
+	FCameraCompression Compression;
 };
 
 /* FFisheyeLUTEntry //{ */

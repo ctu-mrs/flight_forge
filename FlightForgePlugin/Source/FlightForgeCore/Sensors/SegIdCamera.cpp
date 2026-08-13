@@ -210,7 +210,8 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 		RawSize = LUT->OutputSize;
 	}
 
-	FImageUtils::ThumbnailCompressImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
+	// lossless always: these pixels are 24-bit instance ids, not colour
+	CompressFrame(RawCopy, RawSize, FCameraCompression{}, true, OutArray);
 
 	return true;
 }

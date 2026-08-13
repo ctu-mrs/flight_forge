@@ -12,7 +12,7 @@
 // left-handed frame) and baked into unit direction vectors.
 namespace
 {
-constexpr uint32 PatternMagic   = 0x54505046;  // 'FFPT' little-endian
+constexpr uint32 PatternMagic   = 0x54504646;  // 'F','F','P','T' little-endian
 constexpr uint32 PatternVersion = 1;
 
 #pragma pack(push, 1)
