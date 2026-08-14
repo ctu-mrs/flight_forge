@@ -19,7 +19,6 @@ struct FFisheyeCameraConfig
 	FVector  Offset;
 	FRotator Orientation;
 
-	// full field of view in degrees, up to 220
 	double FOVAngle;
 
 	int Width;
@@ -43,10 +42,6 @@ struct FFisheyeLUTEntry
 
 //}
 
-// Wide-FOV camera assembled from five 90-degree captures (forward, right,
-// left, up, down) resampled through a precomputed lens-projection LUT. A
-// planar capture distorts unusably past ~120 degrees; five faces cover up to
-// 220 degrees with uniform angular resolution.
 UCLASS()
 class FLIGHTFORGECORE_API UFisheyeCamera : public UCamera
 {
@@ -88,12 +83,9 @@ protected:
 
 	FFisheyeCameraConfig fisheye_camera_config_;
 
-	// published face pixels; guarded by CameraBufferCriticalSection
 	TArray<TArray<FColor>> FaceBuffers;
 	int32 PublishedFaceSize = 0;
 
-	// swapped atomically under the buffer lock; server threads resample from
-	// their own reference outside the lock
 	TSharedPtr<const TArray<FFisheyeLUTEntry>, ESPMode::ThreadSafe> LUT;
 	FIntPoint LUTSize = FIntPoint::ZeroValue;
 
@@ -103,7 +95,6 @@ protected:
 
 	void RebuildLUT();
 
-	// game thread: publishes when all five faces have landed; true when published
 	bool PumpFisheyeReadback();
 
 	void SetCaptureEveryFrame(bool bEnable);

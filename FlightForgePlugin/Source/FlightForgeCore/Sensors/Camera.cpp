@@ -32,10 +32,8 @@ void UCamera::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//Tick should be called after DronePawn empties InstructionQueue
 	PrimaryComponentTick.AddPrerequisite(Owner, Owner->PrimaryActorTick);
 
-	// TODO check https://github.com/TimmHess/UnrealImageCapture
 }
 
 void UCamera::Initialize(int InSensorID)
@@ -63,7 +61,6 @@ void UCamera::BeginDestroy()
 		CameraBufferCriticalSection->Unlock();
 	}
 
-	// wake any server thread still waiting on a frame; it will see CameraRendered == false
 	if (FrameReadyEvent)
 	{
 		FrameCounter++;
@@ -713,13 +710,8 @@ void UCamera::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
 
 	CameraCaptureMode = CaptureMode;
 
-	// if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES || CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_MOVEMENT) {
-	// 	//UE_LOG(LogTemp, Log, TEXT("Camera updating after capture mode change"));
-	//     UpdateCamera(false, 0.0); //used to update only in rgb mode
-	// }
 }
 
-// packs BGRA pixels into the 3-byte-per-pixel wire layout
 void UCamera::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor>& SrcData, TArray<uint8>& DstData) {
 	const int32 NumPixels = ImageWidth * ImageHeight;
 

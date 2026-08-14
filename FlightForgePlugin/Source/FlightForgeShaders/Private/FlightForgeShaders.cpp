@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "FlightForgeShaders.h"
 
 #include "Interfaces/IPluginManager.h"
