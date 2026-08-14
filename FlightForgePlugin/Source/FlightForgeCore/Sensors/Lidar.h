@@ -9,12 +9,12 @@
 //#include "MessageSerialization/Public/serializable_shared.h"
 #include "Lidar.generated.h"
 
-#define DEFAULT_LIDAR_BEAM_HOR 256  // 100
-#define DEFAULT_LIDAR_BEAM_VER 32   // 15
+/* #define DEFAULT_LIDAR_BEAM_HOR 256  // 100 */
+/* #define DEFAULT_LIDAR_BEAM_VER 32   // 15 */
+#define DEFAULT_LIDAR_BEAM_HOR 2048
+#define DEFAULT_LIDAR_BEAM_VER 128
 
 #define DEFAULT_LIDAR_BEAM_LENGTH 1000
-/* #define DEFAULT_LIDAR_BEAM_HOR 2048 */
-/* #define DEFAULT_LIDAR_BEAM_VER 128 */
 #define DEFAULT_LIDAR_SHOW_BEAMS false 
 
 enum class FLidarMode : int
@@ -29,9 +29,6 @@ struct FLidarConfig
 {
 	bool   Enable;
 	bool Livox;
-	// Which non-repetitive scan pattern to replay when Livox is set: matches the
-	// Content/Lidar/<name>.ffpat stem ("avia", "mid360"), so a new sensor is a
-	// new pattern file and needs no protocol change.
 	FString LivoxSensor;
 	bool   ShowBeams;
 	double BeamLength;
@@ -116,8 +113,9 @@ protected:
 	// and direction are expressed in the lidar frame at the end of the slice, so a
 	// moving drone yields the same intra-scan distortion a real sensor produces.
 	// Returns the number of rays traced, or 0 if no pattern is available.
+	// bNeedPhysicalMaterial resolves a material per hit; only seg and intensity read it.
 	int32 CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
-	                    TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store);
+	                    TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store, bool bNeedPhysicalMaterial = false);
 
 	const FLivoxPattern* GetLivoxPattern() const;
 

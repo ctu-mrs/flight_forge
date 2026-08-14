@@ -281,6 +281,13 @@ void TcpServer::Run()
 				auto ClientSocket = ListenSocket->Accept(*Addr, TEXT("tcp-client")); // TODO unique name
 				const auto StrAddr = Addr->ToString(true);
 
+				// Request/response with the client blocked is what Nagle punishes: the
+				// trailing segment waits on a delayed ACK. Nothing here coalesces usefully.
+				if (ClientSocket && !ClientSocket->SetNoDelay(true))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("TcpServer: could not disable Nagle on the client socket; large responses will stall"));
+				}
+
 				auto Client = std::make_unique<FTCPClient>();
 				Client->Socket = std::unique_ptr<FSocket>(ClientSocket);
 				Client->StrAddr = StrAddr;

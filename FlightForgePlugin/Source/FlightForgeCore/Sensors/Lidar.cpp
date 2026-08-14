@@ -44,22 +44,35 @@ ULidar::ULidar()
 	LidarSegHits  = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 	LidarIntHits  = std::make_unique<std::vector<std::tuple<double, double, double, double, int>>>(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
 	LidarHitStart = std::make_unique<FVector>();
-	LidarHitStart = std::make_unique<FVector>();
 }
+
+/* BeginPlay() //{ */
 
 void ULidar::BeginPlay()
 {
 	Super::BeginPlay();
 }
 
+//}
+
+/* TickComponent() //{ */
+
 void ULidar::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
+//}
+
+/* GetLidarConfig() //{ */
+
 FLidarConfig ULidar::GetLidarConfig() {
     return LidarConfig;
 }
+
+//}
+
+/* SetLidarConfig() //{ */
 
 bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
 
@@ -95,8 +108,6 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarConfig.Orientation.Yaw   = -Config.Orientation.Yaw;
     LidarConfig.Orientation.Roll  = -Config.Orientation.Roll;
 
-    /* LidarConfig.FOVHor  = Config.FOVHor; */
-    /* LidarConfig.FOVVert = Config.FOVVert; */
     LidarConfig.FOVVertUp   = Config.FOVVertUp;
     LidarConfig.FOVVertDown = Config.FOVVertDown;
     LidarConfig.FOVHorLeft  = Config.FOVHorLeft;
@@ -111,6 +122,8 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
 
     return true;
 }
+
+//}
 
 
 /* resetLivoxCursorsIfChanged() //{ */
@@ -177,13 +190,17 @@ const FLivoxPattern* ULidar::GetLivoxPattern() const {
 // one second of Avia is already 240k points.
 #define LIVOX_MAX_INTEGRATION_TIME 1.0
 
+// The real bound: a slice spans at most this many frames, so a paused client resumes with
+// a normal message rather than a lump. Two leaves room for one late poll.
+#define LIVOX_MAX_INTEGRATION_FRAMES 2.0
+
 // Rays are traced in chunks this long, each from the drone pose interpolated to
 // the middle of the chunk. 1 ms is ~240 rays on Avia, fine enough that the
 // residual within a chunk is far below the range noise of the real sensor.
 #define LIVOX_SUB_BATCH_TIME 0.001
 
 int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
-                            TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store) {
+                            TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store, bool bNeedPhysicalMaterial) {
 
     const FLivoxPattern* Pattern = GetLivoxPattern();
 
@@ -205,11 +222,8 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         const double NominalPeriod = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
         Cursor.LastTime            = Now - NominalPeriod;
 
-        // Start each sensor at its own point in the pattern. Two units on one rig are
-        // independent oscillators with no phase relationship; starting them all at zero
-        // makes them walk the pattern in lockstep, so a two-lidar rig samples the same
-        // directions at the same instants instead of complementary ones. Derived from the
-        // sensor id rather than randomised, so a run stays reproducible.
+        // Two units on a rig are independent oscillators; starting every cursor at zero
+        // walks them in lockstep. From the id, not random, so runs stay reproducible.
         const uint32 Scramble = static_cast<uint32>(GetSensorID()) * 2654435761u;
         Cursor.PatternPos     = static_cast<double>(Scramble % static_cast<uint32>(FMath::Max(1, Pattern->Num())));
     }
@@ -221,9 +235,17 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         Elapsed = 1.0 / FMath::Max(LidarConfig.Frequency, 1.0);
     }
 
-    if (Elapsed > LIVOX_MAX_INTEGRATION_TIME) {
-        UE_LOG(LogTemp, Warning, TEXT("Livox: %.2f s since last request, clamping integration to %.2f s"), Elapsed, LIVOX_MAX_INTEGRATION_TIME);
-        Elapsed = LIVOX_MAX_INTEGRATION_TIME;
+    // Real hardware drops what nobody reads rather than banking it: a lump that large
+    // smears the scan and takes longer to serve than the span it covers.
+    const double MaxIntegration = FMath::Min(LIVOX_MAX_INTEGRATION_TIME, LIVOX_MAX_INTEGRATION_FRAMES / FMath::Max(LidarConfig.Frequency, 1.0));
+
+    if (Elapsed > MaxIntegration) {
+        UE_LOG(LogTemp, Warning, TEXT("Livox: %.2f s since the last request, integrating the most recent %.2f s and dropping %.2f s of scan"), Elapsed,
+               MaxIntegration, Elapsed - MaxIntegration);
+
+        // Skip the pattern over the dropped span too, so playback tracks wall clock.
+        Cursor.PatternPos = FMath::Fmod(Cursor.PatternPos + (Elapsed - MaxIntegration) * Pattern->PointRate, (double)Pattern->Num());
+        Elapsed           = MaxIntegration;
     }
 
     const int32 NumRays = FMath::Max(1, FMath::RoundToInt(Elapsed * Pattern->PointRate));
@@ -258,17 +280,20 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         const int32 First = BatchIndex * RaysPerBatch;
         const int32 Last  = FMath::Min(First + RaysPerBatch, NumRays);
 
-        // The sensor sits on the airframe, so without this the first thing every beam
-        // meets is the drone's own body - and because that hit is inside MinRangeCm it is
-        // dropped, so the ray is consumed and reported as no return at all.
+        // Without this every beam hits the airframe first, and that hit is inside
+        // MinRangeCm, so the ray is dropped and reported as no return at all.
         FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
         CollisionParams.AddIgnoredActor(Owner);
-        CollisionParams.bReturnPhysicalMaterial = true;
+
+        // resolving a material per hit is wasted unless the seg/intensity modes read it
+        CollisionParams.bReturnPhysicalMaterial = bNeedPhysicalMaterial;
 
         if (LidarConfig.ShowBeams) {
             CollisionParams.TraceTag = FName(TEXT("LivoxTraceTag"));
         }
 
+        // Serial on purpose: the batches are already parallel, and nesting a ParallelFor
+        // here cost 4x - the inner tasks contend over work units of ~200 rays.
         for (int32 i = First; i < Last; ++i) {
 
             const FVector3f& Dir3f = Pattern->Directions[(PatternStart + i) % Pattern->Num()];
@@ -276,8 +301,7 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
             const FVector RayWorld = BatchPose.TransformVector(PatternDir) * BeamLength;
 
-            // Fallback for a non-return: the nominal ray, expressed in the reference frame.
-            FVector OutDir      = RefTransform.InverseTransformVector(RayWorld);
+            FVector OutDir      = FVector::ZeroVector;
             double  OutDistance = -1.0;
             bool    bHasReturn  = false;
 
@@ -301,6 +325,11 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
                 }
             }
 
+            // only a no-return needs this; on a hit the direction comes from the impact
+            if (!bHasReturn) {
+                OutDir = RefTransform.InverseTransformVector(RayWorld);
+            }
+
             Store(i, OutDistance, OutDir, HitResult, bHasReturn);
         }
     });
@@ -317,18 +346,25 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
 //}
 
+static TAutoConsoleVariable<int32> CVarLidarProfile(TEXT("FlightForge.Lidar.Profile"), 0,
+                                                    TEXT("Log the cast/copy/serialize split of each lidar request."), ECVF_Default);
+
+/* GetLidarHits() //{ */
+
 void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
 
-    // UE_LOG(LogTemp, Warning, TEXT("DronePawn::GetLidarHits"));
 
     LidarHitsCriticalSection->Lock();
 
     auto stamp = FPlatformTime::Seconds();
 
+    const bool   bProfile = CVarLidarProfile.GetValueOnAnyThread() != 0;
+    const double CastFrom = FPlatformTime::Seconds();
+
     UpdateLidar(true);
 
-    // Livox slices vary in length with the elapsed time they cover, so the
-    // buffer size is authoritative, not the configured beam grid.
+    const double CastTo = FPlatformTime::Seconds();
+
     OutLidarData.resize(LidarHits->size());
 
     for (size_t i = 0; i < LidarHits->size(); i++) {
@@ -336,6 +372,12 @@ void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarDa
         OutLidarData[i].directionX = std::get<1>((*LidarHits)[i]);
         OutLidarData[i].directionY = std::get<2>((*LidarHits)[i]);
         OutLidarData[i].directionZ = std::get<3>((*LidarHits)[i]);
+    }
+
+    if (bProfile) {
+        const double CopyTo = FPlatformTime::Seconds();
+        UE_LOG(LogTemp, Warning, TEXT("Lidar profile: %d points, cast %.1f ms, copy %.1f ms"), static_cast<int32>(LidarHits->size()),
+               1000.0 * (CastTo - CastFrom), 1000.0 * (CopyTo - CastTo));
     }
 
     OutStart.X = LidarConfig.Offset.X;
@@ -347,6 +389,10 @@ void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarDa
     LidarHitsCriticalSection->Unlock();
 }
 
+//}
+
+/* UpdateLidar() //{ */
+
 void ULidar::UpdateLidar(bool isExternallyLocked) {
     if (!isExternallyLocked) {
         LidarHitsCriticalSection->Lock();
@@ -355,13 +401,11 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
     auto World = Owner->GetWorld();
     const auto droneTransform = Owner->GetActorTransform();
 
-    // --- Invert Roll ---
     FRotator correctedLidarOrientation = LidarConfig.Orientation;
     if(!LidarConfig.Livox){
     correctedLidarOrientation.Roll = -correctedLidarOrientation.Roll;
     }
 
-    // Lidar's global transform
     FQuat lidarQuat = droneTransform.GetRotation() * correctedLidarOrientation.Quaternion();
     FVector lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
@@ -411,7 +455,6 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
 
             double vertAngle = -LidarConfig.FOVVertDown + (totalVertFov * (double)col / (double)(LidarConfig.BeamVertRays - 1.0));
 
-            // Ray direction in *world* coordinates.
             FVector raycastAngle_world = rotatedForward.RotateAngleAxis(-vertAngle, rotatedRight);
             raycastAngle_world *= LidarConfig.BeamLength;
 
@@ -448,6 +491,9 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
     }
 }
 
+//}
+
+/* GetSegLidarHits() //{ */
 
 void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
 
@@ -475,6 +521,10 @@ void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::L
 
     LidarSegHitsCriticalSection->Unlock();
 }
+
+//}
+
+/* UpdateSegLidar() //{ */
 
 void ULidar::UpdateSegLidar(bool isExternallyLocked) {
 
@@ -566,7 +616,6 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
             {
                 // skip
                 std::get<0>((*LidarSegHits)[i]) = -1;
-                // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
             } else {
                 std::get<0>((*LidarSegHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
             }
@@ -619,6 +668,9 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
   }
 }
 
+//}
+
+/* GetIntLidarHits() //{ */
 
 void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
 
@@ -646,6 +698,10 @@ void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::L
 
     LidarIntHitsCriticalSection->Unlock();
 }
+
+//}
+
+/* UpdateIntLidar() //{ */
 
 void ULidar::UpdateIntLidar(bool isExternallyLocked) {
 
@@ -683,7 +739,8 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
             }
 
             (*LidarIntHits)[i] = std::make_tuple(Distance, Dir.X, Dir.Y, Dir.Z, intensity);
-        });
+        },
+        /* bNeedPhysicalMaterial */ true);
 
     if (!isExternallyLocked) {
       LidarIntHitsCriticalSection->Unlock();
@@ -737,7 +794,6 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
             {
                 // skip
                 std::get<0>((*LidarHits)[i]) = -1;
-                // UE_LOG(LogTemp, Warning, TEXT("Ignoring actor: %s"), *HitActor->GetName());
             } else {
                 std::get<0>((*LidarIntHits)[i]) = HitResult.IsValidBlockingHit() ? HitResult.Distance : LidarConfig.BeamLength;
             }
@@ -786,6 +842,10 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
   }
 }
 
+//}
+
+/* SetLidarModeWithInt() //{ */
+
 void ULidar::SetLidarModeWithInt(int type)
 {
     if (type < 0 || type >= static_cast<int>(FLidarMode::MAX_MODE_TYPE))
@@ -797,6 +857,10 @@ void ULidar::SetLidarModeWithInt(int type)
     FLidarMode NewLidarMode = static_cast<FLidarMode>(type);
     LidarMode = NewLidarMode;
 }
+
+//}
+
+/* GetConfig() //{ */
 
 void ULidar::GetConfig(std::stringstream& OutputStream)
 {
@@ -826,6 +890,10 @@ void ULidar::GetConfig(std::stringstream& OutputStream)
 
     UE_LOG(LogTemp, Log, TEXT("Got lidar config"));
 }
+
+//}
+
+/* SetConfig() //{ */
 
 void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
 {
@@ -888,11 +956,14 @@ void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::str
 
     Status = true;
     
-    //const auto Status = SetLidarConfig(Config);
     
     Serializable::Drone::SetLidarConfig::Response Response(Status);
     Serialization::DeserializeResponse(Response, OutputStream);
 }
+
+//}
+
+/* GetData() //{ */
 
 void ULidar::GetData(std::stringstream& OutputStream)
 {
@@ -905,14 +976,25 @@ void ULidar::GetData(std::stringstream& OutputStream)
             double stamp;
             GetLidarHits(LidarData, Start, stamp);
 
+            const bool   bProfile     = CVarLidarProfile.GetValueOnAnyThread() != 0;
+            const double MarshalFrom  = FPlatformTime::Seconds();
+
             Serializable::Drone::GetLidarData::Response Response(true);
-            Response.lidarData = LidarData;
+            Response.lidarData = std::move(LidarData);
             Response.startX = Start.X;
             Response.startY = Start.Y;
             Response.startZ = Start.Z;
             Response.stamp_ = stamp;
 
+            const double SerializeFrom = FPlatformTime::Seconds();
+
             Serialization::DeserializeResponse(Response, OutputStream);
+
+            if (bProfile) {
+                const double Done = FPlatformTime::Seconds();
+                UE_LOG(LogTemp, Warning, TEXT("Lidar profile: move %.1f ms, serialize %.1f ms"), 1000.0 * (SerializeFrom - MarshalFrom),
+                       1000.0 * (Done - SerializeFrom));
+            }
             break;
         }
         
@@ -957,3 +1039,5 @@ void ULidar::GetData(std::stringstream& OutputStream)
             break;
     }
 }
+
+//}

@@ -138,7 +138,12 @@ UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath)
 
   // An empty node name merges the whole first scene into one mesh, so a model split
   // across several nodes still arrives as a single spawnable asset.
-  const FglTFRuntimeStaticMeshConfig StaticMeshConfig;
+  FglTFRuntimeStaticMeshConfig StaticMeshConfig;
+
+  // Without this the mesh renders but has no collision: cameras see the model while every
+  // ray-traced sensor passes straight through it.
+  StaticMeshConfig.bBuildComplexCollision = true;
+  StaticMeshConfig.CollisionComplexity    = ECollisionTraceFlag::CTF_UseComplexAsSimple;
 
   UStaticMesh* Mesh = Asset->LoadStaticMeshRecursive(FString(), TArray<FString>(), StaticMeshConfig);
   if (!Mesh)

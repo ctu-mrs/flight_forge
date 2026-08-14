@@ -116,10 +116,8 @@ public:
 
 	TArray<FColor> CameraBuffer;
 
-	// published instead of CameraBuffer for float16 (depth) captures
 	TArray<FFloat16> CameraBufferF16;
 
-	// dimensions of the published CameraBuffer, not of the (possibly resized) render target
 	FIntPoint CameraBufferSize = FIntPoint::ZeroValue;
 
 	std::atomic<double> camera_last_request_time_{0};
@@ -136,75 +134,49 @@ protected:
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadback;
 
-	// bumped each time a frame is published to CameraBuffer; server threads wait on it
 	std::atomic<uint64> FrameCounter{0};
 	FEvent* FrameReadyEvent = nullptr;
 
-	// registers this camera as a streaming view each tick while active, so
-	// textures near it keep full mips even when the player viewport is
-	// elsewhere or absent; without it off-pawn cameras render low-mip blur
 	void PushStreamingViewHint();
 
-	// scene captures ignore unbound PostProcessVolumes; seed the capture with
-	// the level's look so sensor output matches the viewport, with per-camera
-	// config overrides applied on top afterwards
 	void ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture);
 
 public:
-	// reversed-Z off-axis projection equivalent to the pinhole K = [fx 0 cx; 0 fy cy]
+
 	static FMatrix IntrinsicsProjectionMatrix(const FCameraIntrinsics& Intrinsics, int32 Width, int32 Height);
 
-	// the intrinsics the rendered image actually has: the custom ones when set and
-	// valid, otherwise fx = fy derived from the horizontal FOV with a centered
-	// principal point
 	static FCameraIntrinsics EffectiveIntrinsics(const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
-	// sets either the custom projection matrix or the plain FOV path on the capture
 	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
-	// LUT for undoing BuildDistortionLUT's view: output pixel -> where in the padded
-	// ideal-pinhole source that pixel's ray lands; null when distortion is off
 	static TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> BuildDistortionLUT(const FCameraDistortion& Distortion, const FCameraIntrinsics& EffectiveK,
 	                                                                                int32 Width, int32 Height);
 
-	// bilinear for imagery; nearest for label images so classes never blend
 	static void ResampleImage(const FDistortionLUT& LUT, const TArray<FColor>& Source, TArray<FColor>& OutResampled, bool bNearestNeighbor);
 
-	// One combined bilinear resample: distortion LUT (optional) plus the per-pixel
-	// first-order rolling-shutter displacement computed from OmegaCamera (camera
-	// frame: x right, y down, z forward) and the per-row readout delay.
 	static void WarpFrame(const TArray<FColor>& Source, FIntPoint SourceSize, TArray<FColor>& OutFrame, FIntPoint OutputSize, const FDistortionLUT* LUT,
 	                      const FCameraIntrinsics& EffectiveK, const FVector& OmegaCamera, double ReadoutTime);
 
-	// linearize (sRGB), add shot + read + row noise, re-encode; Seed makes a
-	// served frame's noise deterministic for its stamp
 	static void ApplyNoise(TArray<FColor>& Pixels, FIntPoint Size, const FCameraNoise& Noise, uint32 Seed);
 
-	// Encodes the served frame. bLossless forces PNG whatever the config says, for the
-	// label cameras whose pixel values are ids rather than colour.
 	static void CompressFrame(const TArray<FColor>& Pixels, FIntPoint Size, const FCameraCompression& Compression, bool bLossless, TArray<uint8>& OutBytes);
 
 protected:
-	// One-stop projection setup shared by the RGB/seg/stereo Set paths: without
-	// distortion it applies the plain (or custom-K) projection at the nominal size;
-	// with it, it renders the padded overscan frustum and stores the warp LUT.
-	// Caller must hold CameraBufferCriticalSection (DistortionLUT is written here,
-	// serve threads read it under the same lock).
 	void SetupCaptureProjection(const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion, double FovDeg, int32 Width, int32 Height,
 	                            std::initializer_list<USceneCaptureComponent2D*> Captures, std::initializer_list<UTextureRenderTarget2D*> Targets);
 
 	TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> DistortionLUT;
 
-	// published with the frame in PumpReadback, read by serve threads under the buffer lock
 	FVector capture_omega_ = FVector::ZeroVector;
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector,
 	                                                                 bool bFloat16 = false);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
-	// game thread: advances the pending readback and publishes a completed frame; true when published
-	bool PumpReadback();
+
+  bool PumpReadback();
+
 	void NotifyFrameReady();
-	// server thread: true once FrameCounter passes BaselineFrame
+
 	bool WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds);
 
 	void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
@@ -218,7 +190,9 @@ public:
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp);
 	
 	virtual void GetConfig(std::stringstream& OutputStream) override;
+
 	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
+
 	virtual void GetData(std::stringstream& OutputStream) override;
 
 	
