@@ -74,7 +74,8 @@ void UCamera::BeginDestroy()
 
 /* async readback machinery //{ */
 
-TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16)
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16,
+                                                                          const bool bEncodeSrgb, const bool bHalfRgba)
 {
 	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
 
@@ -84,10 +85,15 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	}
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = MakeShared<FCameraReadback, ESPMode::ThreadSafe>();
-	Slot->Size     = FIntPoint(RT->SizeX, RT->SizeY);
-	Slot->Stamp    = Stamp;
-	Slot->Omega    = Omega;
-	Slot->bFloat16 = bFloat16;
+	Slot->Size        = FIntPoint(RT->SizeX, RT->SizeY);
+	Slot->Stamp       = Stamp;
+	Slot->Omega       = Omega;
+	const EPixelFormat Format = RT->GetFormat();
+
+	Slot->bFloat16    = bFloat16;
+	Slot->bHalfRgba   = bHalfRgba && Format == PF_FloatRGBA;
+	Slot->bFloatRgba  = bHalfRgba && Format == PF_A32B32G32R32F;
+	Slot->bEncodeSrgb = bEncodeSrgb && !Slot->bHalfRgba && !Slot->bFloatRgba;
 	Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeCameraReadback"));
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeEnqueueReadback)(
@@ -121,7 +127,42 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 				const int32 W = Slot->Size.X;
 				const int32 H = Slot->Size.Y;
 
-				if (Slot->bFloat16)
+				if (Slot->bHalfRgba || Slot->bFloatRgba)
+				{
+					Slot->Pixels.SetNumUninitialized(W * H);
+
+					const auto Encode = [](const float Linear)
+					{
+						const float Clamped = FMath::Clamp(Linear, 0.0f, 1.0f);
+						const float Srgb    = Clamped <= 0.0031308f ? Clamped * 12.92f : 1.055f * FMath::Pow(Clamped, 1.0f / 2.4f) - 0.055f;
+						return static_cast<uint8>(FMath::RoundToInt(Srgb * 255.0f));
+					};
+
+					for (int32 Row = 0; Row < H; ++Row)
+					{
+						FColor* DstRow = Slot->Pixels.GetData() + (int64)Row * W;
+
+						if (Slot->bFloatRgba)
+						{
+							const FLinearColor* SrcRow = static_cast<const FLinearColor*>(Data) + (int64)Row * RowPitchInPixels;
+
+							for (int32 Col = 0; Col < W; ++Col)
+							{
+								DstRow[Col] = FColor(Encode(SrcRow[Col].R), Encode(SrcRow[Col].G), Encode(SrcRow[Col].B), 255);
+							}
+						}
+						else
+						{
+							const FFloat16Color* SrcRow = static_cast<const FFloat16Color*>(Data) + (int64)Row * RowPitchInPixels;
+
+							for (int32 Col = 0; Col < W; ++Col)
+							{
+								DstRow[Col] = FColor(Encode(SrcRow[Col].R.GetFloat()), Encode(SrcRow[Col].G.GetFloat()), Encode(SrcRow[Col].B.GetFloat()), 255);
+							}
+						}
+					}
+				}
+				else if (Slot->bFloat16)
 				{
 					Slot->Float16Pixels.SetNumUninitialized(W * H);
 
@@ -154,6 +195,28 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 						for (int32 Row = 0; Row < H; ++Row)
 						{
 							FMemory::Memcpy(Slot->Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FColor));
+						}
+					}
+
+					if (Slot->bEncodeSrgb)
+					{
+						static const auto Lut = []
+						{
+							TStaticArray<uint8, 256> Table;
+							for (int32 i = 0; i < 256; ++i)
+							{
+								const float Linear = i / 255.0f;
+								const float Srgb   = Linear <= 0.0031308f ? Linear * 12.92f : 1.055f * FMath::Pow(Linear, 1.0f / 2.4f) - 0.055f;
+								Table[i]           = static_cast<uint8>(FMath::RoundToInt(Srgb * 255.0f));
+							}
+							return Table;
+						}();
+
+						for (FColor& Pixel : Slot->Pixels)
+						{
+							Pixel.R = Lut[Pixel.R];
+							Pixel.G = Lut[Pixel.G];
+							Pixel.B = Lut[Pixel.B];
 						}
 					}
 				}

@@ -6,6 +6,13 @@
 #include "Serialize.h"
 #include "FlightForgeCore/DronePawn.h"
 
+static TAutoConsoleVariable<int32> CVarHdrTargetBits(TEXT("FlightForge.Camera.HdrTargetBits"), 16,
+                                                     TEXT("Float bits per channel of the HDR capture target: 16 or 32."));
+
+// 1: filmic tone curve, highlights roll off like film. 0: linear until the pixel well
+// saturates, then hard clip - how a machine-vision sensor actually responds.
+static TAutoConsoleVariable<int32> CVarFilmicToneCurve(TEXT("FlightForge.Camera.FilmicToneCurve"), 1,
+                                                       TEXT("HDR capture transform: 1 filmic tone curve, 0 linear sensor with hard clipping."));
 
 URgbCamera::URgbCamera() : UCamera()
 {
@@ -25,23 +32,11 @@ void URgbCamera::BeginPlay()
 	RenderTarget2D->RenderTargetFormat = RTF_RGBA8;
 	RenderTarget2D->bGPUSharedFlag     = true;
 
-	SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
 	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(false);
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
-	SceneCaptureComponent2D->bUseRayTracingIfEnabled      = true;
-
-	rgb_camera_config_.ShowCameraComponent    = false;
-	rgb_camera_config_.Offset                 = FVector(0, 0, 0);
-	rgb_camera_config_.Orientation            = FRotator(0, 0, 0);
-	rgb_camera_config_.FOVAngle               = 90;
-	rgb_camera_config_.Width                  = 640;
-	rgb_camera_config_.Height                 = 480;
-	rgb_camera_config_.enable_motion_blur     = true;
-	rgb_camera_config_.motion_blur_amount     = 1.0;
-	rgb_camera_config_.motion_blur_distortion = 50.0;
 
 	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
 
@@ -157,13 +152,21 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureMeshHolder->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
 
+  // float target so the sRGB encode reads the render's own values rather than an 8-bit
+  // rounding of them, which is what costs shadow gradation
+  const bool         bWant32       = CVarHdrTargetBits.GetValueOnGameThread() >= 32;
+  const EPixelFormat DesiredFormat = !Config.enable_hdr ? PF_B8G8R8A8 : (bWant32 ? PF_A32B32G32R32F : PF_FloatRGBA);
+
+  if (RenderTarget2D->GetFormat() != DesiredFormat) {
+    RenderTarget2D->RenderTargetFormat = !Config.enable_hdr ? RTF_RGBA8 : (bWant32 ? RTF_RGBA32f : RTF_RGBA16f);
+    RenderTarget2D->InitCustomFormat(RenderTarget2D->SizeX, RenderTarget2D->SizeY, DesiredFormat, Config.enable_hdr);
+  }
+
   SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height, {SceneCaptureComponent2D}, {RenderTarget2D});
 
-  if (Config.enable_hdr) {
-    SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
-  } else {
-    SceneCaptureComponent2D->CaptureSource = SCS_FinalColorLDR;
-  }
+  const bool bFilmic = CVarFilmicToneCurve.GetValueOnGameThread() != 0;
+
+  SceneCaptureComponent2D->CaptureSource = !Config.enable_hdr ? SCS_FinalColorLDR : (bFilmic ? SCS_FinalToneCurveHDR : SCS_FinalColorHDR);
 
   SceneCaptureComponent2D->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
@@ -231,7 +234,7 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	LastCaptureQuat = CurrentQuat;
 	LastCaptureTime = stamp;
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp, OmegaCamera);
+	PendingReadback = EnqueueReadback(RenderTarget2D, stamp, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr);
 }
 
 bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp)
