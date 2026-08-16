@@ -55,6 +55,25 @@ void ULidar::BeginPlay()
 
 //}
 
+/* IgnoreOwnBody() //{ */
+
+// A real lidar sees the airframe it is bolted to, and the self-occlusion that produces
+// is part of what a rig has to be designed around. Only the sensor's own housing is
+// skipped, because a beam cannot be blocked by the aperture it leaves from.
+void ULidar::IgnoreOwnBody(FCollisionQueryParams& Params) const
+{
+	if (const UPrimitiveComponent* Body = GetSensorBody())
+	{
+		Params.AddIgnoredComponent(Body);
+	}
+	else
+	{
+		Params.AddIgnoredActor(Owner);
+	}
+}
+
+//}
+
 /* TickComponent() //{ */
 
 void ULidar::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -85,8 +104,9 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarConfig.Enable      = Config.Enable;
     LidarConfig.Livox       = Config.Livox;
     LidarConfig.LivoxSensor = Config.LivoxSensor;
-    LidarConfig.ShowBeams   = Config.ShowBeams;
-    LidarConfig.BeamLength  = Config.BeamLength;
+    LidarConfig.ShowBeams      = Config.ShowBeams;
+    LidarConfig.BeamLength     = Config.BeamLength;
+    LidarConfig.ShowSensorBody = Config.ShowSensorBody;
 
     ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
 
@@ -119,6 +139,9 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarSegHits->resize(LidarConfig.BeamHorRays * LidarConfig.BeamVertRays);
     LidarHitsCriticalSection->Unlock();
     LidarSegHitsCriticalSection->Unlock();
+
+    // a puck roughly the size of a mid-360, at the mount the beams actually leave from
+    UpdateSensorBody(LidarConfig.ShowSensorBody, LidarConfig.Offset, LidarConfig.Orientation, FVector(0.10, 0.10, 0.07));
 
     return true;
 }
@@ -291,7 +314,7 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         // Without this every beam hits the airframe first, and that hit is inside
         // MinRangeCm, so the ray is dropped and reported as no return at all.
         FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-        CollisionParams.AddIgnoredActor(Owner);
+        IgnoreOwnBody(CollisionParams);
 
         // resolving a material per hit is wasted unless the seg/intensity modes read it
         CollisionParams.bReturnPhysicalMaterial = bNeedPhysicalMaterial;
@@ -455,7 +478,7 @@ void ULidar::UpdateLidar(bool isExternallyLocked) {
 
         {
             FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-            CollisionParams.AddIgnoredActor(Owner);
+            IgnoreOwnBody(CollisionParams);
             if (LidarConfig.ShowBeams) {
                 const FName TraceTag(FString::Printf(TEXT("LidarTraceTag_%d"), 0));
                 CollisionParams.TraceTag = TraceTag;
@@ -604,7 +627,7 @@ void ULidar::UpdateSegLidar(bool isExternallyLocked) {
 
         {
         FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-        CollisionParams.AddIgnoredActor(Owner);
+        IgnoreOwnBody(CollisionParams);
         // Calculate the vertical angle for the current ray
         double vertAngle = -LidarConfig.FOVVertDown + (totalVertFov * (double)col / (double)(LidarConfig.BeamVertRays - 1.0));
 
@@ -780,7 +803,7 @@ void ULidar::UpdateIntLidar(bool isExternallyLocked) {
 
         {
         FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
-        CollisionParams.AddIgnoredActor(Owner);
+        IgnoreOwnBody(CollisionParams);
         CollisionParams.bReturnPhysicalMaterial = true;
 
         // Calculate the vertical angle for the current ray
@@ -876,7 +899,8 @@ void ULidar::GetConfig(std::stringstream& OutputStream)
     Response.config = Serializable::Drone::LidarConfig{};
 
     Response.config.Enable        = LidarConfig.Enable;
-    Response.config.ShowBeams     = LidarConfig.ShowBeams;
+    Response.config.ShowBeams      = LidarConfig.ShowBeams;
+    Response.config.ShowSensorBody = LidarConfig.ShowSensorBody;
     Response.config.BeamLength    = LidarConfig.BeamLength;
     Response.config.BeamHorRays   = LidarConfig.BeamHorRays;
     Response.config.BeamVertRays  = LidarConfig.BeamVertRays;
@@ -919,8 +943,9 @@ void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::str
     LidarConfig.Enable      = Request.config.Enable;
     LidarConfig.Livox       = Request.config.Livox;
     LidarConfig.LivoxSensor = FString(UTF8_TO_TCHAR(Request.config.LivoxSensor.c_str()));
-    LidarConfig.ShowBeams   = Request.config.ShowBeams;
-    LidarConfig.BeamLength  = Request.config.BeamLength;
+    LidarConfig.ShowBeams      = Request.config.ShowBeams;
+    LidarConfig.BeamLength     = Request.config.BeamLength;
+    LidarConfig.ShowSensorBody = Request.config.ShowSensorBody;
 
     ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
 
@@ -962,9 +987,11 @@ void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::str
     LidarHitsCriticalSection->Unlock();
     LidarSegHitsCriticalSection->Unlock();
 
+    UpdateSensorBody(LidarConfig.ShowSensorBody, LidarConfig.Offset, LidarConfig.Orientation, FVector(0.10, 0.10, 0.07));
+
     Status = true;
-    
-    
+
+
     Serializable::Drone::SetLidarConfig::Response Response(Status);
     Serialization::DeserializeResponse(Response, OutputStream);
 }

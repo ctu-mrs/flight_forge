@@ -42,8 +42,27 @@ void UCamera::Initialize(int InSensorID)
 	
 	
 	SceneCaptureMeshHolder->SetMobility(EComponentMobility::Movable);
-	if (!SceneCaptureMeshHolder->IsRegistered()) 
+	if (!SceneCaptureMeshHolder->IsRegistered())
 		SceneCaptureMeshHolder->RegisterComponent();
+
+	// The holder never had a mesh, so show_debug_camera toggled the visibility of
+	// nothing. A small body at the mount makes a rig checkable by eye and lets other
+	// sensors see the camera the way they would see real hardware.
+	if (!SceneCaptureMeshHolder->GetStaticMesh())
+	{
+		if (UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")))
+		{
+			SceneCaptureMeshHolder->SetStaticMesh(Cube);
+			SceneCaptureMeshHolder->SetRelativeScale3D(FVector(0.06, 0.06, 0.06));
+			SceneCaptureMeshHolder->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			SceneCaptureMeshHolder->SetCollisionObjectType(ECC_WorldStatic);
+			SceneCaptureMeshHolder->SetCollisionResponseToAllChannels(ECR_Block);
+			SceneCaptureMeshHolder->SetGenerateOverlapEvents(false);
+			SceneCaptureMeshHolder->SetCastShadow(false);
+			SceneCaptureMeshHolder->SetVisibility(false);
+			SceneCaptureMeshHolder->SetHiddenInGame(true);
+		}
+	}
 	
 	
 	SceneCaptureComponent2D->SetMobility(EComponentMobility::Movable);

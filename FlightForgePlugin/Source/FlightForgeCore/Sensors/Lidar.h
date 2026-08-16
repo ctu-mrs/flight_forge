@@ -31,6 +31,7 @@ struct FLidarConfig
 	bool Livox;
 	FString LivoxSensor;
 	bool   ShowBeams;
+	bool   ShowSensorBody = false;
 	double BeamLength;
 
 	int BeamHorRays;
@@ -120,6 +121,9 @@ protected:
 	const FLivoxPattern* GetLivoxPattern() const;
 
 	void ResetLivoxCursorsIfChanged(bool LivoxWas, const FString& LivoxSensorWas);
+
+	// Skips this sensor's own housing so the beams still see the airframe around it.
+	void IgnoreOwnBody(FCollisionQueryParams& Params) const;
 
 	// Intensity doubles as a material class id here, not a radiometric return.
 	static int MaterialIntensity(const FString& PhysMatName);

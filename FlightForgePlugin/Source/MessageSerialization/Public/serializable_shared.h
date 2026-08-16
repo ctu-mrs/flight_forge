@@ -155,10 +155,16 @@ struct LidarConfig
   // so a new sensor is a new pattern file and needs no protocol change.
   std::string LivoxSensor;
 
+  // Draws the sensor housing at its mount point and lets the beams see the airframe
+  // they are bolted to, the way the real hardware occludes itself. Off by default
+  // because a sensor left at the frame's origin sits inside the body and would find
+  // nothing but itself.
+  bool ShowSensorBody = false;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox, LivoxSensor);
+            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox, LivoxSensor, ShowSensorBody);
   }
 };
 

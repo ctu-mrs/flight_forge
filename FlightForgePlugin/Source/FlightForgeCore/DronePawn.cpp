@@ -58,6 +58,12 @@ ADronePawn::ADronePawn() {
   PropellerRearRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PropellerRearRight"));
   PropellerRearRight->SetupAttachment(RootMeshComponent);
 
+  // Ray-traced sensors query the Visibility channel, and nothing here answered on it, so
+  // the airframe was invisible to every lidar including the ones bolted to it. Propellers
+  // keep their collision off: their meshes carry no cooked collision, and switching them
+  // on tears down physics on spawn. Drone-to-drone masking is separate, on ECC_Pawn.
+  RootMeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+
   // X500
   FramePropellersTransforms.Add(FramePropellersTransform(FString(TEXT("x500")), FString(TEXT("x500")),
                                                          FTransform(FRotator(0, 0, 0), FVector(-18.8, -18.8, 6.5), FVector(-0.85, 0.85, -0.8)),

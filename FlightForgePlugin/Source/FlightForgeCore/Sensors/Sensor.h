@@ -42,9 +42,22 @@ public:
 	int GetSensorID();
 
 	::SensorType GetSensorType() const { return SensorType; }
-		
+
+	/**
+	 * A visible body at the sensor's mount point, so a rig can be checked by eye and so
+	 * the sensor occludes the way the real hardware does. Traces from the sensor that
+	 * owns it skip it - a lidar cannot see its own housing - but every other sensor can,
+	 * as can this one's view of the airframe it is bolted to.
+	 */
+	void UpdateSensorBody(bool bVisible, const FVector& MountOffset, const FRotator& MountRotation, const FVector& BodySize);
+
+	UPrimitiveComponent* GetSensorBody() const;
+
 protected:
 	virtual void BeginPlay() override;
+
+	UPROPERTY()
+	UStaticMeshComponent* SensorBody = nullptr;
 
 	ADronePawn* Owner;
 	
