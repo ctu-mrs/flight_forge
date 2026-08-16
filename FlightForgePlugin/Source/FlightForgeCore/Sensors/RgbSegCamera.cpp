@@ -2,6 +2,7 @@
 
 #include "HAL/IConsoleManager.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialRenderProxy.h"
 #include "TextureResource.h"
 
 #include "Serialize.h"
@@ -154,8 +155,36 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;  // previous transfer still in flight
 	}
 
+	// While the blendable's shaders are still compiling a capture renders without it,
+	// handing the client a photograph labelled as a mask. Only the render thread knows
+	// when the compiled shaders are actually in use, so ask it and wait for the answer.
+	if (PostProcessMaterial && !BlendableLive->load()) {
+		const FMaterialRenderProxy*  Proxy        = PostProcessMaterial->GetRenderProxy();
+		const ERHIFeatureLevel::Type FeatureLevel = GetWorld()->GetFeatureLevel();
+
+		ENQUEUE_RENDER_COMMAND(FlightForgeSegBlendableProbe)(
+			[Proxy, FeatureLevel, Flag = BlendableLive](FRHICommandListImmediate&)
+			{
+				if (Proxy && Proxy->GetMaterialNoFallback(FeatureLevel))
+				{
+					Flag->store(true);
+				}
+			});
+
+		return;
+	}
+
 	SceneCaptureComponent2D->CaptureSource = SCS_FinalColorLDR;
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
+
+	// the capture's first renders see an empty custom-stencil input, and the mask material
+	// passes scene colour through for unlabelled pixels - photographs; render and discard
+	if (WarmupCapturesRemaining > 0)
+	{
+		--WarmupCapturesRemaining;
+		SceneCaptureComponent2D->CaptureScene();
+		return;
+	}
 
 	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
 	{

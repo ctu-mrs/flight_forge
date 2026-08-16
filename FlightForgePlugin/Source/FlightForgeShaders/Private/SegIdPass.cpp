@@ -186,6 +186,22 @@ bool FSegIdViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionCo
 static TAutoConsoleVariable<int32> CVarSegIdEnable(TEXT("FlightForge.SegId.Enable"), 1,
                                                    TEXT("Enable the instance-segmentation mesh pass."), ECVF_RenderThreadSafe);
 
+// A job holds raw scene proxies, which the render thread may free once the frame that
+// collected them is over. A capture that never renders (component asleep, sensor removed)
+// would otherwise leave one parked in the map until some later view happens to match it.
+void FSegIdViewExtension::DropStaleJobs_RenderThread()
+{
+	for (auto It = Jobs.CreateIterator(); It; ++It)
+	{
+		if (It->Value.FrameNumber != GFrameNumberRenderThread)
+		{
+			UE_LOG(LogTemp, Verbose, TEXT("SegId: dropping a job left from frame %u"), It->Value.FrameNumber);
+			It.RemoveCurrent();
+			PendingJobs--;
+		}
+	}
+}
+
 void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter, const FIntPoint Size, TArray<FSegIdDrawItem>&& Items,
                                                const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
 {
@@ -201,10 +217,13 @@ void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter
 	ENQUEUE_RENDER_COMMAND(FlightForgeSubmitSegIdJob)(
 	    [Extension, TargetFilter, Size, MovedItems = MoveTemp(Items), Slot](FRHICommandListImmediate&) mutable
 	    {
-		    FSegIdJob& Job = Extension->Jobs.FindOrAdd(TargetFilter);
-		    Job.Size       = Size;
-		    Job.Items      = MoveTemp(MovedItems);
-		    Job.Slot       = Slot;
+		    Extension->DropStaleJobs_RenderThread();
+
+		    FSegIdJob& Job   = Extension->Jobs.FindOrAdd(TargetFilter);
+		    Job.Size         = Size;
+		    Job.Items        = MoveTemp(MovedItems);
+		    Job.Slot         = Slot;
+		    Job.FrameNumber  = GFrameNumberRenderThread;
 	    });
 }
 
@@ -224,6 +243,8 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	{
 		return;
 	}
+
+	DropStaleJobs_RenderThread();
 
 	FSegIdJob Job;
 	if (!Jobs.RemoveAndCopyValue(InView.Family->RenderTarget, Job))

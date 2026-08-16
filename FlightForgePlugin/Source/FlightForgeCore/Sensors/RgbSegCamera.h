@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -24,6 +22,12 @@ protected:
 	bool GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double &stamp);
 
 	FRgbCameraConfig rgb_camera_config_;
+
+	// set from the render thread once the blendable's shaders are actually usable there;
+	// shared so an in-flight probe outliving the camera writes into live memory
+	TSharedPtr<std::atomic<bool>, ESPMode::ThreadSafe> BlendableLive = MakeShared<std::atomic<bool>, ESPMode::ThreadSafe>(false);
+
+	int32 WarmupCapturesRemaining = 2;
 
 public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,

@@ -12,10 +12,9 @@ class FRenderTarget;
 
 /* FSegIdDrawItem //{ */
 
-// One primitive to render into the ID pass. The proxy pointer is collected on the
-// game thread immediately before CaptureScene and consumed in the same frame's
-// render, which is the same lifetime assumption the engine's own dynamic mesh
-// passes make.
+// One primitive to render into the ID pass. The proxy is only valid for the render
+// frame it was collected on: a job left unconsumed past that must be dropped, or the
+// pass walks proxies the render thread has since freed.
 struct FSegIdDrawItem
 {
 	const FPrimitiveSceneProxy* Proxy = nullptr;
@@ -71,7 +70,11 @@ private:
 		FIntPoint                                        Size = FIntPoint::ZeroValue;
 		TArray<FSegIdDrawItem>                           Items;
 		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
+
+		uint32 FrameNumber = 0;
 	};
+
+	void DropStaleJobs_RenderThread();
 
 	// render thread only
 	TMap<const FRenderTarget*, FSegIdJob> Jobs;
