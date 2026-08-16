@@ -54,10 +54,11 @@ class FLIGHTFORGECORE_API UAssetResolver : public UObject
   GENERATED_BODY()
 
 public:
-  bool Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths, FResolvedAsset& OutResolved);
+  bool Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths, FResolvedAsset& OutResolved,
+               UObject* MeshOuter = nullptr);
 
   /** Imports a whole glTF scene as a single static mesh. Results are cached by file path. */
-  UStaticMesh* ImportGltf(const FString& FilePath);
+  UStaticMesh* ImportGltf(const FString& FilePath, UObject* MeshOuter);
 
   /** Locates a .glb/.gltf for an asset name, accepting both <dir>/<name>.glb and <dir>/<name>/<name>.glb. */
   static bool FindModelFile(const FString& AssetName, const TArray<FString>& ModelPaths, FString& OutFilePath);

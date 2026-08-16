@@ -303,7 +303,7 @@ bool ADronePawn::LoadExternalModel(const FString &ModelName) {
     return false;
   }
 
-  UStaticMesh *Mesh = ExternalModelResolver->ImportGltf(ModelFilePath);
+  UStaticMesh *Mesh = ExternalModelResolver->ImportGltf(ModelFilePath, this);
   if (!Mesh) {
     return false;
   }

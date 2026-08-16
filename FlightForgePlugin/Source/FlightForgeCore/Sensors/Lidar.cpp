@@ -143,6 +143,12 @@ void ULidar::ResetLivoxCursorsIfChanged(bool LivoxWas, const FString& LivoxSenso
     if (LidarConfig.Livox) {
         // Fail loudly at configuration time rather than returning empty clouds.
         if (const FLivoxPattern* Pattern = GetLivoxPattern()) {
+            if (Pattern->MaxRangeCm > 0.0 && LidarConfig.BeamLength <= DEFAULT_LIDAR_BEAM_LENGTH) {
+                UE_LOG(LogTemp, Log, TEXT("Livox: '%s' reaches %.0f m, raising the beam from the %.0f m default"), *LidarConfig.LivoxSensor,
+                       Pattern->MaxRangeCm / 100.0, LidarConfig.BeamLength / 100.0);
+                LidarConfig.BeamLength = Pattern->MaxRangeCm;
+            }
+
             UE_LOG(LogTemp, Log, TEXT("Livox: '%s' active, %.0f kHz -> %d points per message at %.1f Hz"), *LidarConfig.LivoxSensor,
                    Pattern->PointRate / 1000.0, FMath::RoundToInt(Pattern->PointRate / FMath::Max(LidarConfig.Frequency, 1.0)), LidarConfig.Frequency);
         } else {
@@ -267,7 +273,9 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
     const int32  RaysPerBatch = FMath::Max(1, FMath::RoundToInt(LIVOX_SUB_BATCH_TIME * Pattern->PointRate));
     const int32  NumBatches   = FMath::DivideAndRoundUp(NumRays, RaysPerBatch);
     const double MinRangeCm   = Pattern->MinRangeCm;
-    const double BeamLength   = LidarConfig.BeamLength;
+
+    // a Livox cannot see past its own spec, whatever the config asks for
+    const double BeamLength = Pattern->MaxRangeCm > 0.0 ? FMath::Min(LidarConfig.BeamLength, Pattern->MaxRangeCm) : LidarConfig.BeamLength;
 
     ParallelFor(NumBatches, [&](int32 BatchIndex) {
         const double Alpha = NumBatches > 1 ? ((double)BatchIndex + 0.5) / (double)NumBatches : 1.0;
