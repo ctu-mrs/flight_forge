@@ -133,23 +133,40 @@ bool TcpServer::Respond(const FTCPClient& Client, const FString& Message) const
 
 bool TcpServer::Respond(const FTCPClient& Client, const std::string& Message) const
 {
-	auto OutBytes = new uint8[Message.length() + 3];
-	for(size_t i = 0; i < Message.length(); i++)
-		OutBytes[i] = Message[i];
+	TArray<uint8> OutBytes;
+	OutBytes.SetNumUninitialized(Message.length() + 3);
+	FMemory::Memcpy(OutBytes.GetData(), Message.data(), Message.length());
 
-	OutBytes[Message.length()] = END_OF_MESSAGE; // mark end of message
-	OutBytes[Message.length()+1] = END_OF_MESSAGE; // mark end of message
-	OutBytes[Message.length()+2] = END_OF_MESSAGE; // mark end of message
+	OutBytes[Message.length()]     = END_OF_MESSAGE;
+	OutBytes[Message.length() + 1] = END_OF_MESSAGE;
+	OutBytes[Message.length() + 2] = END_OF_MESSAGE;
 
-	/* UE_LOG(LogTemp, Warning, TEXT("Message.length: %llu"), Message.length()+3); */
-	
-	int32 BytesSent;
-	const bool Sent = Client.Socket->Send(OutBytes, Message.length() + 3, BytesSent);
-	
-	/* UE_LOG(LogTemp, Warning, TEXT("SendResult: %d"), Sent); */
-	/* UE_LOG(LogTemp, Warning, TEXT("BytesSent: %d"), BytesSent); */
-	delete[] OutBytes;
-	return Sent;
+	// Send takes what fits in the socket buffer and reports success for the prefix, so a
+	// reply larger than that arrives truncated unless the rest is pushed after it. Mesh
+	// and point-cloud replies are far past that threshold.
+	int32 TotalSent = 0;
+	while (TotalSent < OutBytes.Num())
+	{
+		int32      BytesSent = 0;
+		const bool bSent     = Client.Socket->Send(OutBytes.GetData() + TotalSent, OutBytes.Num() - TotalSent, BytesSent);
+
+		if (!bSent)
+		{
+			UE_LOG(LogTemp, Error, TEXT("TcpServer: send failed %d bytes into a %d byte reply"), TotalSent, OutBytes.Num());
+			return false;
+		}
+
+		if (BytesSent <= 0)
+		{
+			// the buffer is full and the peer has not drained it yet
+			FPlatformProcess::Sleep(0.0002f);
+			continue;
+		}
+
+		TotalSent += BytesSent;
+	}
+
+	return true;
 }
 
 bool TcpServer::Respond(const FTCPClient& Client, const std::stringstream& Message) const
