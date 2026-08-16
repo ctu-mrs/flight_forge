@@ -39,19 +39,19 @@ struct FCameraLensEffects
 
 struct FRgbCameraConfig
 {
-	bool ShowCameraComponent;
+	bool ShowCameraComponent = false;
 
-	FVector  Offset;
-	FRotator Orientation;
-	double   FOVAngle;
-	int      Width;
-	int      Height;
-	bool     enable_temporal_aa;
-	bool     enable_hdr;
-	bool     enable_raytracing;
-	bool     enable_motion_blur;
-	double   motion_blur_amount;
-	double   motion_blur_distortion;
+	FVector  Offset             = FVector::ZeroVector;
+	FRotator Orientation        = FRotator::ZeroRotator;
+	double   FOVAngle           = 90.0;
+	int      Width              = 640;
+	int      Height             = 480;
+	bool     enable_temporal_aa = false;
+	bool     enable_hdr         = true;
+	bool     enable_raytracing  = true;
+	bool     enable_motion_blur     = true;
+	double   motion_blur_amount     = 1.0;
+	double   motion_blur_distortion = 50.0;
 
 	FCameraExposure       Exposure;
 	FCameraLensEffects    Lens;

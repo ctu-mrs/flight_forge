@@ -170,7 +170,7 @@ protected:
 	FVector capture_omega_ = FVector::ZeroVector;
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector,
-	                                                                 bool bFloat16 = false);
+	                                                                 bool bFloat16 = false, bool bEncodeSrgb = false, bool bHalfRgba = false);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
   bool PumpReadback();
