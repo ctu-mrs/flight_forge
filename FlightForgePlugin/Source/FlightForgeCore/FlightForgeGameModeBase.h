@@ -55,7 +55,8 @@ private:
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
 
 	std::unique_ptr<FCriticalSection> FPSCriticalSection = std::make_unique<FCriticalSection>();
-	double FPS = 0; 
+	double FPS = 0;
+	double WallFPS = 0;
 
 	std::unique_ptr<FCriticalSection> DronePawnsCriticalSection = std::make_unique<FCriticalSection>();
 
@@ -160,8 +161,15 @@ private:
 			Instruction->Finished = true;
 		}
 
+		// Tick's delta is dilated, so 1/delta counts frames per SIMULATED second: under a
+		// dilation of 0.25 it reads four times the rate the machine is really drawing at.
+		// That number is what tells a client how finely a sensor can be sampled, so both
+		// are kept: this one, and the wall-clock rate the hardware is actually managing.
+		const double WallDelta = FApp::GetDeltaTime() > 0.0 ? FApp::GetDeltaTime() : DeltaSeconds;
+
 		FPSCriticalSection->Lock();
-		FPS = 1.0f / DeltaSeconds;
+		FPS     = 1.0f / DeltaSeconds;
+		WallFPS = 1.0 / WallDelta;
 		FPSCriticalSection->Unlock();
 	
 		Super::Tick(DeltaSeconds);
@@ -398,6 +406,7 @@ public:
 		return true;
 	}
 
+	// frames per SIMULATED second; divide by the time dilation for the wall-clock rate
 	float GetFPS()
 	{
 		float _FPS = 0;

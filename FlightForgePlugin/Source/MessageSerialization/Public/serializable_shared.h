@@ -1817,7 +1817,8 @@ enum MessageType : unsigned short
   export_scene            = 23,
   list_assets             = 24,
   get_world_mesh          = 25,
-  get_distance_batch      = 26
+  get_distance_batch      = 26,
+  set_time_dilation       = 27
 };
 
 // Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
@@ -2199,14 +2200,55 @@ struct Response : public Common::NetworkResponse
   Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_time)){};
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_time, _status){};
 
+  // Wall clock, which is what a client synchronising its own clock against the
+  // simulator needs; it does not scale with time dilation.
   double time;
+
+  // Simulated seconds since the level began, and the factor relating the two. At a
+  // dilation of 0.5 this advances half as fast as the wall clock, which is what lets a
+  // perception stack that cannot keep up still see every frame.
+  double sim_time = 0.0;
+  double time_dilation = 1.0;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), time);
+    archive(cereal::base_class<Common::NetworkResponse>(this), time, sim_time, time_dilation);
   }
 };
 }  // namespace GetTime
+
+/*SetTimeDilation//{*/
+namespace SetTimeDilation
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(MessageType::set_time_dilation){};
+
+  // Simulated seconds per wall second. Below 1 the world runs slow, which buys a client
+  // more frames per simulated second; above 1 it runs fast. The engine clamps this, so
+  // the response reports what was actually applied.
+  double dilation = 1.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), dilation);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_time_dilation)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_time_dilation, _status){};
+
+  double applied = 1.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), applied);
+  }
+};
+}  // namespace SetTimeDilation
+/*//}*/
 
 namespace GetWorldOrigin
 {

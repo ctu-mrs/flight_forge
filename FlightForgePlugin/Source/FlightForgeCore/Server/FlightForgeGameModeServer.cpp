@@ -1,5 +1,8 @@
 ﻿#include "FlightForgeGameModeServer.h"
 
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/WorldSettings.h"
+
 #include "Serialize.h"
 #include "../FlightForgeGameModeBase.h"
 #include "../Utils/DistanceFieldQuery.h"
@@ -174,6 +177,13 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     Serializable::GameMode::GetWorldMesh::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return GetWorldMesh(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::set_time_dilation)
+  {
+    Serializable::GameMode::SetTimeDilation::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetTimeDilation(Client, CustomRequest);
   }
 
   if(Request.type == Serializable::GameMode::MessageType::get_distance_batch)
@@ -440,11 +450,58 @@ bool FlightForgeGameModeServer::GetTime(const FTCPClient& Client, Serializable::
   auto Response = Serializable::GameMode::GetTime::Response(true);
   Response.time = FPlatformTime::Seconds();
 
+  if (const UWorld* World = GameMode->GetWorld()) {
+    Response.sim_time      = World->GetTimeSeconds();
+    Response.time_dilation = World->GetWorldSettings() ? World->GetWorldSettings()->GetEffectiveTimeDilation() : 1.0;
+  }
+
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);
 
   return Respond(Client, OutputStream);
 }
+
+/* setTimeDilation() //{ */
+
+bool FlightForgeGameModeServer::SetTimeDilation(const FTCPClient& Client, Serializable::GameMode::SetTimeDilation::Request& Request) {
+
+  if (!GameMode) {
+    return false;
+  }
+
+  double Applied = 1.0;
+  bool   bOk     = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Applied, &bOk, &Request](AFlightForgeGameModeBase& _GameMode) {
+    UWorld* World = _GameMode.GetWorld();
+    if (!World || Request.dilation <= 0.0) {
+      return;
+    }
+
+    UGameplayStatics::SetGlobalTimeDilation(World, static_cast<float>(Request.dilation));
+
+    // the engine clamps to the world's Min/MaxGlobalTimeDilation, so the caller is told
+    // what it actually got rather than what it asked for
+    Applied = World->GetWorldSettings() ? World->GetWorldSettings()->GetEffectiveTimeDilation() : 1.0;
+    bOk     = true;
+
+    UE_LOG(LogTemp, Log, TEXT("FlightForge: time dilation requested %.4f, applied %.4f"), Request.dilation, Applied);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response    = Serializable::GameMode::SetTimeDilation::Response(bOk);
+  Response.applied = Applied;
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
 
 bool FlightForgeGameModeServer::SetGraphicsSettings(const FTCPClient& Client,
   Serializable::GameMode::SetGraphicsSettings::Request& Request)
