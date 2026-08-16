@@ -24,7 +24,7 @@ public class FlightForgeCore : ModuleRules
 		// FlightForgeShaders carries the SegId mesh pass and its shader types; it loads at
 		// PostConfigInit so this module can stay on the normal Default phase.
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime", "FlightForgeShaders"});
-		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "UnrealYAML", "AssetRegistry", "Renderer" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "UnrealYAML", "AssetRegistry", "Renderer", "Landscape" });
 
 		if (Target.bBuildEditor)
 		{

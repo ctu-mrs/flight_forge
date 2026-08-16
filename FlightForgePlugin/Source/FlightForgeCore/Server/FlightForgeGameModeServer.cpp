@@ -2,6 +2,8 @@
 
 #include "Serialize.h"
 #include "../FlightForgeGameModeBase.h"
+#include "../Utils/DistanceFieldQuery.h"
+#include "../Utils/WorldMeshExtractor.h"
 
 /* route //{ */
 
@@ -165,6 +167,20 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     Serializable::GameMode::ListAssets::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return ListAssets(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::get_world_mesh)
+  {
+    Serializable::GameMode::GetWorldMesh::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return GetWorldMesh(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::get_distance_batch)
+  {
+    Serializable::GameMode::GetDistanceBatch::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return GetDistanceBatch(Client, CustomRequest);
   }
 
   return false;
@@ -691,6 +707,92 @@ bool FlightForgeGameModeServer::ExportScene(const FTCPClient& Client, Serializab
 
   auto Response = Serializable::GameMode::ExportScene::Response(true);
   Response.yaml = TCHAR_TO_UTF8(*Yaml);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* getWorldMesh() //{ */
+
+bool FlightForgeGameModeServer::GetWorldMesh(const FTCPClient& Client, Serializable::GameMode::GetWorldMesh::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  constexpr int32 DefaultMaxTriangles = 2000000;
+
+  FBox SceneBounds(EForceInit::ForceInit);
+  if (Request.extent_x_ > 0.0 && Request.extent_y_ > 0.0 && Request.extent_z_ > 0.0) {
+    const FVector Center(Request.center_x_, Request.center_y_, Request.center_z_);
+    const FVector Extent(Request.extent_x_, Request.extent_y_, Request.extent_z_);
+    SceneBounds += Center - Extent;
+    SceneBounds += Center + Extent;
+  }
+
+  const int32 MaxTriangles = Request.max_triangles_ > 0 ? static_cast<int32>(Request.max_triangles_) : DefaultMaxTriangles;
+
+  FWorldMeshResult Mesh;
+  bool             bOk = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Mesh, &bOk, &SceneBounds, MaxTriangles](AFlightForgeGameModeBase& _GameMode) {
+    bOk = FWorldMeshExtractor::Extract(_GameMode.GetWorld(), _GameMode.GetWorldOrigin(), SceneBounds, MaxTriangles, Mesh);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::GetWorldMesh::Response(bOk);
+
+  if (bOk) {
+    Response.vertices_.assign(Mesh.Vertices.GetData(), Mesh.Vertices.GetData() + Mesh.Vertices.Num());
+    Response.indices_.assign(Mesh.Indices.GetData(), Mesh.Indices.GetData() + Mesh.Indices.Num());
+    Response.truncated_    = Mesh.bTruncated;
+    Response.source_count_ = Mesh.SourceCount;
+  }
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* getDistanceBatch() //{ */
+
+bool FlightForgeGameModeServer::GetDistanceBatch(const FTCPClient& Client, Serializable::GameMode::GetDistanceBatch::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  TArray<float> Points;
+  Points.SetNumUninitialized(Request.query_points_.size());
+  FMemory::Memcpy(Points.GetData(), Request.query_points_.data(), Request.query_points_.size() * sizeof(float));
+
+  TArray<float> Distances;
+  bool          bOk = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Points, &Distances, &bOk, &Request](AFlightForgeGameModeBase& _GameMode) {
+    bOk = FDistanceFieldQuery::Batch(_GameMode.GetWorld(), _GameMode.GetWorldOrigin(), Points, Request.max_radius_, Request.tolerance_,
+                                     Request.terrain_only_, Distances);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::GetDistanceBatch::Response(bOk);
+
+  if (bOk) {
+    Response.distances_.assign(Distances.GetData(), Distances.GetData() + Distances.Num());
+  }
 
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);

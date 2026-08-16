@@ -1,6 +1,3 @@
-// Copyright [2022] <Jakub Jirkal>
-// This code is licensed under MIT license (see LICENSE for details)
-
 #pragma once
 
 #include <array>
@@ -1812,7 +1809,9 @@ enum MessageType : unsigned short
   move_spawned_object     = 21,
   list_spawned_objects    = 22,
   export_scene            = 23,
-  list_assets             = 24
+  list_assets             = 24,
+  get_world_mesh          = 25,
+  get_distance_batch      = 26
 };
 
 // Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
@@ -2429,6 +2428,100 @@ namespace ListAssets
     template <class Archive>
     void serialize(Archive& archive) {
       archive(cereal::base_class<Common::NetworkResponse>(this), assets, truncated);
+    }
+  };
+}
+/*//}*/
+
+/*GetWorldMesh//{*/
+namespace GetWorldMesh
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::get_world_mesh){};
+
+    // Axis-aligned box filter in the scene frame (right-handed metres relative to the
+    // world origin). Any extent <= 0 disables the filter on that axis.
+    double center_x_ = 0.0;
+    double center_y_ = 0.0;
+    double center_z_ = 0.0;
+    double extent_x_ = 0.0;
+    double extent_y_ = 0.0;
+    double extent_z_ = 0.0;
+
+    // Hard cap on returned triangles; 0 takes the server default.
+    uint32_t max_triangles_ = 0;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), center_x_, center_y_, center_z_, extent_x_, extent_y_, extent_z_, max_triangles_);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_world_mesh)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_world_mesh, _status){};
+
+    // Triangle soup of the world's static geometry: xyz triplets in the scene frame
+    // (right-handed metres relative to the world origin), indices in triples.
+    std::vector<float>    vertices_;
+    std::vector<uint32_t> indices_;
+
+    // True when max_triangles_ cut the export short.
+    bool truncated_ = false;
+
+    // Number of mesh components that contributed.
+    int32_t source_count_ = 0;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), vertices_, indices_, truncated_, source_count_);
+    }
+  };
+}
+/*//}*/
+
+/*GetDistanceBatch//{*/
+namespace GetDistanceBatch
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::get_distance_batch){};
+
+    // Query points packed x0,y0,z0,x1,y1,z1,... in the scene frame (right-handed
+    // metres relative to the world origin).
+    std::vector<float> query_points_;
+
+    // Truncation radius [m]: with no surface within it, the returned distance is
+    // exactly max_radius_. Must be > 0.
+    double max_radius_ = 5.0;
+
+    // Binary-search tolerance [m].
+    double tolerance_ = 0.001;
+
+    // true: distance to terrain only (Landscape or actors tagged "terrain");
+    // false: distance to any static collision geometry.
+    bool terrain_only_ = false;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), query_points_, max_radius_, tolerance_, terrain_only_);
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_distance_batch)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_distance_batch, _status){};
+
+    // One distance [m] per query point; == max_radius_ when truncated; 0.0 when the
+    // query point is inside collision geometry.
+    std::vector<float> distances_;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), distances_);
     }
   };
 }
