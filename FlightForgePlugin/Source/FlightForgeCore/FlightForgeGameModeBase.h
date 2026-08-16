@@ -462,7 +462,7 @@ public:
 		}
 		else
 		{
-			UGameplayStatics::OpenLevel(this, FName(WorldLevelStr));
+			UGameplayStatics::OpenLevel(this, FName(WorldLevelStr), true, TEXT("?game=/Script/FlightForgeCore.FlightForgeGameModeBase"));
 		}
 
 		return true;
@@ -487,8 +487,11 @@ public:
 		if (Result == EAsyncLoadingResult::Succeeded)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Target Map %s is fully in RAM. Executing fast switch."), *MapNameToOpen.ToString());
-			
-			UGameplayStatics::OpenLevel(this, MapNameToOpen);
+
+			// Without the override the destination map uses its own GameModeOverride, and a
+			// map that carries one leaves the server with no game mode registered: the
+			// simulator comes up but answers nothing.
+			UGameplayStatics::OpenLevel(this, MapNameToOpen, true, TEXT("?game=/Script/FlightForgeCore.FlightForgeGameModeBase"));
 		}
 		else
 		{
