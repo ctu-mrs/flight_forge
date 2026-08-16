@@ -12,12 +12,13 @@ class FRenderTarget;
 
 /* FSegIdDrawItem //{ */
 
-// One primitive to render into the ID pass. The proxy is only valid for the render
-// frame it was collected on: a job left unconsumed past that must be dropped, or the
-// pass walks proxies the render thread has since freed.
+// One primitive to render into the ID pass. Identified by component id rather than by
+// proxy pointer: the game thread can destroy an actor at any point after collection,
+// and the render thread frees its proxy without telling anyone. The id is resolved
+// against the live scene at draw time, so a primitive that has gone simply drops out.
 struct FSegIdDrawItem
 {
-	const FPrimitiveSceneProxy* Proxy = nullptr;
+	FPrimitiveComponentId ComponentId;
 
 	// 24-bit instance id packed little-endian into RGB, in [0,1] units
 	FLinearColor IdColor = FLinearColor::Black;

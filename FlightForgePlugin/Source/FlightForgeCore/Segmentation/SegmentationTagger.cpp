@@ -150,8 +150,8 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 			const uint32 Id = GetOrAssignInstanceId(Actor);
 
 			FSegIdDrawItem Item;
-			Item.Proxy   = Component->SceneProxy;
-			Item.IdColor = FLinearColor((Id & 0xFF) / 255.0f, ((Id >> 8) & 0xFF) / 255.0f, ((Id >> 16) & 0xFF) / 255.0f, 1.0f);
+			Item.ComponentId = Component->GetPrimitiveSceneId();
+			Item.IdColor     = FLinearColor((Id & 0xFF) / 255.0f, ((Id >> 8) & 0xFF) / 255.0f, ((Id >> 16) & 0xFF) / 255.0f, 1.0f);
 
 			OutItems.Add(Item);
 			bAnyProxy = true;

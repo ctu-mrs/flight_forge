@@ -283,22 +283,21 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 
 	const FIntPoint Size = Job.Size;
 
-	const FScene* Scene = InView.Family->Scene ? InView.Family->Scene->GetRenderScene() : nullptr;
+	FSceneInterface* SceneInterface = InView.Family->Scene;
+	const FScene*    Scene          = SceneInterface ? SceneInterface->GetRenderScene() : nullptr;
 
 	AddSimpleMeshPass(GraphBuilder, PassParameters, Scene, InView, nullptr, RDG_EVENT_NAME("FlightForgeSegId"), FIntRect(0, 0, Size.X, Size.Y),
-	                  [ItemsOnPass, Scene, &InView](FDynamicPassMeshDrawListContext* DrawListContext)
+	                  [ItemsOnPass, Scene, SceneInterface, &InView](FDynamicPassMeshDrawListContext* DrawListContext)
 	                  {
 		                  FSegIdMeshProcessor Processor(Scene, &InView, DrawListContext);
 
 		                  for (const FSegIdDrawItem& Item : *ItemsOnPass)
 		                  {
-			                  if (!Item.Proxy)
-			                  {
-				                  continue;
-			                  }
-
-			                  const FPrimitiveSceneInfo* SceneInfo = Item.Proxy->GetPrimitiveSceneInfo();
-			                  if (!SceneInfo)
+			                  // resolved here, on the render thread, against the scene as it
+			                  // stands now: a primitive destroyed since collection is absent
+			                  // rather than a pointer into freed memory
+			                  const FPrimitiveSceneInfo* SceneInfo = SceneInterface ? SceneInterface->GetPrimitiveSceneInfo(Item.ComponentId) : nullptr;
+			                  if (!SceneInfo || !SceneInfo->Proxy)
 			                  {
 				                  continue;
 			                  }
@@ -309,7 +308,7 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 			                  {
 				                  if (Mesh.LODIndex == 0)
 				                  {
-					                  Processor.AddMeshBatch(Mesh, ~0ull, Item.Proxy);
+					                  Processor.AddMeshBatch(Mesh, ~0ull, SceneInfo->Proxy);
 				                  }
 			                  }
 		                  }
