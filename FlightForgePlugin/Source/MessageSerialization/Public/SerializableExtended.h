@@ -1,6 +1,3 @@
-﻿// Copyright [2022] <Jakub Jirkal>
-// This code is licensed under MIT license (see LICENSE for details)
-
 #pragma once
 #include <memory>
 #include "CoreMinimal.h"
