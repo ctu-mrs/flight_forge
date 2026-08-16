@@ -12,18 +12,12 @@
 
 /* AppendLandscape() //{ */
 
-static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heightfield, const FVector& WorldOrigin, const int32 MaxTriangles,
-                            FWorldMeshResult& Out)
+static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heightfield, const FVector& WorldOrigin, const FBox& SceneBounds,
+                            const int32 MaxTriangles, FWorldMeshResult& Out)
 {
 	const int32 Size = Heightfield->CollisionSizeQuads + 1;
 	if (Size <= 1)
 	{
-		return;
-	}
-
-	if (MaxTriangles > 0 && Out.Indices.Num() / 3 + (Size - 1) * (Size - 1) * 2 > MaxTriangles)
-	{
-		Out.bTruncated = true;
 		return;
 	}
 
@@ -33,10 +27,11 @@ static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heigh
 		return;
 	}
 
+	const bool       bFilter = SceneBounds.IsValid != 0;
 	const FTransform ToWorld = Heightfield->GetComponentTransform();
-	const uint32     Base    = Out.Vertices.Num() / 3;
 
-	Out.Vertices.Reserve(Out.Vertices.Num() + Size * Size * 3);
+	TArray<FVector3f> Scene;
+	Scene.SetNumUninitialized(Size * Size);
 	for (int32 y = 0; y < Size; ++y)
 	{
 		for (int32 x = 0; x < Size; ++x)
@@ -44,30 +39,70 @@ static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heigh
 			const float   Z = LandscapeDataAccess::GetLocalHeight(Heights[y * Size + x]);
 			const FVector W = ToWorld.TransformPosition(FVector(x * Heightfield->CollisionScale, y * Heightfield->CollisionScale, Z));
 
-			Out.Vertices.Add(static_cast<float>((W.X - WorldOrigin.X) / 100.0));
-			Out.Vertices.Add(static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0));
-			Out.Vertices.Add(static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
+			Scene[y * Size + x] = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
+			                                static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
 		}
 	}
 
 	const_cast<ULandscapeHeightfieldCollisionComponent*>(Heightfield)->CollisionHeightData.Unlock();
 
-	Out.Indices.Reserve(Out.Indices.Num() + (Size - 1) * (Size - 1) * 6);
+	// a landscape component covers hundreds of metres, so without per-quad clipping a
+	// small query still drags the whole tile over the wire
+	TArray<int32> Remap;
+	Remap.Init(-1, Size * Size);
+
+	const auto Emit = [&Remap, &Scene, &Out](const int32 Corner) {
+		if (Remap[Corner] < 0)
+		{
+			Remap[Corner] = Out.Vertices.Num() / 3;
+			Out.Vertices.Add(Scene[Corner].X);
+			Out.Vertices.Add(Scene[Corner].Y);
+			Out.Vertices.Add(Scene[Corner].Z);
+		}
+		Out.Indices.Add(static_cast<uint32>(Remap[Corner]));
+	};
+
+	bool bEmitted = false;
+
 	for (int32 y = 0; y < Size - 1; ++y)
 	{
 		for (int32 x = 0; x < Size - 1; ++x)
 		{
-			const uint32 I00 = Base + y * Size + x;
-			const uint32 I10 = I00 + 1;
-			const uint32 I01 = I00 + Size;
-			const uint32 I11 = I01 + 1;
+			if (MaxTriangles > 0 && Out.Indices.Num() / 3 + 2 > MaxTriangles)
+			{
+				Out.bTruncated = true;
+				Out.SourceCount += bEmitted ? 1 : 0;
+				return;
+			}
 
-			Out.Indices.Add(I00); Out.Indices.Add(I11); Out.Indices.Add(I10);
-			Out.Indices.Add(I00); Out.Indices.Add(I01); Out.Indices.Add(I11);
+			const int32 I00 = y * Size + x;
+			const int32 I10 = I00 + 1;
+			const int32 I01 = I00 + Size;
+			const int32 I11 = I01 + 1;
+
+			if (bFilter)
+			{
+				FBox Quad(EForceInit::ForceInit);
+				for (const int32 Corner : {I00, I10, I01, I11})
+				{
+					Quad += FVector(Scene[Corner]);
+				}
+				if (!SceneBounds.Intersect(Quad))
+				{
+					continue;
+				}
+			}
+
+			Emit(I00); Emit(I11); Emit(I10);
+			Emit(I00); Emit(I01); Emit(I11);
+			bEmitted = true;
 		}
 	}
 
-	Out.SourceCount++;
+	if (bEmitted)
+	{
+		Out.SourceCount++;
+	}
 }
 
 /* //} */
@@ -110,7 +145,7 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 		{
 			if (Heightfield && (!bFilter || WorldBounds.Intersect(Heightfield->Bounds.GetBox())))
 			{
-				AppendLandscape(Heightfield, WorldOrigin, MaxTriangles, Out);
+				AppendLandscape(Heightfield, WorldOrigin, SceneBounds, MaxTriangles, Out);
 			}
 		}
 
@@ -175,35 +210,67 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 			TArray<uint32> MeshIndices;
 			LOD.IndexBuffer.GetCopy(MeshIndices);
 
+			TArray<FVector3f> Scene;
+			TArray<int32>     Remap;
+
 			for (const FTransform& ToWorld : Transforms)
 			{
-				if (MaxTriangles > 0 && Out.Indices.Num() / 3 + NumTriangles > MaxTriangles)
+				if (MaxTriangles > 0 && Out.Indices.Num() / 3 >= MaxTriangles)
 				{
 					Out.bTruncated = true;
 					return true;
 				}
 
-				const uint32 Base = Out.Vertices.Num() / 3;
-
-				Out.Vertices.Reserve(Out.Vertices.Num() + NumVertices * 3);
+				Scene.SetNumUninitialized(NumVertices);
 				for (int32 i = 0; i < NumVertices; ++i)
 				{
-					const FVector Local(LOD.VertexBuffers.PositionVertexBuffer.VertexPosition(i));
-					const FVector W = ToWorld.TransformPosition(Local);
-
-					Out.Vertices.Add(static_cast<float>((W.X - WorldOrigin.X) / 100.0));
-					Out.Vertices.Add(static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0));
-					Out.Vertices.Add(static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
+					const FVector W = ToWorld.TransformPosition(FVector(LOD.VertexBuffers.PositionVertexBuffer.VertexPosition(i)));
+					Scene[i]        = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
+					                            static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
 				}
+
+				// vertices are emitted only once a triangle keeps them, so a clipped export
+				// carries no orphans; -1 means this instance has not emitted that vertex yet
+				Remap.Init(-1, NumVertices);
 
 				// UE winds clockwise in its left-handed frame; the y flip mirrors that into
 				// counter-clockwise outward in the right-handed one, so the order stands
-				Out.Indices.Reserve(Out.Indices.Num() + MeshIndices.Num());
 				for (int32 i = 0; i + 2 < MeshIndices.Num(); i += 3)
 				{
-					Out.Indices.Add(Base + MeshIndices[i]);
-					Out.Indices.Add(Base + MeshIndices[i + 1]);
-					Out.Indices.Add(Base + MeshIndices[i + 2]);
+					if (MaxTriangles > 0 && Out.Indices.Num() / 3 >= MaxTriangles)
+					{
+						Out.bTruncated = true;
+						return true;
+					}
+
+					const uint32 Corners[3] = {MeshIndices[i], MeshIndices[i + 1], MeshIndices[i + 2]};
+
+					// a triangle straddling the edge is kept whole: clipping it would leave
+					// a hole exactly where a query box meets the geometry it asked about
+					if (bFilter)
+					{
+						FBox Tri(EForceInit::ForceInit);
+						for (const uint32 Corner : Corners)
+						{
+							Tri += FVector(Scene[Corner]);
+						}
+						if (!SceneBounds.Intersect(Tri))
+						{
+							continue;
+						}
+					}
+
+					for (const uint32 Corner : Corners)
+					{
+						if (Remap[Corner] < 0)
+						{
+							Remap[Corner] = Out.Vertices.Num() / 3;
+							Out.Vertices.Add(Scene[Corner].X);
+							Out.Vertices.Add(Scene[Corner].Y);
+							Out.Vertices.Add(Scene[Corner].Z);
+						}
+						Out.Indices.Add(static_cast<uint32>(Remap[Corner]));
+					}
 				}
 			}
 
