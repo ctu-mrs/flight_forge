@@ -120,7 +120,7 @@ bool UAssetResolver::FindModelFile(const FString& AssetName, const TArray<FStrin
 
 /* ImportGltf() //{ */
 
-UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath)
+UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath, UObject* MeshOuter)
 {
   if (const TObjectPtr<UStaticMesh>* Cached = ImportedMeshes.Find(FilePath))
   {
@@ -136,14 +136,13 @@ UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath)
     return nullptr;
   }
 
-  // An empty node name merges the whole first scene into one mesh, so a model split
-  // across several nodes still arrives as a single spawnable asset.
   FglTFRuntimeStaticMeshConfig StaticMeshConfig;
 
-  // Without this the mesh renders but has no collision: cameras see the model while every
-  // ray-traced sensor passes straight through it.
+  // collision cooks only with CPU access and a game-world Outer; the flag alone is silently ignored
   StaticMeshConfig.bBuildComplexCollision = true;
   StaticMeshConfig.CollisionComplexity    = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+  StaticMeshConfig.bAllowCPUAccess        = true;
+  StaticMeshConfig.Outer                  = MeshOuter;
 
   UStaticMesh* Mesh = Asset->LoadStaticMeshRecursive(FString(), TArray<FString>(), StaticMeshConfig);
   if (!Mesh)
@@ -162,7 +161,7 @@ UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath)
 /* Resolve() //{ */
 
 bool UAssetResolver::Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths,
-                             FResolvedAsset& OutResolved)
+                             FResolvedAsset& OutResolved, UObject* MeshOuter)
 {
   OutResolved = FResolvedAsset();
 
@@ -201,7 +200,7 @@ bool UAssetResolver::Resolve(const FString& AssetName, const TArray<FString>& Se
   FString ModelFilePath;
   if (FindModelFile(AssetName, ModelPaths, ModelFilePath))
   {
-    if (UStaticMesh* Mesh = ImportGltf(ModelFilePath))
+    if (UStaticMesh* Mesh = ImportGltf(ModelFilePath, MeshOuter))
     {
       OutResolved.Kind = EResolvedAssetKind::StaticMesh;
       OutResolved.Mesh = Mesh;

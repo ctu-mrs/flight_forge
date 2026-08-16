@@ -29,7 +29,8 @@ void UWorldObjectSpawner::ApplyStencil(AActor* Actor, const int32 StencilValue)
 AActor* UWorldObjectSpawner::SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform)
 {
   FResolvedAsset Resolved;
-  if (!Resolver->Resolve(Entry.Asset, Config.SearchPaths, Config.ModelPaths, Resolved))
+
+  if (!Resolver->Resolve(Entry.Asset, Config.SearchPaths, Config.ModelPaths, Resolved, World))
   {
     return nullptr;
   }
