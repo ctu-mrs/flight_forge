@@ -186,6 +186,27 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     return SetTimeDilation(Client, CustomRequest);
   }
 
+  if(Request.type == Serializable::GameMode::MessageType::set_fixed_timestep)
+  {
+    Serializable::GameMode::SetFixedTimestep::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetFixedTimestep(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::set_lockstep)
+  {
+    Serializable::GameMode::SetLockstep::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return SetLockstep(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::step)
+  {
+    Serializable::GameMode::Step::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return Step(Client, CustomRequest);
+  }
+
   if(Request.type == Serializable::GameMode::MessageType::get_distance_batch)
   {
     Serializable::GameMode::GetDistanceBatch::Request CustomRequest;
@@ -887,6 +908,100 @@ bool FlightForgeGameModeServer::ListAssets(const FTCPClient& Client, Serializabl
   for (const FString& Name : Names) {
     Response.assets.push_back(TCHAR_TO_UTF8(*Name));
   }
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* setFixedTimestep() //{ */
+
+bool FlightForgeGameModeServer::SetFixedTimestep(const FTCPClient& Client, Serializable::GameMode::SetFixedTimestep::Request& Request) {
+
+  if (!GameMode) {
+    return false;
+  }
+
+  bool   bOk     = false;
+  double Applied = 0.0;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&bOk, &Applied, &Request](AFlightForgeGameModeBase& _GameMode) {
+    bOk     = _GameMode.SetFixedTimestep(Request.dt, Request.adaptive_min_dt);
+    Applied = _GameMode.GetFixedTimestep();
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response    = Serializable::GameMode::SetFixedTimestep::Response(bOk);
+  Response.applied = Applied;
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* setLockstep() //{ */
+
+bool FlightForgeGameModeServer::SetLockstep(const FTCPClient& Client, Serializable::GameMode::SetLockstep::Request& Request) {
+
+  if (!GameMode) {
+    return false;
+  }
+
+  bool bOk = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&bOk, &Request](AFlightForgeGameModeBase& _GameMode) { bOk = _GameMode.SetLockstep(Request.enabled); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response = Serializable::GameMode::SetLockstep::Response(bOk);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* step() //{ */
+
+bool FlightForgeGameModeServer::Step(const FTCPClient& Client, Serializable::GameMode::Step::Request& Request) {
+
+  if (!GameMode) {
+    return false;
+  }
+
+  bool bOk = false;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&bOk, &Request](AFlightForgeGameModeBase& _GameMode) { bOk = _GameMode.RequestStep(Request.ticks); };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  // a step not done within a minute means the world went away underneath it
+  if (bOk) {
+    const double Deadline = FPlatformTime::Seconds() + 60.0;
+    while (!GameMode->IsStepDone() && FPlatformTime::Seconds() < Deadline) {
+      FPlatformProcess::SleepNoStats(0.0002f);
+    }
+    bOk = GameMode->IsStepDone();
+  }
+
+  auto Response       = Serializable::GameMode::Step::Response(bOk);
+  Response.sim_time   = GameMode->GetSimTime();
+  Response.tick_count = GameMode->GetLockstepTicks();
 
   std::stringstream OutputStream;
   Serialization::DeserializeResponse(Response, OutputStream);

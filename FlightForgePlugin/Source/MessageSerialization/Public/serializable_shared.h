@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <vector>
 #include <string>
 
@@ -121,6 +122,7 @@ enum MessageType : unsigned short
   get_instance_seg_data           = 35,
   get_instance_seg_map            = 36,
   get_depth_camera_data           = 37,
+  set_pose_trajectory             = 38,
 };
 
 /* struct LidarConfig //{ */
@@ -777,6 +779,53 @@ struct Response : public Common::NetworkResponse
 
 //}
 
+/* SetPoseTrajectory //{ */
+
+// a pose timeline the pawn interpolates along per tick; t is ascending sim seconds, the end poses hold
+struct PoseSample
+{
+  double t;
+
+  double x;
+  double y;
+  double z;
+
+  double pitch;
+  double yaw;
+  double roll;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(t, x, y, z, pitch, yaw, roll);
+  }
+};
+
+namespace SetPoseTrajectory
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_pose_trajectory)) {
+  }
+
+  std::vector<PoseSample> samples;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), samples);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_pose_trajectory)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_pose_trajectory, _status) {
+  }
+};
+}  // namespace SetPoseTrajectory
+
+//}
+
 namespace GetRangefinderData
 {
   struct Request : public Common::NetworkRequest
@@ -1262,10 +1311,22 @@ struct EventCameraConfig
   // engine timestep to get an exact-rate event stream regardless of GPU load
   bool use_sim_time_;
 
+  double   threshold_sigma_;     // per-pixel threshold mismatch, std in log units
+  double   refractory_period_;   // seconds a pixel is blind after its event
+  double   cutoff_hz_;           // photoreceptor bandwidth at full-scale intensity
+  double   leak_rate_hz_;        // ON events per pixel per second from leakage
+  double   shot_noise_rate_hz_;  // noise events per pixel per second at full scale, up to 4x in the dark
+  double   hot_pixel_fraction_;  // share of pixels with 100x the noise rate
+  double   max_event_rate_hz_;   // readout ceiling, excess dropped; 0 = unlimited
+  int      max_events_per_frame_;
+  bool     use_gpu_;             // compute shader, else the CPU port of the same model
+  unsigned seed_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_,
-            contrast_threshold_pos_, contrast_threshold_neg_, use_sim_time_);
+            contrast_threshold_pos_, contrast_threshold_neg_, use_sim_time_, threshold_sigma_, refractory_period_, cutoff_hz_, leak_rate_hz_,
+            shot_noise_rate_hz_, hot_pixel_fraction_, max_event_rate_hz_, max_events_per_frame_, use_gpu_, seed_);
   }
 };
 
@@ -1273,23 +1334,9 @@ struct EventCameraConfig
 
 /* GetEventCameraData //{ */
 
+// packed events: xyp_ = x | y << 16 | brighter << 31, t_us_ = microseconds after base_stamp_
 namespace GetEventCameraData
 {
-struct Event
-{
-  Event() = default;
-
-  unsigned short x;
-  unsigned short y;
-  signed char    polarity;  // +1 brighter, -1 darker
-  double         stamp;
-
-  template <class Archive>
-  void serialize(Archive& archive) {
-    archive(x, y, polarity, stamp);
-  }
-};
-
 struct Request : public Common::NetworkRequest
 {
   Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_event_camera_data)){};
@@ -1307,12 +1354,20 @@ struct Response : public Common::NetworkResponse
   Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_event_camera_data)){};
   explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_event_camera_data, _status){};
 
-  std::vector<Event> events_;
-  double             stamp_;
+  std::vector<uint32_t> xyp_;
+  std::vector<uint32_t> t_us_;
+
+  double base_stamp_ = 0.0;
+  double stamp_      = 0.0;  // sim time the batch is complete up to
+
+  uint32_t dropped_ = 0;  // events lost to the readout cap or a full buffer since the last drain
+
+  int width_  = 0;
+  int height_ = 0;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), events_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), xyp_, t_us_, base_stamp_, stamp_, dropped_, width_, height_);
   }
 };
 }  // namespace GetEventCameraData
@@ -1818,7 +1873,10 @@ enum MessageType : unsigned short
   list_assets             = 24,
   get_world_mesh          = 25,
   get_distance_batch      = 26,
-  set_time_dilation       = 27
+  set_time_dilation       = 27,
+  set_fixed_timestep      = 28,
+  set_lockstep            = 29,
+  step                    = 30
 };
 
 // Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
@@ -2248,6 +2306,95 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace SetTimeDilation
+/*//}*/
+
+/* SetFixedTimestep //{ */
+
+// every tick advances sim time by exactly dt (0 = wall clock); adaptive_min_dt > 0 lets it shrink when an event camera aliases
+namespace SetFixedTimestep
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(MessageType::set_fixed_timestep){};
+
+  double dt              = 0.0;
+  double adaptive_min_dt = 0.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), dt, adaptive_min_dt);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_fixed_timestep)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_fixed_timestep, _status){};
+
+  double applied = 0.0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), applied);
+  }
+};
+}  // namespace SetFixedTimestep
+
+/*//}*/
+
+/* SetLockstep / Step //{ */
+
+// lockstep parks the world paused; step runs N ticks and returns once every camera has their frames
+namespace SetLockstep
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(MessageType::set_lockstep){};
+
+  bool enabled = true;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), enabled);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_lockstep)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_lockstep, _status){};
+};
+}  // namespace SetLockstep
+
+namespace Step
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(MessageType::step){};
+
+  int ticks = 1;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), ticks);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::step)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::step, _status){};
+
+  double   sim_time   = 0.0;
+  uint64_t tick_count = 0;  // ticks run in lockstep since it was enabled
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), sim_time, tick_count);
+  }
+};
+}  // namespace Step
+
 /*//}*/
 
 namespace GetWorldOrigin

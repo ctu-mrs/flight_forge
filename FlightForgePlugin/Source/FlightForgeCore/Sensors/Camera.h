@@ -170,7 +170,7 @@ protected:
 	FVector capture_omega_ = FVector::ZeroVector;
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector,
-	                                                                 bool bFloat16 = false, bool bEncodeSrgb = false, bool bHalfRgba = false);
+	                                                                 bool bFloat16 = false, bool bEncodeSrgb = false, bool bHalfRgba = false, bool bLuma = false);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
   bool PumpReadback();
@@ -188,6 +188,9 @@ public:
 	void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
 	
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp);
+
+	// game thread: blocks until the frame in flight has landed
+	virtual void DrainReadback();
 	
 	virtual void GetConfig(std::stringstream& OutputStream) override;
 

@@ -1,26 +1,26 @@
 #include "EventCamera.h"
 
+#include "Algo/Sort.h"
 #include "Async/ParallelFor.h"
 #include "Engine/World.h"
+#include "RenderingThread.h"
 #include "TextureResource.h"
 
 #include "Serialize.h"
 #include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/SimClock.h"
 
-// a runaway scene (or a stalled client) must not grow the buffer unboundedly
-#define EVENT_BUFFER_MAX_EVENTS 2000000
-
-// at most this many events per pixel per frame; larger jumps saturate, which
-// matches real sensors far better than an event burst does
-#define EVENT_MAX_PER_PIXEL 4
+// a runaway scene (or a stalled client) must not grow the stream unboundedly
+#define EVENT_BUFFER_MAX_EVENTS 4000000
 
 UEventCamera::UEventCamera() : UCamera()
 {
 	SensorType = SensorType::EVENT_CAMERA;
 	Name = TEXT("EVENT_CAMERA");
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UEventCamera>>>>();
+	InstructionQueue      = std::make_unique<TQueue<std::shared_ptr<FInstruction<UEventCamera>>>>();
 	EventsCriticalSection = std::make_unique<FCriticalSection>();
+	GpuState              = MakeShared<FEventGpuState, ESPMode::ThreadSafe>();
 }
 
 /* BeginPlay() //{ */
@@ -29,19 +29,34 @@ void UEventCamera::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// log-intensity contrast needs linear radiance, not the tonemapped image
 	RenderTarget2D = NewObject<UTextureRenderTarget2D>();
-	RenderTarget2D->InitCustomFormat(640, 480, PF_B8G8R8A8, false);
-	RenderTarget2D->RenderTargetFormat = RTF_RGBA8;
-	RenderTarget2D->bGPUSharedFlag     = true;
+	RenderTarget2D->RenderTargetFormat = RTF_RGBA16f;
+	RenderTarget2D->InitCustomFormat(640, 480, PF_FloatRGBA, true);
+	RenderTarget2D->bGPUSharedFlag = true;
 
-	// LDR, no TAA, no motion blur: temporal filtering would fabricate events
-	SceneCaptureComponent2D->CaptureSource = SCS_FinalColorLDR;
+	SceneCaptureComponent2D->CaptureSource = SCS_SceneColorHDR;
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
 	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(false);
 	SceneCaptureComponent2D->ShowFlags.SetMotionBlur(false);
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
+
+	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
+
+	// a moving exposure would shift every pixel's log intensity at once
+	FPostProcessSettings& PP        = SceneCaptureComponent2D->PostProcessSettings;
+	PP.bOverride_AutoExposureMethod = true;
+	PP.AutoExposureMethod           = AEM_Manual;
+	PP.bOverride_AutoExposureBias   = true;
+	PP.AutoExposureBias             = 0.0f;
+	PP.bOverride_CameraShutterSpeed = true;
+	PP.CameraShutterSpeed           = 60.0f;
+	PP.bOverride_CameraISO          = true;
+	PP.CameraISO                    = 100.0f;
+	PP.bOverride_DepthOfFieldFstop  = true;
+	PP.DepthOfFieldFstop            = 4.0f;
 
 	event_camera_config_.ShowCameraComponent  = false;
 	event_camera_config_.Offset               = FVector(0, 0, 0);
@@ -51,12 +66,24 @@ void UEventCamera::BeginPlay()
 	event_camera_config_.Height               = 480;
 	event_camera_config_.ContrastThresholdPos = 0.2;
 	event_camera_config_.ContrastThresholdNeg = 0.2;
-	event_camera_config_.UseSimTime           = false;
+	event_camera_config_.UseSimTime           = true;
+	event_camera_config_.ThresholdSigma       = 0.03;
+	event_camera_config_.RefractoryPeriod     = 1e-4;
+	event_camera_config_.CutoffHz             = 300.0;
+	event_camera_config_.LeakRateHz           = 0.1;
+	event_camera_config_.ShotNoiseRateHz      = 0.1;
+	event_camera_config_.HotPixelFraction     = 1e-4;
+	event_camera_config_.MaxEventRateHz       = 0.0;
+	event_camera_config_.MaxEventsPerFrame    = 1 << 20;
+	event_camera_config_.UseGpu               = true;
+	event_camera_config_.Seed                 = 12345;
 
 	SetEventCameraConfig(event_camera_config_);
 }
 
 //}
+
+/* BeginDestroy() //{ */
 
 void UEventCamera::BeginDestroy()
 {
@@ -67,14 +94,20 @@ void UEventCamera::BeginDestroy()
 		EventsCriticalSection->Unlock();
 	}
 
+	// pooled GPU resources must die on the render thread, after any command using them
+	ENQUEUE_RENDER_COMMAND(FlightForgeReleaseEventState)(
+	    [State = MoveTemp(GpuState), Inflight = MoveTemp(GpuInflight)](FRHICommandListImmediate&) {});
+
 	Super::BeginDestroy();
 }
+
+//}
 
 /* TickComponent() //{ */
 
 void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	auto start = FPlatformTime::Seconds();
+	const double Start = FPlatformTime::Seconds();
 
 	std::shared_ptr<FInstruction<UEventCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction)) {
@@ -82,182 +115,481 @@ void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 		Instruction->Finished = true;
 	}
 
-	// events are inherently a stream: capture every frame while a client is
-	// listening, regardless of the drone's camera capture mode
-	if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
-		if (SceneCaptureComponent2D->bCaptureEveryFrame) {
-			SceneCaptureComponent2D->bCaptureEveryFrame = false;
-			ReferenceLogIntensity.Empty();
-			PrevLogIntensity.Empty();
-			UE_LOG(LogTemp, Warning, TEXT("Turning off event camera capture"));
+	// in lockstep wall time between steps means nothing, so one request keeps the stream
+	const bool bRecentlyAsked = (Start - camera_last_request_time_) < 1.0;
+	const bool bWanted        = bRecentlyAsked || (FFlightForgeSimClock::bLockstep.load() && camera_last_request_time_ > 0.0);
+
+	if (bWanted)
+	{
+		if (!bStreaming)
+		{
+			bStreaming = true;
+			bNeedsSeed = true;
+			UE_LOG(LogTemp, Log, TEXT("UEventCamera: stream on"));
 		}
-	} else {
-		if (!SceneCaptureComponent2D->bCaptureEveryFrame) {
-			SceneCaptureComponent2D->bCaptureEveryFrame = true;
-			UE_LOG(LogTemp, Warning, TEXT("Turning on event camera capture"));
-		} else {
-			const double Stamp = event_camera_config_.UseSimTime && GetWorld() ? GetWorld()->GetTimeSeconds() : start;
-			UpdateCamera(true, Stamp);
-		}
+
+		const double Stamp = event_camera_config_.UseSimTime && GetWorld() ? GetWorld()->GetTimeSeconds() : Start;
+		UpdateCamera(true, Stamp);
+	}
+	else if (bStreaming)
+	{
+		bStreaming = false;
+		UE_LOG(LogTemp, Log, TEXT("UEventCamera: stream off"));
 	}
 
-	if (PumpReadback())
-	{
-		ProcessPublishedFrame();
-	}
+	PumpInflight();
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
 //}
 
+/* UpdateCamera() //{ */
+
 void UEventCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback) {
-		return;  // previous transfer still in flight
-	}
-
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	if (GpuInflight.Num() + CpuInflight.Num() >= MaxInflight)
 	{
-		SceneCaptureComponent2D->CaptureScene();
+		return;  // GPU behind; the interval folds into the next capture
 	}
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp);
+	const double TPrev = bNeedsSeed ? stamp : LastCaptureStamp;
+
+	if (!bNeedsSeed && stamp - TPrev <= 0.0)
+	{
+		return;  // sim time did not move
+	}
+
+	if (bNeedsSeed)
+	{
+		TimeEpoch = stamp;
+	}
+
+	SceneCaptureComponent2D->CaptureScene();
+
+	FEventGenParams Params = BuildParams(TPrev, stamp);
+	Params.bSeedState      = bNeedsSeed;
+
+	if (event_camera_config_.UseGpu)
+	{
+		EnqueueGpuFrame(Params, TPrev, stamp);
+	}
+	else
+	{
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, false, false, false, true);
+		if (Slot)
+		{
+			CpuInflight.Add({Slot, TPrev, stamp, Params.bSeedState, FrameIndex});
+		}
+	}
+
+	bNeedsSeed       = false;
+	LastCaptureStamp = stamp;
+	FrameIndex++;
 }
 
-/* ProcessPublishedFrame() //{ */
+//}
 
-void UEventCamera::ProcessPublishedFrame()
+/* BuildParams() //{ */
+
+FEventGenParams UEventCamera::BuildParams(double TPrev, double TCur) const
 {
-	TArray<FColor> Frame;
-	FIntPoint      Size;
-	double         Stamp;
-	{
-		CameraBufferCriticalSection->Lock();
-		Frame = CameraBuffer;
-		Size  = CameraBufferSize;
-		Stamp = stamp_;
-		CameraBufferCriticalSection->Unlock();
-	}
+	const FEventCameraConfig& C = event_camera_config_;
 
-	const int32 NumPixels = Size.X * Size.Y;
+	FEventGenParams P;
+	P.Size       = FIntPoint(C.Width, C.Height);
+	P.Dt         = static_cast<float>(FMath::Max(TCur - TPrev, 0.0));
+	P.BaseUs     = static_cast<uint32>(static_cast<uint64>(FMath::Max(llround((TPrev - TimeEpoch) * 1e6), 0ll)));
+	P.DtUs       = static_cast<uint32>(FMath::Max(llround((TCur - TPrev) * 1e6), 0ll));
+	P.FrameIndex = FrameIndex;
+	P.Seed       = C.Seed;
 
-	if (NumPixels <= 0 || Frame.Num() != NumPixels)
+	P.ThresholdPos     = static_cast<float>(FMath::Max(C.ContrastThresholdPos, 0.01));
+	P.ThresholdNeg     = static_cast<float>(FMath::Max(C.ContrastThresholdNeg, 0.01));
+	P.ThresholdSigma   = static_cast<float>(FMath::Max(C.ThresholdSigma, 0.0));
+	P.RefractoryUs     = static_cast<uint32>(FMath::Max(llround(C.RefractoryPeriod * 1e6), 0ll));
+	P.CutoffHz         = static_cast<float>(FMath::Max(C.CutoffHz, 0.0));
+	P.LeakRateHz       = static_cast<float>(FMath::Max(C.LeakRateHz, 0.0));
+	P.ShotNoiseRateHz  = static_cast<float>(FMath::Max(C.ShotNoiseRateHz, 0.0));
+	P.HotPixelFraction = static_cast<float>(FMath::Clamp(C.HotPixelFraction, 0.0, 1.0));
+
+	P.MaxEvents  = static_cast<uint32>(FMath::Max(C.MaxEventsPerFrame, 1024));
+	P.CopyEvents = FMath::Clamp(2u * LastCount + 16384u, 16384u, P.MaxEvents);
+
+	return P;
+}
+
+//}
+
+/* EnqueueGpuFrame() //{ */
+
+void UEventCamera::EnqueueGpuFrame(const FEventGenParams& Params, double TPrev, double TCur)
+{
+	FTextureRenderTargetResource* Resource = RenderTarget2D ? RenderTarget2D->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Resource)
 	{
 		return;
 	}
 
-	// first frame after enabling or resizing seeds the reference, no events
-	if (ReferenceLogIntensity.Num() != NumPixels || ReferenceSize != Size)
+	TSharedPtr<FEventReadback, ESPMode::ThreadSafe> Slot = MakeShared<FEventReadback, ESPMode::ThreadSafe>();
+	Slot->TPrev = TPrev;
+	Slot->TCur  = TCur;
+
+	TSharedPtr<FEventGpuState, ESPMode::ThreadSafe> State = GpuState;
+
+	ENQUEUE_RENDER_COMMAND(FlightForgeEventGen)(
+	    [Resource, Slot, State, Params](FRHICommandListImmediate& RHICmdList)
+	    {
+		    FlightForgeEventGen::Dispatch_RenderThread(RHICmdList, Resource->GetRenderTargetTexture(), *State, Params, Slot);
+	    });
+
+	GpuInflight.Add(Slot);
+}
+
+//}
+
+/* PumpInflight() //{ */
+
+void UEventCamera::PumpInflight()
+{
+	// frames complete in order; the head is either published, resolved, or still on the GPU
+	while (GpuInflight.Num() > 0)
 	{
-		ReferenceLogIntensity.SetNumUninitialized(NumPixels);
-		PrevLogIntensity.SetNumUninitialized(NumPixels);
-		ReferenceSize = Size;
+		TSharedPtr<FEventReadback, ESPMode::ThreadSafe> Slot = GpuInflight[0];
+
+		if (Slot->bCopied)
+		{
+			PublishFrame(Slot->Packed, Slot->Count, Slot->MaxLogChange, Slot->TPrev, Slot->TCur);
+			GpuInflight.RemoveAt(0);
+			continue;
+		}
+
+		if (Slot->IsReady() && !Slot->bResolveIssued.exchange(true))
+		{
+			ENQUEUE_RENDER_COMMAND(FlightForgeEventResolve)([Slot](FRHICommandListImmediate&) { FlightForgeEventGen::Resolve_RenderThread(Slot); });
+		}
+		break;
+	}
+
+	while (CpuInflight.Num() > 0)
+	{
+		const FCpuFrame                                  Frame = CpuInflight[0];
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot  = Frame.Slot;
+
+		if (Slot->bCopied)
+		{
+			FEventGenParams Params = BuildParams(Frame.TPrev, Frame.TCur);
+			Params.bSeedState      = Frame.bSeed;
+			Params.FrameIndex      = Frame.FrameIndex;
+
+			TArray<uint64> Packed;
+			float          MaxLogChange = 0.0f;
+			RunCpuModel(*Slot, Params, Packed, MaxLogChange);
+
+			const uint32 Count = Packed.Num();
+			PublishFrame(Packed, Count, MaxLogChange, Frame.TPrev, Frame.TCur);
+			CpuInflight.RemoveAt(0);
+			continue;
+		}
+
+		if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
+		{
+			IssueResolve(Slot);
+		}
+		break;
+	}
+}
+
+//}
+
+/* DrainReadback() //{ */
+
+void UEventCamera::DrainReadback()
+{
+	// flushing only drains the render thread; the GPU fence still has to be polled
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+
+	while ((GpuInflight.Num() > 0 || CpuInflight.Num() > 0) && FPlatformTime::Seconds() < Deadline)
+	{
+		FlushRenderingCommands();
+		PumpInflight();
+		if (GpuInflight.Num() > 0 || CpuInflight.Num() > 0)
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
+}
+
+//}
+
+/* SuggestedTimestep() //{ */
+
+double UEventCamera::SuggestedTimestep(double CurrentDt, double MinDt) const
+{
+	const float  MaxChange = LastMaxLogChange.load();
+	const double Dt        = LastFrameDt.load();
+
+	if (!(MaxChange > 0.0f) || Dt <= 0.0 || !bStreaming)
+	{
+		return CurrentDt;
+	}
+
+	const double Threshold = FMath::Min(event_camera_config_.ContrastThresholdPos, event_camera_config_.ContrastThresholdNeg);
+
+	return FMath::Clamp(Dt * Threshold / MaxChange, MinDt, CurrentDt);
+}
+
+//}
+
+/* RunCpuModel() //{ */
+
+// port of EventGen.usf; keep the two in step
+namespace
+{
+uint32 Pcg(uint32 v)
+{
+	const uint32 state = v * 747796405u + 2891336453u;
+	const uint32 word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
+}
+
+float Hash01(uint32 a, uint32 b, uint32 c)
+{
+	const uint32 h = Pcg(a ^ Pcg(b ^ Pcg(c)));
+	return (h & 0xFFFFFFu) / 16777216.0f;
+}
+
+float Gaussian(uint32 a, uint32 b, uint32 c)
+{
+	const float u1 = FMath::Max(Hash01(a, b, c), 1e-7f);
+	const float u2 = Hash01(a, b, c + 0x9E3779B9u);
+	return FMath::Sqrt(-2.0f * FMath::Loge(u1)) * FMath::Cos(6.283185307f * u2);
+}
+
+uint64 PackEvent(uint32 X, uint32 Y, bool bPositive, uint32 OffsetUs)
+{
+	return (static_cast<uint64>(OffsetUs) << 32) | (X | (Y << 16) | (bPositive ? 0x80000000u : 0u));
+}
+}  // namespace
+
+void UEventCamera::RunCpuModel(const FCameraReadback& Frame, const FEventGenParams& P, TArray<uint64>& OutPacked, float& OutMaxLogChange)
+{
+	OutMaxLogChange = 0.0f;
+
+	const FIntPoint Size      = Frame.Size;
+	const int32     NumPixels = Size.X * Size.Y;
+
+	if (NumPixels <= 0 || Frame.LumaPixels.Num() != NumPixels)
+	{
+		return;
+	}
+
+	const bool bSeed = P.bSeedState || CpuStateSize != Size || CpuState.Num() != NumPixels;
+
+	if (bSeed)
+	{
+		CpuState.SetNumUninitialized(NumPixels);
+		CpuLastEvent.SetNumUninitialized(NumPixels);
+		CpuStateSize = Size;
 
 		for (int32 i = 0; i < NumPixels; ++i)
 		{
-			const FColor& C = Frame[i];
-			const float   L = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
-			ReferenceLogIntensity[i] = L;
-			PrevLogIntensity[i]      = L;
+			const float L   = FMath::Loge(FMath::Max(Frame.LumaPixels[i], 0.0f) + P.LogEps);
+			CpuState[i]     = FVector4f(L, L, L, L);
+			CpuLastEvent[i] = P.BaseUs - P.RefractoryUs;
 		}
-
-		LastFrameStamp = Stamp;
 		return;
 	}
 
-	const float Cpos = FMath::Max((float)event_camera_config_.ContrastThresholdPos, 0.01f);
-	const float Cneg = FMath::Max((float)event_camera_config_.ContrastThresholdNeg, 0.01f);
-
-	const double TPrev = LastFrameStamp;
-	const double TCur  = Stamp;
-	const double TSpan = FMath::Max(TCur - TPrev, 0.0);
-
-	// per-chunk local buffers so the pixel sweep parallelizes without contention
 	const int32 NumChunks = FMath::Clamp(NumPixels / 65536, 1, 16);
 	const int32 ChunkSize = FMath::DivideAndRoundUp(NumPixels, NumChunks);
 
-	TArray<TArray<FCameraEvent>> ChunkEvents;
+	TArray<TArray<uint64>> ChunkEvents;
+	TArray<float>          ChunkMax;
 	ChunkEvents.SetNum(NumChunks);
+	ChunkMax.Init(0.0f, NumChunks);
+
+	const uint32 MaxPerPixel = FMath::Min(64u, P.RefractoryUs > 0 ? P.DtUs / P.RefractoryUs + 1u : 64u);
 
 	ParallelFor(NumChunks, [&](int32 Chunk) {
 		const int32 First = Chunk * ChunkSize;
 		const int32 Last  = FMath::Min(First + ChunkSize, NumPixels);
 
-		TArray<FCameraEvent>& Local = ChunkEvents[Chunk];
+		TArray<uint64>& Local    = ChunkEvents[Chunk];
+		float&          LocalMax = ChunkMax[Chunk];
 
 		for (int32 i = First; i < Last; ++i)
 		{
-			const FColor& C     = Frame[i];
-			const float   LCur  = FMath::Loge(0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B + 1.0f);
-			const float   LPrev = PrevLogIntensity[i];
+			const uint32 X = (uint32)(i % Size.X);
+			const uint32 Y = (uint32)(i / Size.X);
 
-			float& Ref = ReferenceLogIntensity[i];
+			const float I       = FMath::Max(Frame.LumaPixels[i], 0.0f);
+			const float Inten01 = FMath::Clamp(I, 0.0f, 1.0f);
+			const float L       = FMath::Loge(I + P.LogEps);
 
-			// assume linear log-intensity change across the frame interval and
-			// stamp each threshold crossing at its interpolated time
-			const float Slope = LCur - LPrev;
+			const uint32 PixelKey = X + Y * 65536u;
 
-			if (Slope > 0.0f)
+			FVector4f&  State = CpuState[i];
+			float       Ref   = State.X;
+			float       Lp1   = State.Y;
+			float       Lp2   = State.Z;
+			const float LPrev = State.W;
+
+			if (P.CutoffHz > 0.0f)
 			{
-				const uint16 X = (uint16)(i % Size.X);
-				const uint16 Y = (uint16)(i / Size.X);
+				const float Alpha = 1.0f - FMath::Exp(-6.283185307f * P.CutoffHz * FMath::Lerp(0.05f, 1.0f, Inten01) * P.Dt);
+				Lp1 += Alpha * (L - Lp1);
+				Lp2 += Alpha * (Lp1 - Lp2);
+			}
+			else
+			{
+				Lp1 = L;
+				Lp2 = L;
+			}
+			const float LCur = Lp2;
 
-				for (int32 e = 0; e < EVENT_MAX_PER_PIXEL && Ref + Cpos <= LCur; ++e)
+			Ref -= P.LeakRateHz * P.ThresholdPos * P.Dt * (0.9f + 0.2f * Hash01(PixelKey, P.Seed, 1u));
+
+			const float Cpos = FMath::Max(P.ThresholdPos + P.ThresholdSigma * Gaussian(PixelKey, P.Seed, 2u), 0.01f);
+			const float Cneg = FMath::Max(P.ThresholdNeg + P.ThresholdSigma * Gaussian(PixelKey, P.Seed, 3u), 0.01f);
+
+			uint32 LastEv = CpuLastEvent[i];
+
+			const float dL = LCur - LPrev;
+			LocalMax       = FMath::Max(LocalMax, FMath::Abs(dL));
+
+			uint32 Emitted = 0;
+
+			if (dL > 0.0f)
+			{
+				while (Ref + Cpos <= LCur && Emitted < MaxPerPixel)
 				{
 					Ref += Cpos;
-					const float  Frac = FMath::Clamp((Ref - LPrev) / Slope, 0.0f, 1.0f);
-					const double T    = TPrev + Frac * TSpan;
-					Local.Add({X, Y, 1, T});
+					const float  Frac   = FMath::Clamp((Ref - LPrev) / dL, 0.0f, 1.0f);
+					const uint32 Offset = (uint32)FMath::RoundToInt(Frac * P.DtUs);
+					const uint32 TUs    = P.BaseUs + Offset;
+					if (TUs - LastEv >= P.RefractoryUs)
+					{
+						Local.Add(PackEvent(X, Y, true, Offset));
+						LastEv = TUs;
+					}
+					Emitted++;
 				}
 			}
-			else if (Slope < 0.0f)
+			else if (dL < 0.0f)
 			{
-				const uint16 X = (uint16)(i % Size.X);
-				const uint16 Y = (uint16)(i / Size.X);
-
-				for (int32 e = 0; e < EVENT_MAX_PER_PIXEL && Ref - Cneg >= LCur; ++e)
+				while (Ref - Cneg >= LCur && Emitted < MaxPerPixel)
 				{
 					Ref -= Cneg;
-					const float  Frac = FMath::Clamp((Ref - LPrev) / Slope, 0.0f, 1.0f);
-					const double T    = TPrev + Frac * TSpan;
-					Local.Add({X, Y, -1, T});
+					const float  Frac   = FMath::Clamp((Ref - LPrev) / dL, 0.0f, 1.0f);
+					const uint32 Offset = (uint32)FMath::RoundToInt(Frac * P.DtUs);
+					const uint32 TUs    = P.BaseUs + Offset;
+					if (TUs - LastEv >= P.RefractoryUs)
+					{
+						Local.Add(PackEvent(X, Y, false, Offset));
+						LastEv = TUs;
+					}
+					Emitted++;
 				}
 			}
 
-			PrevLogIntensity[i] = LCur;
+			if (Emitted >= MaxPerPixel)
+			{
+				Ref = LCur;
+			}
+
+			if (P.ShotNoiseRateHz > 0.0f)
+			{
+				float Rate = P.ShotNoiseRateHz * (1.0f + 3.0f * (1.0f - Inten01));
+				if (Hash01(PixelKey, P.Seed, 4u) < P.HotPixelFraction)
+				{
+					Rate *= 100.0f;
+				}
+
+				const float U = Hash01(PixelKey, P.Seed ^ (P.FrameIndex * 0x85EBCA6Bu), 5u);
+				if (U < Rate * P.Dt)
+				{
+					const float  V      = Hash01(PixelKey, P.Seed ^ (P.FrameIndex * 0xC2B2AE35u), 6u);
+					const uint32 Offset = (uint32)(V * P.DtUs);
+					const uint32 TUs    = P.BaseUs + Offset;
+					if (TUs - LastEv >= P.RefractoryUs)
+					{
+						Local.Add(PackEvent(X, Y, Hash01(PixelKey, P.Seed ^ P.FrameIndex, 7u) < 0.5f, Offset));
+						LastEv = TUs;
+					}
+				}
+			}
+
+			State           = FVector4f(Ref, Lp1, Lp2, LCur);
+			CpuLastEvent[i] = LastEv;
 		}
 	});
 
-	// merge and time-sort the frame's batch; consumers expect a sorted stream
-	TArray<FCameraEvent> FrameEvents;
 	int32 Total = 0;
-	for (const TArray<FCameraEvent>& Local : ChunkEvents)
+	for (int32 Chunk = 0; Chunk < NumChunks; ++Chunk)
 	{
-		Total += Local.Num();
-	}
-	FrameEvents.Reserve(Total);
-	for (const TArray<FCameraEvent>& Local : ChunkEvents)
-	{
-		FrameEvents.Append(Local);
+		Total += ChunkEvents[Chunk].Num();
+		OutMaxLogChange = FMath::Max(OutMaxLogChange, ChunkMax[Chunk]);
 	}
 
-	FrameEvents.Sort([](const FCameraEvent& A, const FCameraEvent& B) { return A.Stamp < B.Stamp; });
+	OutPacked.Reset(Total);
+	for (const TArray<uint64>& Local : ChunkEvents)
+	{
+		OutPacked.Append(Local);
+	}
+}
+
+//}
+
+/* PublishFrame() //{ */
+
+void UEventCamera::PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxLogChange, double TPrev, double TCur)
+{
+	Algo::Sort(Packed);
+
+	const double Dt          = TCur - TPrev;
+	uint32       DroppedHere = Count > (uint32)Packed.Num() ? Count - (uint32)Packed.Num() : 0;
+
+	// a saturated readout keeps a uniform sample of the burst rather than its head
+	if (event_camera_config_.MaxEventRateHz > 0.0 && Dt > 0.0)
+	{
+		const int64 Quota = llround(event_camera_config_.MaxEventRateHz * Dt);
+		const int64 N     = Packed.Num();
+
+		if (N > Quota)
+		{
+			for (int64 j = 0; j < Quota; ++j)
+			{
+				Packed[j] = Packed[(j * N) / Quota];
+			}
+			Packed.SetNum((int32)Quota, EAllowShrinking::No);
+			DroppedHere += (uint32)(N - Quota);
+		}
+	}
 
 	EventsCriticalSection->Lock();
 
-	if (EventBuffer.Num() + FrameEvents.Num() > EVENT_BUFFER_MAX_EVENTS)
+	if (EventBuffer.Num() + Packed.Num() > EVENT_BUFFER_MAX_EVENTS)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("UEventCamera: event buffer full, dropping events"));
+		DroppedHere += Packed.Num();
 	}
 	else
 	{
-		EventBuffer.Append(FrameEvents);
+		EventBuffer.Reserve(EventBuffer.Num() + Packed.Num());
+		for (const uint64 E : Packed)
+		{
+			EventBuffer.Add({static_cast<uint32>(E & 0xFFFFFFFFu), TPrev + static_cast<double>(E >> 32) * 1e-6});
+		}
 	}
 
-	LastFrameStamp = Stamp;
+	Dropped += DroppedHere;
+	LastFrameStamp = TCur;
 
 	EventsCriticalSection->Unlock();
+
+	LastCount = Count;
+	LastFrameDt.store(Dt);
+	LastMaxLogChange.store(MaxLogChange);
 }
 
 //}
@@ -266,6 +598,9 @@ void UEventCamera::ProcessPublishedFrame()
 
 bool UEventCamera::SetEventCameraConfig(const FEventCameraConfig& Config)
 {
+	// frames from the old optics must not land in the new stream
+	DrainReadback();
+
 	event_camera_config_ = Config;
 
 	CameraBufferCriticalSection->Lock();
@@ -285,12 +620,14 @@ bool UEventCamera::SetEventCameraConfig(const FEventCameraConfig& Config)
 
 	CameraBufferCriticalSection->Unlock();
 
-	// resolution or optics changed: reseed the reference on the next frame
-	ReferenceLogIntensity.Empty();
-	PrevLogIntensity.Empty();
+	bNeedsSeed = true;
+	CpuState.Empty();
+	CpuLastEvent.Empty();
+	LastCount = 0;
 
 	EventsCriticalSection->Lock();
 	EventBuffer.Empty();
+	Dropped = 0;
 	EventsCriticalSection->Unlock();
 
 	return true;
@@ -305,23 +642,37 @@ void UEventCamera::GetConfig(std::stringstream& OutputStream)
 	Serializable::Drone::GetEventCameraConfig::Response Response(true);
 	Response.config = Serializable::Drone::EventCameraConfig{};
 
-	Response.config.show_debug_camera_ = event_camera_config_.ShowCameraComponent;
+	const FEventCameraConfig& C = event_camera_config_;
+	auto&                     W = Response.config;
 
-	Response.config.offset_x_ = event_camera_config_.Offset.X;
-	Response.config.offset_y_ = event_camera_config_.Offset.Y;
-	Response.config.offset_z_ = event_camera_config_.Offset.Z;
+	W.show_debug_camera_ = C.ShowCameraComponent;
 
-	Response.config.rotation_pitch_ = event_camera_config_.Orientation.Pitch;
-	Response.config.rotation_yaw_   = event_camera_config_.Orientation.Yaw;
-	Response.config.rotation_roll_  = event_camera_config_.Orientation.Roll;
+	W.offset_x_ = C.Offset.X;
+	W.offset_y_ = C.Offset.Y;
+	W.offset_z_ = C.Offset.Z;
 
-	Response.config.fov_    = event_camera_config_.FOVAngle;
-	Response.config.width_  = event_camera_config_.Width;
-	Response.config.height_ = event_camera_config_.Height;
+	W.rotation_pitch_ = C.Orientation.Pitch;
+	W.rotation_yaw_   = C.Orientation.Yaw;
+	W.rotation_roll_  = C.Orientation.Roll;
 
-	Response.config.contrast_threshold_pos_ = event_camera_config_.ContrastThresholdPos;
-	Response.config.contrast_threshold_neg_ = event_camera_config_.ContrastThresholdNeg;
-	Response.config.use_sim_time_           = event_camera_config_.UseSimTime;
+	W.fov_    = C.FOVAngle;
+	W.width_  = C.Width;
+	W.height_ = C.Height;
+
+	W.contrast_threshold_pos_ = C.ContrastThresholdPos;
+	W.contrast_threshold_neg_ = C.ContrastThresholdNeg;
+	W.use_sim_time_           = C.UseSimTime;
+
+	W.threshold_sigma_      = C.ThresholdSigma;
+	W.refractory_period_    = C.RefractoryPeriod;
+	W.cutoff_hz_            = C.CutoffHz;
+	W.leak_rate_hz_         = C.LeakRateHz;
+	W.shot_noise_rate_hz_   = C.ShotNoiseRateHz;
+	W.hot_pixel_fraction_   = C.HotPixelFraction;
+	W.max_event_rate_hz_    = C.MaxEventRateHz;
+	W.max_events_per_frame_ = C.MaxEventsPerFrame;
+	W.use_gpu_              = C.UseGpu;
+	W.seed_                 = C.Seed;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 }
@@ -331,19 +682,32 @@ void UEventCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<st
 	Serializable::Drone::SetEventCameraConfig::Request Request;
 	Serialization::SerializeRequest(Request, *InputStream);
 
+	const auto& W = Request.config;
+
 	FEventCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
+	Config.ShowCameraComponent = W.show_debug_camera_;
 
-	Config.Offset      = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	Config.Offset      = FVector(W.offset_x_, W.offset_y_, W.offset_z_);
+	Config.Orientation = FRotator(W.rotation_pitch_, W.rotation_yaw_, W.rotation_roll_);
 
-	Config.FOVAngle = Request.config.fov_;
-	Config.Width    = Request.config.width_;
-	Config.Height   = Request.config.height_;
+	Config.FOVAngle = W.fov_;
+	Config.Width    = W.width_;
+	Config.Height   = W.height_;
 
-	Config.ContrastThresholdPos = Request.config.contrast_threshold_pos_;
-	Config.ContrastThresholdNeg = Request.config.contrast_threshold_neg_;
-	Config.UseSimTime           = Request.config.use_sim_time_;
+	Config.ContrastThresholdPos = W.contrast_threshold_pos_;
+	Config.ContrastThresholdNeg = W.contrast_threshold_neg_;
+	Config.UseSimTime           = W.use_sim_time_;
+
+	Config.ThresholdSigma    = W.threshold_sigma_;
+	Config.RefractoryPeriod  = W.refractory_period_;
+	Config.CutoffHz          = W.cutoff_hz_;
+	Config.LeakRateHz        = W.leak_rate_hz_;
+	Config.ShotNoiseRateHz   = W.shot_noise_rate_hz_;
+	Config.HotPixelFraction  = W.hot_pixel_fraction_;
+	Config.MaxEventRateHz    = W.max_event_rate_hz_;
+	Config.MaxEventsPerFrame = W.max_events_per_frame_;
+	Config.UseGpu            = W.use_gpu_;
+	Config.Seed              = W.seed_;
 
 	bool Status = false;
 
@@ -373,19 +737,25 @@ void UEventCamera::GetData(std::stringstream& OutputStream)
 
 	EventsCriticalSection->Lock();
 
-	Response.events_.reserve(EventBuffer.Num());
-	for (const FCameraEvent& E : EventBuffer)
-	{
-		Serializable::Drone::GetEventCameraData::Event Out;
-		Out.x        = E.X;
-		Out.y        = E.Y;
-		Out.polarity = E.Polarity;
-		Out.stamp    = E.Stamp;
-		Response.events_.push_back(Out);
-	}
-	EventBuffer.Reset();
+	const int32 N = EventBuffer.Num();
 
-	Response.stamp_ = LastFrameStamp;
+	Response.base_stamp_ = N > 0 ? EventBuffer[0].Stamp : LastFrameStamp;
+	Response.stamp_      = LastFrameStamp;
+	Response.dropped_    = Dropped;
+	Response.width_      = event_camera_config_.Width;
+	Response.height_     = event_camera_config_.Height;
+
+	Response.xyp_.resize(N);
+	Response.t_us_.resize(N);
+
+	for (int32 i = 0; i < N; ++i)
+	{
+		Response.xyp_[i]  = EventBuffer[i].XYP;
+		Response.t_us_[i] = static_cast<uint32_t>(FMath::Clamp(llround((EventBuffer[i].Stamp - Response.base_stamp_) * 1e6), 0ll, (long long)0xFFFFFFFFu));
+	}
+
+	EventBuffer.Reset();
+	Dropped = 0;
 
 	EventsCriticalSection->Unlock();
 

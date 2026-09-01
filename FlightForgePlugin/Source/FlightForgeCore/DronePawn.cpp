@@ -533,7 +533,76 @@ void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, b
   }
 }
 
+/* pose trajectory //{ */
+
+void ADronePawn::SetPoseTrajectory(TArray<FPoseSample>&& Samples) {
+
+  if (!TrajectoryCriticalSection) {
+    TrajectoryCriticalSection = std::make_unique<FCriticalSection>();
+  }
+
+  TrajectoryCriticalSection->Lock();
+  Trajectory = MoveTemp(Samples);
+  TrajectoryCriticalSection->Unlock();
+}
+
+void ADronePawn::ApplyTrajectory(double SimTime) {
+
+  if (!TrajectoryCriticalSection) {
+    return;
+  }
+
+  FVector Location;
+  FQuat   Rotation;
+  bool    bHavePose = false;
+
+  TrajectoryCriticalSection->Lock();
+
+  const int32 N = Trajectory.Num();
+
+  if (N > 0) {
+    bHavePose = true;
+
+    int32 Next = 0;
+    while (Next < N && Trajectory[Next].T <= SimTime) {
+      ++Next;
+    }
+
+    if (Next == 0) {
+      Location = Trajectory[0].Location;
+      Rotation = Trajectory[0].Rotation;
+    } else if (Next >= N) {
+      Location = Trajectory[N - 1].Location;
+      Rotation = Trajectory[N - 1].Rotation;
+    } else {
+      const FPoseSample& A     = Trajectory[Next - 1];
+      const FPoseSample& B     = Trajectory[Next];
+      const double       Span  = B.T - A.T;
+      const double       Alpha = Span > 0.0 ? FMath::Clamp((SimTime - A.T) / Span, 0.0, 1.0) : 1.0;
+
+      Location = FMath::Lerp(A.Location, B.Location, Alpha);
+      Rotation = FQuat::Slerp(A.Rotation, B.Rotation, Alpha);
+    }
+
+    if (Next > 1) {
+      Trajectory.RemoveAt(0, Next - 1, EAllowShrinking::No);
+    }
+  }
+
+  TrajectoryCriticalSection->Unlock();
+
+  if (bHavePose) {
+    SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+  }
+}
+
+//}
+
 void ADronePawn::Tick(float DeltaSeconds) {
+
+  if (const UWorld* World = GetWorld()) {
+    ApplyTrajectory(World->GetTimeSeconds());
+  }
 
   // The predefined propellers are spun by BP_DronePawn off propellers_rotate; components
   // created at runtime for an external model are not reachable from there.

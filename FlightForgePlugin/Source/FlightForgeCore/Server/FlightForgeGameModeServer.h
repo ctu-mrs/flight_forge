@@ -6,7 +6,7 @@
 #include "TcpServer.h"
 
 #define API_VERSION_MAJOR 0
-#define API_VERSION_MINOR 16
+#define API_VERSION_MINOR 17
 
 class AFlightForgeGameModeBase;
 
@@ -71,4 +71,7 @@ private:
 	bool GetWorldMesh(const FTCPClient& Client, Serializable::GameMode::GetWorldMesh::Request& Request);
 	bool GetDistanceBatch(const FTCPClient& Client, Serializable::GameMode::GetDistanceBatch::Request& Request);
 	bool SetTimeDilation(const FTCPClient& Client, Serializable::GameMode::SetTimeDilation::Request& Request);
+	bool SetFixedTimestep(const FTCPClient& Client, Serializable::GameMode::SetFixedTimestep::Request& Request);
+	bool SetLockstep(const FTCPClient& Client, Serializable::GameMode::SetLockstep::Request& Request);
+	bool Step(const FTCPClient& Client, Serializable::GameMode::Step::Request& Request);
 };

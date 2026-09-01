@@ -13,12 +13,15 @@
 #include "UObject/ConstructorHelpers.h"
 
 #include "DronePawn.h"
+#include "SimClock.h"
 #include "Server/FlightForgeGameModeServer.h"
 #include "Utils/SpawnConfig.h"
 #include "Utils/WorldObjectSpawner.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "RenderingThread.h"
+#include "Misc/App.h"
 #include <string>
 
 #include "FlightForgeGameModeBase.generated.h"
@@ -58,6 +61,20 @@ private:
 	double FPS = 0;
 	double WallFPS = 0;
 
+	/* clock control //{ */
+
+	// a step unpauses for a budget of ticks; the paused frame after the last one drains the sensors
+	std::atomic<bool>   bLockstep{false};
+	std::atomic<int32>  StepBudget{0};
+	std::atomic<uint64> LockstepTicks{0};
+	std::atomic<bool>   bStepFinishing{false};
+	std::atomic<bool>   bStepDone{true};
+
+	double FixedDtMax    = 0.0;
+	double AdaptiveMinDt = 0.0;
+
+	//}
+
 	std::unique_ptr<FCriticalSection> DronePawnsCriticalSection = std::make_unique<FCriticalSection>();
 
 	TMap<int, std::pair<ADronePawn*, APlayerController*>> DronePawns = TMap<int, std::pair<ADronePawn*, APlayerController*>>();
@@ -68,6 +85,7 @@ private:
 	AFlightForgeGameModeBase(const FObjectInitializer& ObjectInitializer) : AGameModeBase(ObjectInitializer)
 	{
 		PrimaryActorTick.bCanEverTick = true;
+		PrimaryActorTick.bTickEvenWhenPaused = true;  // lockstep parks the world paused
 
 		// Every spawn path casts the default pawn to ADronePawn; without this the class
 		// stays ADefaultPawn and each cast yields null. Blueprint subclasses override it.
@@ -142,6 +160,9 @@ private:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
 	{
+		SetLockstep(false);
+		SetFixedTimestep(0.0, 0.0);
+
 		UFlightForgeGameInstance* MyGameInstance = Cast<UFlightForgeGameInstance>(GetGameInstance());
 		if (MyGameInstance && MyGameInstance->Server)
 		{
@@ -153,12 +174,43 @@ private:
 
 	virtual void Tick(float DeltaSeconds) override
 	{
+		UWorld* World = GetWorld();
+
+		// pause only changes inside the drain below, so on entry it says whether the world ticks this frame
+		const bool bPausedFrame = World && World->IsPaused();
+
 		std::shared_ptr<FInstruction<AFlightForgeGameModeBase>> Instruction;
 		while(InstructionQueue->Dequeue(Instruction))
 		{
 			//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::Tick got Instruction"));
 			Instruction->Function(*this);
 			Instruction->Finished = true;
+		}
+
+		if (bLockstep.load())
+		{
+			if (!bPausedFrame)
+			{
+				LockstepTicks++;
+
+				if (--StepBudget <= 0)
+				{
+					StepBudget = 0;
+					SetWorldPaused(true);
+					bStepFinishing = true;
+				}
+			}
+			else if (bStepFinishing.load())
+			{
+				DrainSensors();
+				bStepFinishing = false;
+				bStepDone      = true;
+			}
+		}
+
+		if (!bPausedFrame && FixedDtMax > 0.0 && AdaptiveMinDt > 0.0)
+		{
+			FApp::SetFixedDeltaTime(AdaptiveTimestep());
 		}
 
 		// Tick's delta is dilated, so 1/delta counts frames per SIMULATED second: under a
@@ -405,6 +457,168 @@ public:
 
 		return true;
 	}
+
+	/* clock control //{ */
+
+	bool SetWorldPaused(bool bPaused)
+	{
+		UWorld* World = GetWorld();
+		if (!World)
+		{
+			return false;
+		}
+
+		if (!UGameplayStatics::SetGamePaused(World, bPaused))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge: could not %s the world (no player controller?)"), bPaused ? TEXT("pause") : TEXT("unpause"));
+			return false;
+		}
+
+		return true;
+	}
+
+	// game thread
+	bool SetFixedTimestep(double Dt, double MinDt)
+	{
+		if (Dt < 0.0 || MinDt < 0.0 || (MinDt > 0.0 && MinDt > Dt))
+		{
+			return false;
+		}
+
+		FixedDtMax    = Dt;
+		AdaptiveMinDt = Dt > 0.0 ? MinDt : 0.0;
+
+		FApp::SetUseFixedTimeStep(Dt > 0.0);
+		FApp::SetFixedDeltaTime(Dt > 0.0 ? Dt : 1.0 / 30.0);
+
+		FFlightForgeSimClock::FixedDt.store(FixedDtMax);
+		FFlightForgeSimClock::AdaptiveMinDt.store(AdaptiveMinDt);
+
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: fixed timestep %.6f s (adaptive floor %.6f s)"), FixedDtMax, AdaptiveMinDt);
+		return true;
+	}
+
+	double GetFixedTimestep() const
+	{
+		return FApp::UseFixedTimeStep() ? FApp::GetFixedDeltaTime() : 0.0;
+	}
+
+	// game thread
+	bool SetLockstep(bool bEnabled)
+	{
+		if (bEnabled == bLockstep.load())
+		{
+			return true;
+		}
+
+		if (!SetWorldPaused(bEnabled))
+		{
+			return false;
+		}
+
+		bLockstep      = bEnabled;
+		StepBudget     = 0;
+		bStepFinishing = false;
+		bStepDone      = true;
+		if (bEnabled)
+		{
+			LockstepTicks = 0;
+		}
+
+		FFlightForgeSimClock::bLockstep.store(bEnabled);
+
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: lockstep %s"), bEnabled ? TEXT("on") : TEXT("off"));
+		return true;
+	}
+
+	// completes asynchronously, poll IsStepDone()
+	bool RequestStep(int32 Ticks)
+	{
+		if (!bLockstep.load() || Ticks < 0 || !bStepDone.load())
+		{
+			return false;
+		}
+
+		if (Ticks == 0)
+		{
+			return true;
+		}
+
+		StepBudget = Ticks;
+		bStepDone  = false;
+		return SetWorldPaused(false);
+	}
+
+	bool IsStepDone() const
+	{
+		return bStepDone.load();
+	}
+
+	uint64 GetLockstepTicks() const
+	{
+		return LockstepTicks.load();
+	}
+
+	double GetSimTime() const
+	{
+		const UWorld* World = GetWorld();
+		return World ? World->GetTimeSeconds() : 0.0;
+	}
+
+	void DrainSensors()
+	{
+		FlushRenderingCommands();
+
+		DronePawnsCriticalSection->Lock();
+		TArray<ADronePawn*> Pawns;
+		for (auto& Entry : DronePawns)
+		{
+			Pawns.Add(Entry.Value.first);
+		}
+		DronePawnsCriticalSection->Unlock();
+
+		for (ADronePawn* Pawn : Pawns)
+		{
+			if (!IsValid(Pawn))
+			{
+				continue;
+			}
+
+			TInlineComponentArray<UCamera*> Cameras;
+			Pawn->GetComponents<UCamera>(Cameras);
+			for (UCamera* Camera : Cameras)
+			{
+				Camera->DrainReadback();
+			}
+		}
+	}
+
+	double AdaptiveTimestep()
+	{
+		double Dt = FixedDtMax;
+
+		DronePawnsCriticalSection->Lock();
+		for (auto& Entry : DronePawns)
+		{
+			ADronePawn* Pawn = Entry.Value.first;
+			if (!IsValid(Pawn))
+			{
+				continue;
+			}
+
+			TInlineComponentArray<UEventCamera*> Cameras;
+			Pawn->GetComponents<UEventCamera>(Cameras);
+			for (const UEventCamera* Camera : Cameras)
+			{
+				Dt = FMath::Min(Dt, Camera->SuggestedTimestep(FixedDtMax, AdaptiveMinDt));
+			}
+		}
+		DronePawnsCriticalSection->Unlock();
+
+		return Dt;
+	}
+
+	//}
 
 	// frames per SIMULATED second; divide by the time dilation for the wall-clock rate
 	float GetFPS()

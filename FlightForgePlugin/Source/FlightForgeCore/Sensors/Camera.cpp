@@ -94,7 +94,7 @@ void UCamera::BeginDestroy()
 /* async readback machinery //{ */
 
 TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16,
-                                                                          const bool bEncodeSrgb, const bool bHalfRgba)
+                                                                          const bool bEncodeSrgb, const bool bHalfRgba, const bool bLuma)
 {
 	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
 
@@ -110,9 +110,11 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	const EPixelFormat Format = RT->GetFormat();
 
 	Slot->bFloat16    = bFloat16;
-	Slot->bHalfRgba   = bHalfRgba && Format == PF_FloatRGBA;
-	Slot->bFloatRgba  = bHalfRgba && Format == PF_A32B32G32R32F;
-	Slot->bEncodeSrgb = bEncodeSrgb && !Slot->bHalfRgba && !Slot->bFloatRgba;
+	Slot->bLuma       = bLuma && (Format == PF_FloatRGBA || Format == PF_A32B32G32R32F);
+	Slot->bLumaFloat32 = Slot->bLuma && Format == PF_A32B32G32R32F;
+	Slot->bHalfRgba   = !Slot->bLuma && bHalfRgba && Format == PF_FloatRGBA;
+	Slot->bFloatRgba  = !Slot->bLuma && bHalfRgba && Format == PF_A32B32G32R32F;
+	Slot->bEncodeSrgb = bEncodeSrgb && !Slot->bHalfRgba && !Slot->bFloatRgba && !Slot->bLuma;
 	Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeCameraReadback"));
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeEnqueueReadback)(
@@ -146,7 +148,33 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 				const int32 W = Slot->Size.X;
 				const int32 H = Slot->Size.Y;
 
-				if (Slot->bHalfRgba || Slot->bFloatRgba)
+				if (Slot->bLuma)
+				{
+					Slot->LumaPixels.SetNumUninitialized(W * H);
+
+					for (int32 Row = 0; Row < H; ++Row)
+					{
+						float* DstRow = Slot->LumaPixels.GetData() + (int64)Row * W;
+
+						if (Slot->bLumaFloat32)
+						{
+							const FLinearColor* SrcRow = static_cast<const FLinearColor*>(Data) + (int64)Row * RowPitchInPixels;
+							for (int32 Col = 0; Col < W; ++Col)
+							{
+								DstRow[Col] = 0.2126f * SrcRow[Col].R + 0.7152f * SrcRow[Col].G + 0.0722f * SrcRow[Col].B;
+							}
+						}
+						else
+						{
+							const FFloat16Color* SrcRow = static_cast<const FFloat16Color*>(Data) + (int64)Row * RowPitchInPixels;
+							for (int32 Col = 0; Col < W; ++Col)
+							{
+								DstRow[Col] = 0.2126f * SrcRow[Col].R.GetFloat() + 0.7152f * SrcRow[Col].G.GetFloat() + 0.0722f * SrcRow[Col].B.GetFloat();
+							}
+						}
+					}
+				}
+				else if (Slot->bHalfRgba || Slot->bFloatRgba)
 				{
 					Slot->Pixels.SetNumUninitialized(W * H);
 
@@ -275,6 +303,21 @@ bool UCamera::PumpReadback()
 	}
 
 	return false;
+}
+
+void UCamera::DrainReadback()
+{
+	// flushing only drains the render thread; the GPU fence still has to be polled
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+
+	while (PendingReadback && FPlatformTime::Seconds() < Deadline)
+	{
+		FlushRenderingCommands();
+		if (!PumpReadback() && PendingReadback)
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
 }
 
 void UCamera::NotifyFrameReady()

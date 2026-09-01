@@ -93,7 +93,16 @@ void ConfigureRangefinder(USensor* Sensor, const FVector& Offset, double RangeCm
 	}
 }
 
-void ConfigureEvent(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, double FovDeg, int W, int H, double Contrast)
+struct FEventPixelSpec
+{
+	double Contrast;
+	double Sigma;
+	double RefractoryS;
+	double CutoffHz;
+	double MaxEventRateHz;
+};
+
+void ConfigureEvent(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, double FovDeg, int W, int H, const FEventPixelSpec& Pixel)
 {
 	if (UEventCamera* Cam = Cast<UEventCamera>(Sensor))
 	{
@@ -103,8 +112,12 @@ void ConfigureEvent(USensor* Sensor, const FVector& Offset, const FRotator& Rota
 		Config.FOVAngle             = FovDeg;
 		Config.Width                = W;
 		Config.Height               = H;
-		Config.ContrastThresholdPos = Contrast;
-		Config.ContrastThresholdNeg = Contrast;
+		Config.ContrastThresholdPos = Pixel.Contrast;
+		Config.ContrastThresholdNeg = Pixel.Contrast;
+		Config.ThresholdSigma       = Pixel.Sigma;
+		Config.RefractoryPeriod     = Pixel.RefractoryS;
+		Config.CutoffHz             = Pixel.CutoffHz;
+		Config.MaxEventRateHz       = Pixel.MaxEventRateHz;
 		Cam->SetEventCameraConfig(Config);
 	}
 }
@@ -275,7 +288,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Event;
 		Event.Type      = SensorType::EVENT_CAMERA;
-		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 346, 260, 0.25); };
+		// 12 Meps readout, ~100 us refractory, photoreceptor rolls off around 200 Hz
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 346, 260, {0.25, 0.04, 1e-4, 200.0, 12e6}); };
 		D.Sensors.Add(Event);
 
 		Devices.Add(D);
@@ -290,7 +304,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Event;
 		Event.Type      = SensorType::EVENT_CAMERA;
-		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 1280, 720, 0.25); };
+		// IMX636: ~1 Geps peak readout, tens of us refractory, faster front end
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 1280, 720, {0.25, 0.03, 2e-5, 1000.0, 1.06e9}); };
 		D.Sensors.Add(Event);
 
 		Devices.Add(D);

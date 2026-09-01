@@ -123,6 +123,20 @@ public:
 
   void SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult);
 
+  /* pose trajectory //{ */
+
+  struct FPoseSample
+  {
+    double  T;
+    FVector Location;
+    FQuat   Rotation;
+  };
+
+  // any thread; empty detaches the pawn again
+  void SetPoseTrajectory(TArray<FPoseSample>&& Samples);
+
+  //}
+
   bool GetCrashState(void);
 
   bool DrawMovementLine = false;
@@ -186,6 +200,11 @@ private:
   TMap<SensorType, int> DefaultSensorOfType;
 
   bool bCanSeeOtherDrone = true;
+
+  std::unique_ptr<FCriticalSection> TrajectoryCriticalSection;
+  TArray<FPoseSample>               Trajectory;
+
+  void ApplyTrajectory(double SimTime);
 
   void Tick(float DeltaSeconds) override;
 

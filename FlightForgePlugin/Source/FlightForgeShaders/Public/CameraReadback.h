@@ -15,6 +15,10 @@ struct FCameraReadback
 	bool              bFloat16 = false;
 	TArray<FFloat16>  Float16Pixels;
 
+	bool              bLuma        = false;  // linear BT.709 luminance from a float target
+	bool              bLumaFloat32 = false;
+	TArray<float>     LumaPixels;
+
 	// the HDR capture sources skip the display gamma, so the resolve encodes to sRGB itself
 	bool bEncodeSrgb = false;
 

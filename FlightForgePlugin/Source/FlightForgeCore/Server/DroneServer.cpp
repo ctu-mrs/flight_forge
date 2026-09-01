@@ -104,6 +104,14 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 	
 		return SetLocationAndRotationAsync(Client, CustomRequest);
 	}
+
+	if(Request.type == Serializable::Drone::MessageType::set_pose_trajectory) {
+
+		Serializable::Drone::SetPoseTrajectory::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return SetPoseTrajectory(Client, CustomRequest);
+	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_data) {
 		Serializable::Drone::GetLidarData::Request CustomRequest;
@@ -628,6 +636,43 @@ bool DroneServer::SetLocationAndRotationAsync(const FTCPClient& Client, Serializ
 
 	return Respond(Client, OutputStream);
 }
+
+//}
+
+/* setPoseTrajectory() //{ */
+
+bool DroneServer::SetPoseTrajectory(const FTCPClient& Client, Serializable::Drone::SetPoseTrajectory::Request& Request)
+{
+	if(!DronePawn) {
+		return false;
+	}
+
+	TArray<ADronePawn::FPoseSample> Samples;
+	Samples.Reserve(Request.samples.size());
+
+	bool bOrdered = true;
+
+	for (const auto& S : Request.samples) {
+		if (Samples.Num() > 0 && S.t < Samples.Last().T) {
+			bOrdered = false;
+			break;
+		}
+		Samples.Add({S.t, FVector(S.x, S.y, S.z), FRotator(S.pitch, S.yaw, S.roll).Quaternion()});
+	}
+
+	if (bOrdered) {
+		DronePawn->SetPoseTrajectory(MoveTemp(Samples));
+	}
+
+	Serializable::Drone::SetPoseTrajectory::Response Response(bOrdered);
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
+}
+
+//}
 
 /* getMoveLineVisible() //{ */
 
