@@ -112,6 +112,14 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 
 		return SetPoseTrajectory(Client, CustomRequest);
 	}
+
+	if(Request.type == Serializable::Drone::MessageType::set_propeller_speeds) {
+
+		Serializable::Drone::SetPropellerSpeeds::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		return SetPropellerSpeeds(Client, CustomRequest);
+	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_data) {
 		Serializable::Drone::GetLidarData::Request CustomRequest;
@@ -863,3 +871,30 @@ bool DroneServer::ListDevices(const FTCPClient& Client)
 	return Respond(Client, OutputStream);
 }
 
+
+/* setPropellerSpeeds() //{ */
+
+bool DroneServer::SetPropellerSpeeds(const FTCPClient& Client, Serializable::Drone::SetPropellerSpeeds::Request& Request)
+{
+	if(!DronePawn) {
+		return false;
+	}
+
+	int32 Count = 0;
+	bool  bOk   = false;
+
+	auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
+	Instruction->Function = [&Request, &Count, &bOk](ADronePawn& Pawn) { bOk = Pawn.SetPropellerSpeeds(Request.speeds, Count); };
+	DronePawn->InstructionQueue->Enqueue(Instruction);
+	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+	Serializable::Drone::SetPropellerSpeeds::Response Response(bOk);
+	Response.propeller_count = Count;
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+
+	return Respond(Client, OutputStream);
+}
+
+/* //} */

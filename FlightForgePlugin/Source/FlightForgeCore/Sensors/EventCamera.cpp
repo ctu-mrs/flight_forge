@@ -3,6 +3,7 @@
 #include "Algo/Sort.h"
 #include "Async/ParallelFor.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
 
@@ -12,6 +13,9 @@
 
 // a runaway scene (or a stalled client) must not grow the stream unboundedly
 #define EVENT_BUFFER_MAX_EVENTS 4000000
+
+static TAutoConsoleVariable<int32> CVarEventParity(TEXT("ff.EventCamera.Parity"), 0,
+                                                   TEXT("run the CPU port beside the shader on every frame and log how far they disagree"));
 
 UEventCamera::UEventCamera() : UCamera()
 {
@@ -129,12 +133,15 @@ void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 		}
 
 		const double Stamp = event_camera_config_.UseSimTime && GetWorld() ? GetWorld()->GetTimeSeconds() : Start;
-		UpdateCamera(true, Stamp);
+		if (ShouldCapture())
+		{
+			UpdateCamera(true, Stamp);
+		}
 	}
 	else if (bStreaming)
 	{
 		bStreaming = false;
-		UE_LOG(LogTemp, Log, TEXT("UEventCamera: stream off"));
+		UE_LOG(LogTemp, Log, TEXT("UEventCamera: stream off after %u frames, %u folded"), FrameIndex, FramesFolded);
 	}
 
 	PumpInflight();
@@ -148,10 +155,21 @@ void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 
 void UEventCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (GpuInflight.Num() + CpuInflight.Num() >= MaxInflight)
+	const bool bParity = event_camera_config_.UseGpu && CVarEventParity.GetValueOnGameThread() != 0;
+
+	// free-running, a GPU that falls behind folds the interval into the next capture; in lockstep every tick is a frame
+	if (InflightFrames(bParity) >= MaxInflight)
 	{
-		return;  // GPU behind; the interval folds into the next capture
+		if (!FFlightForgeSimClock::bLockstep.load())
+		{
+			FramesFolded++;
+			return;
+		}
+		WaitForSlot(bParity);
 	}
+
+	const FTransform Now = SceneCaptureComponent2D->GetComponentTransform();
+	bNeedsSeed           = bNeedsSeed || PoseJumped(Now);
 
 	const double TPrev = bNeedsSeed ? stamp : LastCaptureStamp;
 
@@ -174,18 +192,58 @@ void UEventCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	{
 		EnqueueGpuFrame(Params, TPrev, stamp);
 	}
-	else
+
+	if (!event_camera_config_.UseGpu || bParity)
 	{
 		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, false, false, false, true);
 		if (Slot)
 		{
-			CpuInflight.Add({Slot, TPrev, stamp, Params.bSeedState, FrameIndex});
+			CpuInflight.Add({Slot, TPrev, stamp, Params.bSeedState, bParity, FrameIndex});
 		}
 	}
 
-	bNeedsSeed       = false;
-	LastCaptureStamp = stamp;
+	bNeedsSeed           = false;
+	LastCaptureStamp     = stamp;
+	LastCaptureTransform = Now;
 	FrameIndex++;
+}
+
+//}
+
+/* InflightFrames() / WaitForSlot() //{ */
+
+int32 UEventCamera::InflightFrames(bool bParity) const
+{
+	return bParity ? FMath::Max(GpuInflight.Num(), CpuInflight.Num()) : GpuInflight.Num() + CpuInflight.Num();
+}
+
+void UEventCamera::WaitForSlot(bool bParity)
+{
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+
+	while (InflightFrames(bParity) >= MaxInflight && FPlatformTime::Seconds() < Deadline)
+	{
+		FlushRenderingCommands();
+		PumpInflight();
+		if (InflightFrames(bParity) >= MaxInflight)
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
+}
+
+//}
+
+/* PoseJumped() //{ */
+
+// a teleport that leaves nothing of the last frame in view is a reset, not motion
+bool UEventCamera::PoseJumped(const FTransform& Now) const
+{
+	const double HalfFovRad  = FMath::DegreesToRadians(FMath::Clamp(event_camera_config_.FOVAngle, 1.0, 179.0)) * 0.5;
+	const double AngleRad    = LastCaptureTransform.GetRotation().AngularDistance(Now.GetRotation());
+	const double DistanceCm  = FVector::Dist(LastCaptureTransform.GetLocation(), Now.GetLocation());
+
+	return AngleRad > HalfFovRad || DistanceCm > 500.0;
 }
 
 //}
@@ -213,8 +271,10 @@ FEventGenParams UEventCamera::BuildParams(double TPrev, double TCur) const
 	P.ShotNoiseRateHz  = static_cast<float>(FMath::Max(C.ShotNoiseRateHz, 0.0));
 	P.HotPixelFraction = static_cast<float>(FMath::Clamp(C.HotPixelFraction, 0.0, 1.0));
 
+	// a burst the copy did not fit is read back in full next frame; otherwise track the rate with headroom
 	P.MaxEvents  = static_cast<uint32>(FMath::Max(C.MaxEventsPerFrame, 1024));
-	P.CopyEvents = FMath::Clamp(2u * LastCount + 16384u, 16384u, P.MaxEvents);
+	const uint32 MinCopy = FMath::Max(65536u, (uint32)(C.Width * C.Height) / 4u);
+	P.CopyEvents         = bLastFrameTruncated ? P.MaxEvents : FMath::Clamp(4u * LastCount + MinCopy, MinCopy, P.MaxEvents);
 
 	return P;
 }
@@ -232,8 +292,9 @@ void UEventCamera::EnqueueGpuFrame(const FEventGenParams& Params, double TPrev, 
 	}
 
 	TSharedPtr<FEventReadback, ESPMode::ThreadSafe> Slot = MakeShared<FEventReadback, ESPMode::ThreadSafe>();
-	Slot->TPrev = TPrev;
-	Slot->TCur  = TCur;
+	Slot->TPrev      = TPrev;
+	Slot->TCur       = TCur;
+	Slot->FrameIndex = FrameIndex;
 
 	TSharedPtr<FEventGpuState, ESPMode::ThreadSafe> State = GpuState;
 
@@ -259,6 +320,10 @@ void UEventCamera::PumpInflight()
 
 		if (Slot->bCopied)
 		{
+			if (CVarEventParity.GetValueOnGameThread() != 0 && Slot->Count <= (uint32)Slot->Packed.Num())
+			{
+				CompareParity(Slot->FrameIndex, Slot->Packed, true);
+			}
 			PublishFrame(Slot->Packed, Slot->Count, Slot->MaxLogChange, Slot->TPrev, Slot->TCur);
 			GpuInflight.RemoveAt(0);
 			continue;
@@ -286,8 +351,14 @@ void UEventCamera::PumpInflight()
 			float          MaxLogChange = 0.0f;
 			RunCpuModel(*Slot, Params, Packed, MaxLogChange);
 
-			const uint32 Count = Packed.Num();
-			PublishFrame(Packed, Count, MaxLogChange, Frame.TPrev, Frame.TCur);
+			if (Frame.bCompare)
+			{
+				CompareParity(Frame.FrameIndex, MoveTemp(Packed), false);
+			}
+			else
+			{
+				PublishFrame(Packed, Packed.Num(), MaxLogChange, Frame.TPrev, Frame.TCur);
+			}
 			CpuInflight.RemoveAt(0);
 			continue;
 		}
@@ -298,6 +369,81 @@ void UEventCamera::PumpInflight()
 		}
 		break;
 	}
+}
+
+//}
+
+/* CompareParity() //{ */
+
+void UEventCamera::CompareParity(uint32 Frame, TArray<uint64> Packed, bool bFromGpu)
+{
+	Algo::Sort(Packed);
+
+	TArray<uint64>* Other = ParityPending.Find(Frame);
+	if (!Other)
+	{
+		if (ParityPending.Num() > 8)
+		{
+			ParityPending.Reset();  // one side skipped frames; do not keep waiting for them
+		}
+		ParityPending.Add(Frame, MoveTemp(Packed));
+		return;
+	}
+
+	const TArray<uint64>& Gpu = bFromGpu ? Packed : *Other;
+	const TArray<uint64>& Cpu = bFromGpu ? *Other : Packed;
+
+	// exact match, then a match on pixel and polarity alone to tell timestamp rounding from model drift
+	int32 Common = 0;
+	for (int32 i = 0, j = 0; i < Gpu.Num() && j < Cpu.Num();)
+	{
+		if (Gpu[i] == Cpu[j])
+		{
+			++Common, ++i, ++j;
+		}
+		else if (Gpu[i] < Cpu[j])
+		{
+			++i;
+		}
+		else
+		{
+			++j;
+		}
+	}
+
+	TArray<uint32> GpuPixels, CpuPixels;
+	GpuPixels.Reserve(Gpu.Num());
+	CpuPixels.Reserve(Cpu.Num());
+	for (const uint64 E : Gpu)
+	{
+		GpuPixels.Add(static_cast<uint32>(E & 0xFFFFFFFFu));
+	}
+	for (const uint64 E : Cpu)
+	{
+		CpuPixels.Add(static_cast<uint32>(E & 0xFFFFFFFFu));
+	}
+	Algo::Sort(GpuPixels);
+	Algo::Sort(CpuPixels);
+
+	int32 SamePixel = 0;
+	for (int32 i = 0, j = 0; i < GpuPixels.Num() && j < CpuPixels.Num();)
+	{
+		if (GpuPixels[i] == CpuPixels[j])
+		{
+			++SamePixel, ++i, ++j;
+		}
+		else if (GpuPixels[i] < CpuPixels[j])
+		{
+			++i;
+		}
+		else
+		{
+			++j;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UEventCamera parity frame %u: gpu %d cpu %d exact %d pixel %d"), Frame, Gpu.Num(), Cpu.Num(), Common, SamePixel);
+	ParityPending.Remove(Frame);
 }
 
 //}
@@ -549,6 +695,7 @@ void UEventCamera::PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxL
 
 	const double Dt          = TCur - TPrev;
 	uint32       DroppedHere = Count > (uint32)Packed.Num() ? Count - (uint32)Packed.Num() : 0;
+	bLastFrameTruncated      = DroppedHere > 0;
 
 	// a saturated readout keeps a uniform sample of the burst rather than its head
 	if (event_camera_config_.MaxEventRateHz > 0.0 && Dt > 0.0)
@@ -567,6 +714,10 @@ void UEventCamera::PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxL
 		}
 	}
 
+	// offsets are rounded microseconds; scale by the exact interval so a frame never overruns the next
+	const double DtUs      = FMath::Max((double)llround(Dt * 1e6), 1.0);
+	const double PerOffset = Dt / DtUs;
+
 	EventsCriticalSection->Lock();
 
 	if (EventBuffer.Num() + Packed.Num() > EVENT_BUFFER_MAX_EVENTS)
@@ -578,7 +729,7 @@ void UEventCamera::PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxL
 		EventBuffer.Reserve(EventBuffer.Num() + Packed.Num());
 		for (const uint64 E : Packed)
 		{
-			EventBuffer.Add({static_cast<uint32>(E & 0xFFFFFFFFu), TPrev + static_cast<double>(E >> 32) * 1e-6});
+			EventBuffer.Add({static_cast<uint32>(E & 0xFFFFFFFFu), TPrev + FMath::Min(static_cast<double>(E >> 32), DtUs) * PerOffset});
 		}
 	}
 

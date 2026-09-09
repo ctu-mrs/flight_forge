@@ -41,7 +41,6 @@ UFisheyeCamera::UFisheyeCamera() : UCamera()
 
 	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UFisheyeCamera>>>>();
 
-	// base SceneCaptureComponent2D is face 0 (forward)
 	FaceCaptures.SetNum(NumFaces);
 	FaceCaptures[0] = SceneCaptureComponent2D;
 
@@ -276,7 +275,10 @@ void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 				SetCaptureEveryFrame(true);
 				UE_LOG(LogTemp, Warning, TEXT("Turning on fisheye capture"));
 			} else {
-				UpdateCamera(true, start);
+				if (ShouldCapture())
+				{
+					UpdateCamera(true, start);
+				}
 			}
 		}
 	}

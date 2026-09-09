@@ -160,14 +160,9 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Rgb;
 		Rgb.Type      = SensorType::RGB_CAMERA;
-		Rgb.RelOffset = FVector(0, -4.0, 0);  // RGB module outboard of the left imager
+		Rgb.RelOffset = FVector(0, -4.0, 0);
 		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRgb(S, O, R, 69, 1280, 720); };
 		D.Sensors.Add(Rgb);
-
-		// no depth stream: the D435i's depth is stereo matching, not a native
-		// measurement - emulate it by matching the stereo pair. Ground-truth
-		// depth is its own sensor (or a ToF preset like azure_kinect_dk).
-
 		Devices.Add(D);
 	}
 
@@ -197,7 +192,7 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Rgb;
 		Rgb.Type      = SensorType::RGB_CAMERA;
-		Rgb.RelOffset = FVector(0, -3.2, 0);  // color module offset from the depth aperture
+		Rgb.RelOffset = FVector(0, -3.2, 0);  
 		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRgb(S, O, R, 90, 1280, 720); };
 		D.Sensors.Add(Rgb);
 
@@ -210,6 +205,7 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 		D.Description      = TEXT("Ouster OS0-32: 32 ch, 1024 cols, 90deg vertical FOV, 50 m");
 		D.MeshShape        = EDeviceMeshShape::Cylinder;
 		D.MeshDimensionsCm = FVector(8.5, 8.5, 5.8);
+		D.MeshFile         = TEXT("OUSTER_Rev7_OS0");
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
@@ -240,6 +236,9 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 		D.Description      = TEXT("Livox Mid-360: non-repetitive 360x59deg pattern, 40 m");
 		D.MeshShape        = EDeviceMeshShape::Cylinder;
 		D.MeshDimensionsCm = FVector(6.5, 6.5, 6.0);
+		D.MeshFile         = TEXT("Mid360");
+		D.MeshRotation     = FRotator(-90, 90, 0);  // CAD has the base along +X and the dome along -X
+		D.MeshOffsetCm     = FVector(0, 0, 3.42);
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
@@ -270,6 +269,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 		D.Description      = TEXT("Garmin LIDAR-Lite v3 rangefinder, 40 m, downward");
 		D.MeshShape        = EDeviceMeshShape::Box;
 		D.MeshDimensionsCm = FVector(2.0, 4.8, 4.0);
+		D.MeshFile         = TEXT("Garmin");
+		D.MeshRotation     = FRotator(0, 0, 180);  // CAD lenses point up, the rangefinder looks down
 
 		FDeviceSensorEntry Finder;
 		Finder.Type      = SensorType::RANGEFINDER;

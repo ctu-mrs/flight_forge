@@ -102,7 +102,10 @@ void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 		    SceneCaptureComponent2D->bCaptureEveryFrame = true;
 		    UE_LOG(LogTemp, Warning, TEXT("Turning on RGB segmented capture"));
 		  } else {
-		    UpdateCamera(true, start);
+		    if (ShouldCapture())
+		    {
+		    	UpdateCamera(true, start);
+		    }
 		  }
 		}
 	}

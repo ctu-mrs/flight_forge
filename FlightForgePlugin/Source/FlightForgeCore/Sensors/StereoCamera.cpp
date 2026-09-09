@@ -109,7 +109,10 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	      SceneCaptureComponent2D->bCaptureEveryFrame  = true;
 	      SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = true;
 	    } else {
-	      UpdateCamera(true, start);
+	      if (ShouldCapture())
+	      {
+	      	UpdateCamera(true, start);
+	      }
 	    }
 	  }
 	}

@@ -25,6 +25,7 @@
 
 #include "NaniteSceneProxy.h"
 #include "FlightForgeCore/Devices/SensorDeviceLibrary.h"
+#include "FlightForgeCore/FlightForgeGameInstance.h"
 
 
 // Sets default values
@@ -33,6 +34,7 @@ ADronePawn::ADronePawn() {
   // UE_LOG(LogTemp, Warning, TEXT("ADronePawn constructor"));
 
   PrimaryActorTick.bCanEverTick = true;
+  PrimaryActorTick.bTickEvenWhenPaused = true;  // pose requests must land while lockstep holds the world
   
   PrimaryActorTick.TickGroup    = TG_PrePhysics;
 
@@ -162,6 +164,8 @@ void ADronePawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
     }
   }
   Sensors.Empty();
+
+  Super::EndPlay(EndPlayReason);
 }
 
 // Called to bind functionality to input
@@ -604,10 +608,23 @@ void ADronePawn::Tick(float DeltaSeconds) {
     ApplyTrajectory(World->GetTimeSeconds());
   }
 
-  // The predefined propellers are spun by BP_DronePawn off propellers_rotate; components
-  // created at runtime for an external model are not reachable from there.
-  if (propellers_rotate && DynamicPropellers.Num() > 0) {
+  // Once a client sets speeds, every propeller is turned from here - including the four
+  // the frame declares, which BP_DronePawn would otherwise spin at its own fixed rate.
+  // Without taking them over there would be no way to give one rotor a different speed.
+  if (PropellerSpeeds.Num() > 0) {
 
+    const TArray<UStaticMeshComponent*> Propellers = AllPropellers();
+
+    for (int32 i = 0; i < Propellers.Num() && i < PropellerSpeeds.Num(); ++i) {
+      if (IsValid(Propellers[i])) {
+        const double DegreesPerSecond = FMath::RadiansToDegrees(PropellerSpeeds[i]);
+        Propellers[i]->AddLocalRotation(FRotator(0, DegreesPerSecond * DeltaSeconds, 0));
+      }
+    }
+  }
+  else if (propellers_rotate && DynamicPropellers.Num() > 0) {
+
+    // an external model's propellers are not reachable from the Blueprint
     const float RotationStep = 2000.0f * DeltaSeconds;
 
     for (int32 i = 0; i < DynamicPropellers.Num(); ++i) {
@@ -827,13 +844,22 @@ bool ADronePawn::AddDevice(const FString& DeviceName, const FVector& MountOffset
       Mesh->SetStaticMesh(Shape);
       Mesh->SetMobility(EComponentMobility::Movable);
       Mesh->AttachToComponent(RootMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-      Mesh->SetRelativeLocation(MountOffset);
+      // engine basic shapes are 100 cm across and centred, and the housing base sits on the mount point
+      Mesh->SetRelativeLocation(MountOffset + MountRotation.RotateVector(FVector(0, 0, Device->MeshDimensionsCm.Z * 0.5)));
       Mesh->SetRelativeRotation(MountRotation);
-      // engine basic shapes are 100 cm across
       Mesh->SetRelativeScale3D(Device->MeshDimensionsCm / 100.0f);
       Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
       Mesh->RegisterComponent();
       AddInstanceComponent(Mesh);
+
+      // the datasheet box stands in until the real housing has been imported in the background
+      const FString MeshPath = DeviceMeshPath(*Device);
+      UFlightForgeGameInstance* Instance = MeshPath.IsEmpty() ? nullptr : Cast<UFlightForgeGameInstance>(GetGameInstance());
+      if (Instance)
+      {
+        Instance->GetDeviceMeshes()->Request(MeshPath, Mesh, MountOffset + MountRotation.RotateVector(Device->MeshOffsetCm),
+                                             (MountRotation.Quaternion() * Device->MeshRotation.Quaternion()).Rotator());
+      }
     }
   }
 
@@ -841,6 +867,30 @@ bool ADronePawn::AddDevice(const FString& DeviceName, const FVector& MountOffset
 
   return true;
 }
+
+/* DeviceMeshPath() //{ */
+
+FString ADronePawn::DeviceMeshPath(const FSensorDeviceSpec& Device) const
+{
+  if (Device.MeshFile.IsEmpty())
+  {
+    return FString();
+  }
+
+  const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("FlightForgePlugin"));
+  const FString             Path   = Plugin ? FPaths::Combine(Plugin->GetContentDir(), TEXT("Meshes"), TEXT("Sensors"), Device.MeshFile + TEXT(".glb")) : FString();
+
+  if (Path.IsEmpty() || !FPaths::FileExists(Path))
+  {
+    UE_LOG(LogTemp, Warning, TEXT("AddDevice: '%s' has no mesh at %s, keeping the %s"), *Device.Name, *Path,
+           Device.MeshShape == EDeviceMeshShape::Cylinder ? TEXT("cylinder") : TEXT("box"));
+    return FString();
+  }
+
+  return Path;
+}
+
+//}
 
 bool ADronePawn::AddDeviceFromServerThread(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh,
                                            std::vector<int>& OutIds, std::vector<int>& OutTypes)
@@ -884,3 +934,59 @@ bool ADronePawn::RemoveSensorFromServerThread(int SensorID)
   return bRemoved;
 }
 
+
+/* allPropellers() //{ */
+
+TArray<UStaticMeshComponent*> ADronePawn::AllPropellers() const
+{
+  TArray<UStaticMeshComponent*> Propellers;
+
+  for (UStaticMeshComponent* Propeller : {PropellerRearLeft, PropellerRearRight, PropellerFrontLeft, PropellerFrontRight})
+  {
+    // a frame that declares no propellers leaves these with no mesh; skipping them keeps
+    // the index the client sees aligned with the propellers it can actually see turning
+    if (IsValid(Propeller) && Propeller->GetStaticMesh())
+    {
+      Propellers.Add(Propeller);
+    }
+  }
+
+  for (const TObjectPtr<UStaticMeshComponent>& Propeller : DynamicPropellers)
+  {
+    if (IsValid(Propeller))
+    {
+      Propellers.Add(Propeller);
+    }
+  }
+
+  return Propellers;
+}
+
+/* //} */
+
+/* setPropellerSpeeds() //{ */
+
+bool ADronePawn::SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount)
+{
+  const TArray<UStaticMeshComponent*> Propellers = AllPropellers();
+  OutCount                                       = Propellers.Num();
+
+  PropellerSpeeds.Reset();
+
+  for (const double Speed : Speeds)
+  {
+    PropellerSpeeds.Add(Speed);
+  }
+
+  if (PropellerSpeeds.Num() > 0)
+  {
+    // the Blueprint's own spin would fight the speeds set here
+    propellers_rotate = false;
+  }
+
+  UE_LOG(LogTemp, Log, TEXT("SetPropellerSpeeds: %d values for %d propellers"), PropellerSpeeds.Num(), OutCount);
+
+  return true;
+}
+
+/* //} */

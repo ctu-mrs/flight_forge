@@ -189,7 +189,7 @@ private:
 
 		if (bLockstep.load())
 		{
-			if (!bPausedFrame)
+			if (!bPausedFrame && StepBudget.load() > 0)
 			{
 				LockstepTicks++;
 
@@ -468,7 +468,13 @@ public:
 			return false;
 		}
 
-		if (!UGameplayStatics::SetGamePaused(World, bPaused))
+		// the engine call reports false when already in the requested state; the state is what matters
+		if (World->IsPaused() != bPaused)
+		{
+			UGameplayStatics::SetGamePaused(World, bPaused);
+		}
+
+		if (World->IsPaused() != bPaused)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("FlightForge: could not %s the world (no player controller?)"), bPaused ? TEXT("pause") : TEXT("unpause"));
 			return false;
@@ -546,7 +552,15 @@ public:
 
 		StepBudget = Ticks;
 		bStepDone  = false;
-		return SetWorldPaused(false);
+
+		if (!SetWorldPaused(false))
+		{
+			StepBudget = 0;
+			bStepDone  = true;
+			return false;
+		}
+
+		return true;
 	}
 
 	bool IsStepDone() const

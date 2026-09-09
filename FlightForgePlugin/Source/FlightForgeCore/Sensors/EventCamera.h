@@ -71,10 +71,8 @@ public:
 
 	virtual void BeginDestroy() override;
 
-	// game thread: blocks until every in-flight frame has been turned into events
 	virtual void DrainReadback() override;
 
-	// tick length keeping the largest per-pixel change under one threshold, in [MinDt, CurrentDt]
 	double SuggestedTimestep(double CurrentDt, double MinDt) const;
 
 protected:
@@ -89,9 +87,16 @@ protected:
 	bool   bStreaming    = false;
 	bool   bNeedsSeed    = true;
 	uint32 FrameIndex    = 0;
+	uint32 FramesFolded  = 0;
 	uint32 LastCount     = 0;
+	bool   bLastFrameTruncated = false;
 	double LastCaptureStamp = 0.0;
 	double TimeEpoch     = 0.0;  // origin of the wrapping microsecond clock
+	FTransform LastCaptureTransform;
+
+	bool  PoseJumped(const FTransform& Now) const;
+	int32 InflightFrames(bool bParity) const;
+	void  WaitForSlot(bool bParity);
 
 	struct FCpuFrame
 	{
@@ -99,8 +104,12 @@ protected:
 		double                                           TPrev      = 0.0;
 		double                                           TCur       = 0.0;
 		bool                                             bSeed      = false;
+		bool                                             bCompare   = false;
 		uint32                                           FrameIndex = 0;
 	};
+
+	TMap<uint32, TArray<uint64>> ParityPending;
+	void                         CompareParity(uint32 Frame, TArray<uint64> Packed, bool bFromGpu);
 
 	TSharedPtr<FEventGpuState, ESPMode::ThreadSafe>          GpuState;
 	TArray<TSharedPtr<FEventReadback, ESPMode::ThreadSafe>>  GpuInflight;

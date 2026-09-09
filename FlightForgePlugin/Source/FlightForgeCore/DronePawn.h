@@ -69,6 +69,20 @@ class FLIGHTFORGECORE_API ADronePawn : public APawn {
   GENERATED_BODY()
 
 public:
+
+  /**
+   * Every propeller in one order - rear-left, rear-right, front-left, front-right, then
+   * an external model's own - so a client can address them by index without caring which
+   * of them the frame declared and which came from a .glb.
+   */
+  TArray<UStaticMeshComponent*> AllPropellers() const;
+
+  /**
+   * Angular rate per propeller [rad/s], indexed as AllPropellers(). Empty hands them back
+   * to the uniform default spin. Fewer entries than propellers leaves the rest alone.
+   */
+  bool SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount);
+
   ADronePawn();
   
   std::shared_ptr<DroneServer> droneServer;
@@ -145,6 +159,9 @@ public:
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlightForge|Drone")
   bool propellers_rotate = false;
+
+  // rad/s per propeller once a client has taken control; empty means the default spin
+  TArray<double> PropellerSpeeds;
 
   FTimerHandle TimerHandle_Disabled_Physics;
 
@@ -225,6 +242,8 @@ private:
 
   UPROPERTY()
   TObjectPtr<UAssetResolver> ExternalModelResolver;
+
+  FString DeviceMeshPath(const struct FSensorDeviceSpec& Device) const;
 
   /* //} */
   

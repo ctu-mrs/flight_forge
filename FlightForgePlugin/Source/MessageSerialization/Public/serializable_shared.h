@@ -123,6 +123,7 @@ enum MessageType : unsigned short
   get_instance_seg_map            = 36,
   get_depth_camera_data           = 37,
   set_pose_trajectory             = 38,
+  set_propeller_speeds            = 39,
 };
 
 /* struct LidarConfig //{ */
@@ -823,6 +824,45 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace SetPoseTrajectory
+
+/*SetPropellerSpeeds//{*/
+namespace SetPropellerSpeeds
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::set_propeller_speeds)) {
+  }
+
+  // One angular rate per propeller [rad/s], in the frame's own propeller order:
+  // rear-left, rear-right, front-left, front-right, then any further propellers an
+  // external model brought with it. Sign is the direction of turn, so a quad's
+  // counter-rotating pairs differ in sign. Fewer values than the frame has leaves the
+  // remainder untouched; an empty list hands the propellers back to their default spin.
+  std::vector<double> speeds;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), speeds);
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::set_propeller_speeds)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::set_propeller_speeds, _status) {
+  }
+
+  // How many propellers this frame actually has, so a client can size its next call.
+  int32_t propeller_count = 0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), propeller_count);
+  }
+};
+}  // namespace SetPropellerSpeeds
+/*//}*/
 
 //}
 

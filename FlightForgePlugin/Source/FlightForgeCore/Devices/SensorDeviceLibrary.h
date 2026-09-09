@@ -35,6 +35,12 @@ struct FSensorDeviceSpec
 	EDeviceMeshShape MeshShape = EDeviceMeshShape::Box;
 	FVector          MeshDimensionsCm = FVector(5, 5, 5);
 
+	// stem of a glTF under Content/Meshes/Sensors, in metres, placed with the housing base on the mount point;
+	// the box or cylinder above stands in when it is missing
+	FString  MeshFile;
+	FVector  MeshOffsetCm = FVector::ZeroVector;
+	FRotator MeshRotation = FRotator::ZeroRotator;
+
 	TArray<FDeviceSensorEntry> Sensors;
 };
 

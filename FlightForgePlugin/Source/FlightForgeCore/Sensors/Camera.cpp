@@ -14,6 +14,7 @@
 UCamera::UCamera()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bTickEvenWhenPaused = true;  // lockstep parks the world paused; config requests still land
 	//PrimaryComponentTick.TickGroup    = TG_PrePhysics;
 
 	CameraBufferCriticalSection = std::make_unique<FCriticalSection>();
@@ -139,9 +140,8 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)(
 		[Slot](FRHICommandListImmediate& RHICmdList)
 		{
-			void* Data             = nullptr;
 			int32 RowPitchInPixels = 0;
-			Slot->Readback->LockTexture(RHICmdList, Data, RowPitchInPixels);
+			void* Data             = Slot->Readback->Lock(RowPitchInPixels);
 
 			if (Data)
 			{

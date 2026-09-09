@@ -62,7 +62,10 @@ void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && (Start - camera_last_request_time_) < 1.0)
 	{
-		UpdateCamera(true, Start);
+		if (ShouldCapture())
+		{
+			UpdateCamera(true, Start);
+		}
 	}
 
 	PumpReadback();

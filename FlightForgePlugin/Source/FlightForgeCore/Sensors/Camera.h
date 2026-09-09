@@ -139,6 +139,21 @@ protected:
 
 	void PushStreamingViewHint();
 
+	// the pausing tick still advanced time, so its frame belongs to the step that ran it
+	bool ShouldCapture()
+	{
+		const UWorld* World = GetWorld();
+		const double  Now   = World ? World->GetTimeSeconds() : 0.0;
+		if (World && World->IsPaused() && Now <= LastCaptureSimTime)
+		{
+			return false;
+		}
+		LastCaptureSimTime = Now;
+		return true;
+	}
+
+	double LastCaptureSimTime = -1.0;
+
 	void ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture);
 
 public:

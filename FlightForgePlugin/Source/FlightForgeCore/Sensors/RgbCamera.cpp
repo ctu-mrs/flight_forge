@@ -70,7 +70,10 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	       SceneCaptureComponent2D->bCaptureEveryFrame = true;
 	       UE_LOG(LogTemp, Warning, TEXT("Turning on RGB capture"));
 	     } else {
-	       UpdateCamera(true, start);
+	       if (ShouldCapture())
+	       {
+	       	UpdateCamera(true, start);
+	       }
 	     }
 	   }
 	}

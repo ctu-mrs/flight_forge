@@ -51,8 +51,9 @@ struct FEventReadback
 	float          MaxLogChange = 0.0f;
 	TArray<uint64> Packed;
 
-	double TPrev = 0.0;
-	double TCur  = 0.0;
+	double TPrev      = 0.0;
+	double TCur       = 0.0;
+	uint32 FrameIndex = 0;
 
 	std::atomic<bool> bResolveIssued{false};
 	std::atomic<bool> bCopied{false};
