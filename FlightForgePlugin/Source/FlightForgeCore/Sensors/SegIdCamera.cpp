@@ -144,8 +144,8 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	TArray<FSegIdDrawItem>        Items;
-	TArray<TPair<int32, FString>> Map;
+	TArray<FSegIdDrawItem>    Items;
+	TArray<FSegInstanceEntry> Map;
 	Tagger->CollectInstanceItems(Items, Map);
 
 	CameraBufferCriticalSection->Lock();
@@ -233,7 +233,7 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 
 /* CopyLastFrame() //{ */
 
-bool USegIdCamera::CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<TPair<int32, FString>>& OutMap)
+bool USegIdCamera::CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<FSegInstanceEntry>& OutMap)
 {
 	CameraBufferCriticalSection->Lock();
 	const bool bHave = CameraRendered;
@@ -279,7 +279,7 @@ void USegIdCamera::GetData(std::stringstream& OutputStream)
 
 void USegIdCamera::GetMapData(std::stringstream& OutputStream)
 {
-	TArray<TPair<int32, FString>> MapCopy;
+	TArray<FSegInstanceEntry> MapCopy;
 
 	CameraBufferCriticalSection->Lock();
 	MapCopy = InstanceMap;
@@ -287,11 +287,12 @@ void USegIdCamera::GetMapData(std::stringstream& OutputStream)
 
 	Serializable::Drone::GetInstanceSegMap::Response Response(true);
 
-	for (const TPair<int32, FString>& Entry : MapCopy)
+	for (const FSegInstanceEntry& Entry : MapCopy)
 	{
 		Serializable::Drone::InstanceSegMapEntry Out;
-		Out.id    = Entry.Key;
-		Out.actor = TCHAR_TO_UTF8(*Entry.Value);
+		Out.id       = Entry.Id;
+		Out.actor    = TCHAR_TO_UTF8(*Entry.Actor);
+		Out.class_id = Entry.ClassId;
 		Response.entries_.push_back(Out);
 	}
 

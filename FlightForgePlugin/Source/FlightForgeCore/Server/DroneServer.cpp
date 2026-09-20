@@ -121,6 +121,21 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 		return SetPropellerSpeeds(Client, CustomRequest);
 	}
 
+	if(Request.type == Serializable::Drone::MessageType::get_lidar_scan) {
+		Serializable::Drone::GetLidarScan::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+
+		const int SensorID = DronePawn->ResolveSensorId(SensorType::LIDAR, CustomRequest.sensor_id_);
+
+		if (ULidar* Lidar = Cast<ULidar>(DronePawn->FindSensorById(SensorID)))
+		{
+			std::stringstream OutputStream;
+			Lidar->GetScan(CustomRequest, OutputStream);
+			return Respond(Client, OutputStream);
+		}
+		return false;
+	}
+
 	if(Request.type == Serializable::Drone::MessageType::get_camera_info) {
 		Serializable::Drone::GetCameraInfo::Request CustomRequest;
 		Serialization::SerializeRequest(CustomRequest, *InputStream);

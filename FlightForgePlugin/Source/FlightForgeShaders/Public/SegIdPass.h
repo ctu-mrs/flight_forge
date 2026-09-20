@@ -20,7 +20,7 @@ struct FSegIdDrawItem
 {
 	FPrimitiveComponentId ComponentId;
 
-	// 24-bit instance id packed little-endian into RGB, in [0,1] units
+	// 24-bit instance id packed little-endian into RGB and the 8-bit class id in A, in [0,1] units
 	FLinearColor IdColor = FLinearColor::Black;
 };
 

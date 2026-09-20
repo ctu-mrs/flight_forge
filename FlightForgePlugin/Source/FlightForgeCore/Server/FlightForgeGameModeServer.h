@@ -74,4 +74,5 @@ private:
 	bool SetFixedTimestep(const FTCPClient& Client, Serializable::GameMode::SetFixedTimestep::Request& Request);
 	bool SetLockstep(const FTCPClient& Client, Serializable::GameMode::SetLockstep::Request& Request);
 	bool Step(const FTCPClient& Client, Serializable::GameMode::Step::Request& Request);
+	bool GetClassMap(const FTCPClient& Client, Serializable::GameMode::GetClassMap::Request& Request);
 };

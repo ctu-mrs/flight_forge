@@ -7,6 +7,7 @@
 #include "../FlightForgeGameModeBase.h"
 #include "../Utils/DistanceFieldQuery.h"
 #include "../Utils/WorldMeshExtractor.h"
+#include "../Segmentation/SegmentationTagger.h"
 
 /* route //{ */
 
@@ -205,6 +206,13 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     Serializable::GameMode::Step::Request CustomRequest;
     Serialization::SerializeRequest(CustomRequest, *InputStream);
     return Step(Client, CustomRequest);
+  }
+
+  if(Request.type == Serializable::GameMode::MessageType::get_class_map)
+  {
+    Serializable::GameMode::GetClassMap::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return GetClassMap(Client, CustomRequest);
   }
 
   if(Request.type == Serializable::GameMode::MessageType::get_distance_batch)
@@ -419,6 +427,41 @@ bool FlightForgeGameModeServer::SetCameraCaptureMode(const FTCPClient& Client, S
 //}
 
 /* getFPS() //{ */
+
+/* getClassMap() //{ */
+
+bool FlightForgeGameModeServer::GetClassMap(const FTCPClient& Client, Serializable::GameMode::GetClassMap::Request& Request) {
+
+  if (!GameMode) {
+    return false;
+  }
+
+  auto Response = Serializable::GameMode::GetClassMap::Response(true);
+
+  const UWorld*              World  = GameMode->GetWorld();
+  const USegmentationTagger* Tagger = World ? World->GetSubsystem<USegmentationTagger>() : nullptr;
+  if (Tagger) {
+    TArray<int32> Ids;
+    Tagger->Classes().GetKeys(Ids);
+    Ids.Sort();
+    for (const int32 Id : Ids) {
+      const FSegClass&                                Class = Tagger->Classes()[Id];
+      Serializable::GameMode::GetClassMap::ClassEntry Entry;
+      Entry.id        = Class.Id;
+      Entry.parent_id = Class.ParentId;
+      Entry.path      = TCHAR_TO_UTF8(*Class.Path);
+      Response.classes_.push_back(Entry);
+    }
+    Response.hash_ = Tagger->ClassMapHash();
+  }
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
 
 bool FlightForgeGameModeServer::GetFPS(const FTCPClient& Client, Serializable::GameMode::GetFps::Request& Request) {
 

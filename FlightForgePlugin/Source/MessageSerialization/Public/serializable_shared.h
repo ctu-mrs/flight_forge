@@ -13,7 +13,7 @@ namespace Serializable
 {
 // bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
 constexpr int api_version_major = 0;
-constexpr int api_version_minor = 21;
+constexpr int api_version_minor = 23;
 
 namespace Common
 {
@@ -184,6 +184,7 @@ enum MessageType : unsigned short
   set_pose_trajectory             = 38,
   set_propeller_speeds            = 39,
   get_camera_info                 = 40,
+  get_lidar_scan                  = 41,
 };
 
 /* struct LidarConfig //{ */
@@ -1930,10 +1931,11 @@ struct InstanceSegMapEntry
 {
   int         id;
   std::string actor;
+  int         class_id = 0;  // the actor's segmentation class (see get_class_map); 0 unlabelled
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(CEREAL_NVP(id), CEREAL_NVP(actor));
+    archive(CEREAL_NVP(id), CEREAL_NVP(actor), CEREAL_NVP(class_id));
   }
 };
 
@@ -1969,6 +1971,54 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace GetInstanceSegMap
+
+/* GetLidarScan //{ */
+
+// one scan of any lidar with the channels asked for: get_lidar_data/get_lidar_seg/get_lidar_int
+// each trace separately (and each advance their own Livox cursor), this traces once and hands
+// back every channel for the same points
+namespace GetLidarScan
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_lidar_scan)){};
+
+  int  sensor_id_      = -1;
+  bool with_intensity_ = false;  // physical-material class per point (MaterialIntensity), -1 without a return
+  bool with_labels_    = false;  // class_id_ (segmentation stencil, landscape 1, -1 no return) and instance_id_ (0 background)
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(with_intensity_), CEREAL_NVP(with_labels_));
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_lidar_scan)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_lidar_scan, _status){};
+
+  double startX = 0.0;
+  double startY = 0.0;
+  double startZ = 0.0;
+  double stamp_ = 0.0;
+
+  std::vector<GetLidarData::LidarData> points_;
+
+  // per point, same order as points_; empty unless requested. instance ids share the instance camera's id space
+  std::vector<int>      intensity_;
+  std::vector<int>      class_id_;
+  std::vector<uint32_t> instance_id_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(startX), CEREAL_NVP(startY), CEREAL_NVP(startZ), CEREAL_NVP(stamp_),
+            CEREAL_NVP(points_), CEREAL_NVP(intensity_), CEREAL_NVP(class_id_), CEREAL_NVP(instance_id_));
+  }
+};
+}  // namespace GetLidarScan
+
+//}
 
 /* GetCameraInfo //{ */
 
@@ -2086,7 +2136,8 @@ enum MessageType : unsigned short
   set_time_dilation       = 27,
   set_fixed_timestep      = 28,
   set_lockstep            = 29,
-  step                    = 30
+  step                    = 30,
+  get_class_map           = 31
 };
 
 // Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
@@ -2936,6 +2987,49 @@ namespace GetDistanceBatch
 }
 /*//}*/
 
+/* GetClassMap //{ */
+
+// the segmentation class tree the tagger applies in this world (Config/FlightForgeClasses.yaml plus
+// the ini rules); the same ids appear in the instance camera's alpha channel, the instance map, the
+// legacy stencil (ids <= 255) and the lidar's class_id_
+namespace GetClassMap
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(MessageType::get_class_map){};
+};
+
+// one node of the class tree: path like "vegetation/tree/conifer", parent_id 0 at the root level.
+// Sensors emit leaf ids; collapse through parent_id to the level a task needs.
+struct ClassEntry
+{
+  int         id        = 0;
+  int         parent_id = 0;
+  std::string path;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(CEREAL_NVP(id), CEREAL_NVP(parent_id), CEREAL_NVP(path));
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_class_map)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_class_map, _status){};
+
+  std::vector<ClassEntry> classes_;
+  uint64_t                hash_ = 0;  // over ids and names, so a dataset can tell which legend it was written with
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(classes_), CEREAL_NVP(hash_));
+  }
+};
+}  // namespace GetClassMap
+
+//}
+
 }  // namespace GameMode
 
 /* Registry //{ */
@@ -3006,6 +3100,7 @@ void ForEachOp(F&& f) {
   FF_OP(Drone, SetPoseTrajectory, set_pose_trajectory);
   FF_OP(Drone, SetPropellerSpeeds, set_propeller_speeds);
   FF_OP(Drone, GetCameraInfo, get_camera_info);
+  FF_OP(Drone, GetLidarScan, get_lidar_scan);
 
   FF_OP(GameMode, GetDrones, get_drones);
   FF_OP(GameMode, SpawnDrone, spawn_drone);
@@ -3036,6 +3131,7 @@ void ForEachOp(F&& f) {
   FF_OP(GameMode, SetFixedTimestep, set_fixed_timestep);
   FF_OP(GameMode, SetLockstep, set_lockstep);
   FF_OP(GameMode, Step, step);
+  FF_OP(GameMode, GetClassMap, get_class_map);
 }
 
 #undef FF_OP

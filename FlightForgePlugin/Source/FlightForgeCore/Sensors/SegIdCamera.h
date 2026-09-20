@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Camera.h"
 #include "RgbCamera.h"
+#include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "SegIdCamera.generated.h"
 
 /* USegIdCamera //{ */
@@ -27,7 +28,7 @@ protected:
 
 	FRgbCameraConfig seg_camera_config_;
 
-	TArray<TPair<int32, FString>> InstanceMap;
+	TArray<FSegInstanceEntry> InstanceMap;
 
 	double LastSubmitTime = 0.0;
 
@@ -49,7 +50,7 @@ public:
 	}
 
 	// raw ids of the last frame at the render target size, with the id -> actor map it was rendered against
-	bool CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<TPair<int32, FString>>& OutMap);
+	bool CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<FSegInstanceEntry>& OutMap);
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 

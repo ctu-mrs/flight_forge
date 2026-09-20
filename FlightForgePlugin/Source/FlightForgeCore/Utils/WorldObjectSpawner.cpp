@@ -5,6 +5,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 
 /* ApplyStencil() //{ */
 
@@ -92,8 +93,17 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
       continue;
     }
 
-    const int32 Stencil = Entry.Stencil >= 0 ? Entry.Stencil : NextStencil++;
-    ApplyStencil(Actor, Stencil);
+    int32 Stencil = Entry.Stencil;
+    if (Stencil >= 0)
+    {
+      ApplyStencil(Actor, Stencil);
+    }
+    else if (const USegmentationTagger* Tagger = World->GetSubsystem<USegmentationTagger>())
+    {
+      // the tagger already classified the actor when it spawned; record what it decided
+      TInlineComponentArray<UPrimitiveComponent*> Primitives(Actor);
+      Stencil = Primitives.Num() ? Tagger->ClassOf(Actor, Primitives[0]) : 0;
+    }
 
     const int32 ObjectId = NextObjectId++;
     SpawnedObjects.Add(ObjectId, FSpawnedObjectRecord{Actor, Entry.Asset, Stencil});

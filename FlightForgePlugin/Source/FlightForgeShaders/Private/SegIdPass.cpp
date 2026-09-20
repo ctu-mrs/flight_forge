@@ -304,11 +304,30 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 
 			                  Processor.CurrentId = Item.IdColor;
 
+			                  // the LOD the proxy picks for this view is the one the scene depth was rendered with;
+			                  // drawing LOD0 against it loses the depth test wherever the two surfaces differ
+			                  int32 LOD = SceneInfo->Proxy->GetLOD(&InView);
+			                  if (LOD == INDEX_NONE)
+			                  {
+				                  LOD = 0;
+			                  }
+			                  bool bAny = false;
 			                  for (const FStaticMeshBatch& Mesh : SceneInfo->StaticMeshes)
 			                  {
-				                  if (Mesh.LODIndex == 0)
+				                  if (Mesh.LODIndex == LOD)
 				                  {
 					                  Processor.AddMeshBatch(Mesh, ~0ull, SceneInfo->Proxy);
+					                  bAny = true;
+				                  }
+			                  }
+			                  if (!bAny)
+			                  {
+				                  for (const FStaticMeshBatch& Mesh : SceneInfo->StaticMeshes)
+				                  {
+					                  if (Mesh.LODIndex == 0)
+					                  {
+						                  Processor.AddMeshBatch(Mesh, ~0ull, SceneInfo->Proxy);
+					                  }
 				                  }
 			                  }
 		                  }

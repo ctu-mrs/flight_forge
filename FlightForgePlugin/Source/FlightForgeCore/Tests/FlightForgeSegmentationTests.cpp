@@ -33,7 +33,7 @@ struct FSegDiffRig
 
 	TArray<FColor>                Ids;
 	FIntPoint                     Size = FIntPoint::ZeroValue;
-	TArray<TPair<int32, FString>> Map;
+	TArray<FSegInstanceEntry>     Map;
 };
 
 UWorld* GameWorld()
@@ -168,14 +168,14 @@ bool FSegDiffCompare::Update()
 	TMap<FString, uint32> IdByActor;
 	TSet<uint32>          NoCollisionIds;
 	uint32                SelfId = 0;
-	for (const TPair<int32, FString>& Entry : Rig->Map)
+	for (const FSegInstanceEntry& Entry : Rig->Map)
 	{
-		IdByActor.Add(Entry.Value, static_cast<uint32>(Entry.Key));
+		IdByActor.Add(Entry.Actor, static_cast<uint32>(Entry.Id));
 
-		AActor* Actor = FindObject<AActor>(nullptr, *Entry.Value);
+		AActor* Actor = FindObject<AActor>(nullptr, *Entry.Actor);
 		if (Actor == Rig->Pawn.Get())
 		{
-			SelfId = static_cast<uint32>(Entry.Key);
+			SelfId = static_cast<uint32>(Entry.Id);
 		}
 		bool bCollides = false;
 		if (Actor)
@@ -188,7 +188,7 @@ bool FSegDiffCompare::Update()
 		}
 		if (!bCollides)
 		{
-			NoCollisionIds.Add(static_cast<uint32>(Entry.Key));
+			NoCollisionIds.Add(static_cast<uint32>(Entry.Id));
 		}
 	}
 

@@ -70,6 +70,26 @@ struct FLivoxCursor
 
 //}
 
+/* FLidarScan //{ */
+
+constexpr uint8 LidarChannelNone      = 0;
+constexpr uint8 LidarChannelIntensity = 1;
+constexpr uint8 LidarChannelLabels    = 2;
+
+// one scan; the channel vectors are empty unless asked for, otherwise parallel to Points
+struct FLidarScan
+{
+	FVector Start;
+	double  Stamp = 0.0;
+
+	std::vector<Serializable::Drone::GetLidarData::LidarData> Points;
+	std::vector<int32>  Intensity;   // material class per point, -1 without a return
+	std::vector<int32>  ClassId;     // segmentation stencil, landscape 1, -1 without a return
+	std::vector<uint32> InstanceId;  // the instance camera's id space, 0 background
+};
+
+//}
+
 UCLASS()
 class FLIGHTFORGECORE_API ULidar : public USensor
 {
@@ -92,6 +112,8 @@ public:
 	FLidarMode LidarMode = FLidarMode::DEFAULT;
 	
 	void SetLidarModeWithInt(int type); 
+
+	void GetScan(const Serializable::Drone::GetLidarScan::Request& Request, std::stringstream& OutputStream);
 	
 protected:
 	virtual void BeginPlay() override;
@@ -102,11 +124,8 @@ protected:
 
 	void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp);
 	
-	virtual void UpdateLidar(bool isExternallyLocked);
-
-	virtual void UpdateSegLidar(bool isExternallyLocked);
-
-	virtual void UpdateIntLidar(bool isExternallyLocked);
+	// one trace with the channels asked for; Cursor is the Livox pattern position to advance
+	void Scan(FLivoxCursor& Cursor, uint8 Channels, FLidarScan& Out);
 
 	// Traces one elapsed-time slice of the active Livox pattern. Prepare(count) is
 	// called once the slice size is known so the caller can size its buffer, then
@@ -133,12 +152,6 @@ protected:
 	FLivoxCursor LivoxIntCursor;
 
 	std::unique_ptr<FCriticalSection> LidarHitsCriticalSection;
-	std::unique_ptr<FCriticalSection> LidarSegHitsCriticalSection;
-	std::unique_ptr<FCriticalSection> LidarIntHitsCriticalSection;
-	std::unique_ptr<std::vector<std::tuple<double, double, double, double>>>      LidarHits;
-	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarSegHits;
-	std::unique_ptr<std::vector<std::tuple<double, double, double, double, int>>> LidarIntHits;
-	std::unique_ptr<FVector>                                                      LidarHitStart;
 
 	FLidarConfig LidarConfig;
 };
