@@ -77,6 +77,18 @@ public:
 
 	FStereoCameraConfig GetStereoCameraConfig() const { return stereo_camera_config_; }
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	{
+		const FStereoCameraConfig& C = stereo_camera_config_;
+		const double Baseline = FVector::Dist(C.Offset_left, C.Offset_right);
+		auto Left  = PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset_left, C.Orientation_left);
+		auto Right = PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset_right, C.Orientation_right);
+		Left.baseline_ = Right.baseline_ = Baseline;
+		Right.eye_ = 1;
+		Out.push_back(Left);
+		Out.push_back(Right);
+	}
+
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 	
 	virtual void GetConfig(std::stringstream& OutputStream) override;

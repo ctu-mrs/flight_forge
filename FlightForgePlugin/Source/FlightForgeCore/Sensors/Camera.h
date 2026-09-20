@@ -172,6 +172,12 @@ public:
 	// a garbled config (a client reading a stale reply) must fail the request, not fatal the engine in a LUT allocation
 	static bool ValidDimensions(int32 Width, int32 Height);
 
+	// one CameraInfo per eye, for get_camera_info
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) {}
+
+	static Serializable::Drone::CameraInfo PinholeInfo(int SensorId, ::SensorType Type, const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion,
+	                                                   double FovDeg, int32 Width, int32 Height, const FVector& Offset, const FRotator& Orientation);
+
 	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
 	static TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> BuildDistortionLUT(const FCameraDistortion& Distortion, const FCameraIntrinsics& EffectiveK,

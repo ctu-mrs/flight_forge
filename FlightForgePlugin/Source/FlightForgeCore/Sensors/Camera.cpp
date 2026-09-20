@@ -445,6 +445,41 @@ FCameraIntrinsics UCamera::EffectiveIntrinsics(const FCameraIntrinsics& Intrinsi
 	return Effective;
 }
 
+/* PinholeInfo() //{ */
+
+Serializable::Drone::CameraInfo UCamera::PinholeInfo(const int SensorId, const ::SensorType Type, const FCameraIntrinsics& Intrinsics,
+                                                     const FCameraDistortion& Distortion, const double FovDeg, const int32 Width, const int32 Height,
+                                                     const FVector& Offset, const FRotator& Orientation)
+{
+	const FCameraIntrinsics K = EffectiveIntrinsics(Intrinsics, FovDeg, Width, Height);
+
+	Serializable::Drone::CameraInfo Info;
+	Info.sensor_id_   = SensorId;
+	Info.sensor_type_ = static_cast<int>(Type);
+	Info.width_       = Width;
+	Info.height_      = Height;
+	Info.model_       = "pinhole";
+	Info.fx_          = K.Fx;
+	Info.fy_          = K.Fy;
+	Info.cx_          = K.Cx;
+	Info.cy_          = K.Cy;
+	if (Distortion.Enable)
+	{
+		Info.d_ = {Distortion.K1, Distortion.K2, Distortion.P1, Distortion.P2, Distortion.K3};
+	}
+	// custom K has no single FOV; report the horizontal one the effective fx implies
+	Info.fov_deg_        = K.Fx > 0.0 ? FMath::RadiansToDegrees(2.0 * FMath::Atan(Width * 0.5 / K.Fx)) : FovDeg;
+	Info.offset_x_       = Offset.X;
+	Info.offset_y_       = Offset.Y;
+	Info.offset_z_       = Offset.Z;
+	Info.rotation_pitch_ = Orientation.Pitch;
+	Info.rotation_yaw_   = Orientation.Yaw;
+	Info.rotation_roll_  = Orientation.Roll;
+	return Info;
+}
+
+//}
+
 void UCamera::ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, const double FovDeg, const int32 Width,
                               const int32 Height)
 {

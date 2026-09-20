@@ -36,6 +36,12 @@ public:
 
 	bool SetSegIdCameraConfig(const FRgbCameraConfig& Config);
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	{
+		const FRgbCameraConfig& C = seg_camera_config_;
+		Out.push_back(PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation));
+	}
+
 	const FRgbCameraConfig& GetSegIdCameraConfig() const
 	{
 		return seg_camera_config_;

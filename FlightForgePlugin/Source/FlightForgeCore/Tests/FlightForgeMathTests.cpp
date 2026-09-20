@@ -8,6 +8,7 @@
 #include "Misc/AutomationTest.h"
 
 #include "FlightForgeCore/Sensors/Camera.h"
+#include "FlightForgeCore/Sensors/FisheyeCamera.h"
 #include "FlightForgeCore/Utils/SpawnConfig.h"
 
 /* spawn transform inverse //{ */
@@ -247,5 +248,57 @@ bool FFlightForgeNoiseDeterminismTest::RunTest(const FString& Parameters)
 }
 
 /* //} */
+
+/* camera info //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeCameraInfoTest, "FlightForge.Math.CameraInfo",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeCameraInfoTest::RunTest(const FString& Parameters)
+{
+	// the fisheye focal puts theta = fov/2 exactly on the image circle for every lens model
+	const double FovDeg  = 180.0;
+	const double HalfFov = FMath::DegreesToRadians(FovDeg) * 0.5;
+	const int32  W = 640, H = 480;
+	const double Radius = 0.5 * H;
+
+	const double Fe = UFisheyeCamera::FocalPx(EFisheyeLensModel::EQUIDISTANT, FovDeg, W, H, false);
+	TestEqual(TEXT("equidistant edge"), Fe * HalfFov, Radius, 1.0e-9);
+
+	const double Fs = UFisheyeCamera::FocalPx(EFisheyeLensModel::EQUISOLID, FovDeg, W, H, false);
+	TestEqual(TEXT("equisolid edge"), 2.0 * Fs * FMath::Sin(HalfFov * 0.5), Radius, 1.0e-9);
+
+	const double Fg = UFisheyeCamera::FocalPx(EFisheyeLensModel::STEREOGRAPHIC, FovDeg, W, H, false);
+	TestEqual(TEXT("stereographic edge"), 2.0 * Fg * FMath::Tan(HalfFov * 0.5), Radius, 1.0e-9);
+
+	const double Ff = UFisheyeCamera::FocalPx(EFisheyeLensModel::EQUIDISTANT, FovDeg, W, H, true);
+	TestEqual(TEXT("full-frame edge is the diagonal"), Ff * HalfFov, 0.5 * FMath::Sqrt((double)(W * W + H * H)), 1.0e-9);
+
+	// pinhole: FOV -> fx, and D in plumb_bob order
+	FCameraDistortion D;
+	D.Enable = true;
+	D.K1 = 0.1; D.K2 = 0.02; D.K3 = 0.003; D.P1 = 0.0004; D.P2 = 0.00005;
+	const auto Info = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, FCameraIntrinsics{}, D, 90.0, W, H, FVector(10.0, 0.0, -5.0), FRotator(-30.0, 0.0, 0.0));
+	TestEqual(TEXT("fx from fov"), Info.fx_, (W * 0.5) / FMath::Tan(FMath::DegreesToRadians(45.0)), 1.0e-9);
+	TestEqual(TEXT("fov round-trips"), Info.fov_deg_, 90.0, 1.0e-9);
+	TestEqual(TEXT("cx centred"), Info.cx_, W * 0.5, 1.0e-9);
+	TestEqual(TEXT("D size"), (int32)Info.d_.size(), 5);
+	TestTrue(TEXT("D is k1 k2 p1 p2 k3"), Info.d_[0] == 0.1 && Info.d_[2] == 0.0004 && Info.d_[3] == 0.00005 && Info.d_[4] == 0.003);
+	TestEqual(TEXT("model"), FString(Info.model_.c_str()), FString(TEXT("pinhole")));
+	TestEqual(TEXT("pitch"), Info.rotation_pitch_, -30.0, 1.0e-9);
+
+	// custom K: reported as-is, fov is what fx implies
+	FCameraIntrinsics K;
+	K.UseCustom = true;
+	K.Fx = 500.0; K.Fy = 510.0; K.Cx = 300.0; K.Cy = 250.0;
+	const auto Custom = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, K, FCameraDistortion{}, 90.0, W, H, FVector::ZeroVector, FRotator::ZeroRotator);
+	TestEqual(TEXT("custom fy"), Custom.fy_, 510.0, 1.0e-9);
+	TestEqual(TEXT("custom fov"), Custom.fov_deg_, FMath::RadiansToDegrees(2.0 * FMath::Atan(320.0 / 500.0)), 1.0e-9);
+	TestTrue(TEXT("no D without distortion"), Custom.d_.empty());
+
+	return true;
+}
+
+//}
 
 #endif  // WITH_DEV_AUTOMATION_TESTS

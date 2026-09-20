@@ -23,6 +23,12 @@ protected:
 
 	FRgbCameraConfig rgb_camera_config_;
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	{
+		const FRgbCameraConfig& C = rgb_camera_config_;
+		Out.push_back(PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation));
+	}
+
 	// set from the render thread once the blendable's shaders are actually usable there;
 	// shared so an in-flight probe outliving the camera writes into live memory
 	TSharedPtr<std::atomic<bool>, ESPMode::ThreadSafe> BlendableLive = MakeShared<std::atomic<bool>, ESPMode::ThreadSafe>(false);

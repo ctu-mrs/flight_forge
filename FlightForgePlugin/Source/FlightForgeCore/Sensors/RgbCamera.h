@@ -93,6 +93,14 @@ public:
 
 	FRgbCameraConfig GetRgbCameraConfig() const { return rgb_camera_config_; }
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	{
+		const FRgbCameraConfig& C = rgb_camera_config_;
+		auto Info = PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation);
+		Info.readout_time_ = C.RollingShutter.Enable ? C.RollingShutter.ReadoutTime : 0.0;
+		Out.push_back(Info);
+	}
+
 	void ApplyExposureAndLens(const FCameraExposure& Exposure, const FCameraLensEffects& Lens, FPostProcessSettings& PP);
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;

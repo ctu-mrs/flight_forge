@@ -120,6 +120,12 @@ bool DroneServer::Route(const FTCPClient &Client, std::shared_ptr<std::stringstr
 
 		return SetPropellerSpeeds(Client, CustomRequest);
 	}
+
+	if(Request.type == Serializable::Drone::MessageType::get_camera_info) {
+		Serializable::Drone::GetCameraInfo::Request CustomRequest;
+		Serialization::SerializeRequest(CustomRequest, *InputStream);
+		return GetCameraInfo(Client, CustomRequest);
+	}
 	
 	if(Request.type == Serializable::Drone::MessageType::get_lidar_data) {
 		Serializable::Drone::GetLidarData::Request CustomRequest;
@@ -816,6 +822,37 @@ bool DroneServer::RemoveSensor(const FTCPClient& Client, Serializable::Drone::Re
 
 	return Respond(Client, OutputStream);
 }
+
+/* getCameraInfo() //{ */
+
+bool DroneServer::GetCameraInfo(const FTCPClient& Client, Serializable::Drone::GetCameraInfo::Request& Request)
+{
+	if(!DronePawn) {
+		return false;
+	}
+
+	std::vector<int> Ids, Types;
+	if (Request.sensor_id_ >= 0) {
+		Ids.push_back(Request.sensor_id_);
+	} else {
+		DronePawn->GetSensorList(Ids, Types);
+	}
+
+	Serializable::Drone::GetCameraInfo::Response Response(true);
+	for (const int Id : Ids) {
+		if (UCamera* Camera = Cast<UCamera>(DronePawn->FindSensorById(Id))) {
+			Camera->DescribeCameras(Response.cameras_);
+		} else if (Request.sensor_id_ >= 0) {
+			Response.status = false;
+		}
+	}
+
+	std::stringstream OutputStream;
+	Serialization::DeserializeResponse(Response, OutputStream);
+	return Respond(Client, OutputStream);
+}
+
+//}
 
 bool DroneServer::ListSensors(const FTCPClient& Client)
 {

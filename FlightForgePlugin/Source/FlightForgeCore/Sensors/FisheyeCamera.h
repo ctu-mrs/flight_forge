@@ -66,6 +66,11 @@ public:
 
 	FFisheyeCameraConfig GetFisheyeCameraConfig() const { return fisheye_camera_config_; }
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override;
+
+	// pixels per radian of theta such that theta = fov/2 lands on the image circle, matching RebuildLUT
+	static double FocalPx(EFisheyeLensModel Model, double FovDeg, int32 Width, int32 Height, bool FullFrame);
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 

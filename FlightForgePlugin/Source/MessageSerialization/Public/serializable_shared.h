@@ -13,7 +13,7 @@ namespace Serializable
 {
 // bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
 constexpr int api_version_major = 0;
-constexpr int api_version_minor = 19;
+constexpr int api_version_minor = 20;
 
 namespace Common
 {
@@ -183,6 +183,7 @@ enum MessageType : unsigned short
   get_depth_camera_data           = 37,
   set_pose_trajectory             = 38,
   set_propeller_speeds            = 39,
+  get_camera_info                 = 40,
 };
 
 /* struct LidarConfig //{ */
@@ -1958,6 +1959,80 @@ struct Response : public Common::NetworkResponse
 };
 }  // namespace GetInstanceSegMap
 
+/* GetCameraInfo //{ */
+
+// the effective calibration of one camera eye, enough for a ROS CameraInfo + TF; mount offset
+// and rotation follow the camera configs' drone-frame convention and units
+struct CameraInfo
+{
+  int sensor_id_   = -1;
+  int sensor_type_ = 0;
+  int eye_         = 0;  // stereo: 0 left, 1 right
+
+  int width_  = 0;
+  int height_ = 0;
+
+  std::string model_;  // pinhole | equidistant | equisolid | stereographic
+
+  double fx_ = 0.0;  // pixels; a fisheye's f is pixels per radian of theta
+  double fy_ = 0.0;
+  double cx_ = 0.0;
+  double cy_ = 0.0;
+
+  std::vector<double> d_;  // pinhole with distortion: k1 k2 p1 p2 k3 (plumb_bob order); otherwise empty
+
+  double fov_deg_ = 0.0;  // pinhole: horizontal; fisheye: the image circle (diagonal when full-frame)
+
+  double offset_x_ = 0.0;
+  double offset_y_ = 0.0;
+  double offset_z_ = 0.0;
+
+  double rotation_pitch_ = 0.0;
+  double rotation_yaw_   = 0.0;
+  double rotation_roll_  = 0.0;
+
+  double baseline_     = 0.0;  // stereo: distance between the eyes, config units
+  double readout_time_ = 0.0;  // rolling shutter seconds top-to-bottom; 0 = global shutter
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(CEREAL_NVP(sensor_id_), CEREAL_NVP(sensor_type_), CEREAL_NVP(eye_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(model_),
+            CEREAL_NVP(fx_), CEREAL_NVP(fy_), CEREAL_NVP(cx_), CEREAL_NVP(cy_), CEREAL_NVP(d_), CEREAL_NVP(fov_deg_), CEREAL_NVP(offset_x_),
+            CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_), CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_),
+            CEREAL_NVP(baseline_), CEREAL_NVP(readout_time_));
+  }
+};
+
+namespace GetCameraInfo
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_camera_info)){};
+
+  int sensor_id_ = -1;  // -1: every camera on the drone
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_camera_info)){};
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_camera_info, _status){};
+
+  std::vector<CameraInfo> cameras_;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(cameras_));
+  }
+};
+}  // namespace GetCameraInfo
+
+//}
+
 //}
 
 }  // namespace Drone
@@ -2913,6 +2988,7 @@ void ForEachOp(F&& f) {
   FF_OP(Drone, GetDepthCameraData, get_depth_camera_data);
   FF_OP(Drone, SetPoseTrajectory, set_pose_trajectory);
   FF_OP(Drone, SetPropellerSpeeds, set_propeller_speeds);
+  FF_OP(Drone, GetCameraInfo, get_camera_info);
 
   FF_OP(GameMode, GetDrones, get_drones);
   FF_OP(GameMode, SpawnDrone, spawn_drone);

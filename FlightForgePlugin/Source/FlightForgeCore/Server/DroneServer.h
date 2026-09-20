@@ -35,6 +35,7 @@ private:
 
   bool SetPoseTrajectory(const FTCPClient& Client, Serializable::Drone::SetPoseTrajectory::Request& Request);
   bool SetPropellerSpeeds(const FTCPClient& Client, Serializable::Drone::SetPropellerSpeeds::Request& Request);
+  bool GetCameraInfo(const FTCPClient& Client, Serializable::Drone::GetCameraInfo::Request& Request);
 
   bool GetMoveLineVisible(const FTCPClient& Client, Serializable::Drone::GetMoveLineVisible::Request& Request);
 

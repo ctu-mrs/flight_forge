@@ -152,6 +152,50 @@ void UFisheyeCamera::BeginDestroy()
 	Super::BeginDestroy();
 }
 
+/* FocalPx() + DescribeCameras() //{ */
+
+double UFisheyeCamera::FocalPx(const EFisheyeLensModel Model, const double FovDeg, const int32 Width, const int32 Height, const bool FullFrame)
+{
+	const double HalfFov     = FMath::DegreesToRadians(FMath::Clamp(FovDeg, 10.0, 220.0)) * 0.5;
+	const double ImageRadius = FullFrame ? 0.5 * FMath::Sqrt((double)(Width * Width + Height * Height)) : 0.5 * FMath::Min(Width, Height);
+	switch (Model)
+	{
+		case EFisheyeLensModel::EQUISOLID: return ImageRadius / (2.0 * FMath::Sin(HalfFov * 0.5));
+		case EFisheyeLensModel::STEREOGRAPHIC: return ImageRadius / (2.0 * FMath::Tan(HalfFov * 0.5));
+		default: return ImageRadius / HalfFov;
+	}
+}
+
+void UFisheyeCamera::DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out)
+{
+	const FFisheyeCameraConfig& C = fisheye_camera_config_;
+
+	Serializable::Drone::CameraInfo Info;
+	Info.sensor_id_   = GetSensorID();
+	Info.sensor_type_ = static_cast<int>(GetSensorType());
+	Info.width_       = C.Width;
+	Info.height_      = C.Height;
+	switch (C.LensModel)
+	{
+		case EFisheyeLensModel::EQUISOLID: Info.model_ = "equisolid"; break;
+		case EFisheyeLensModel::STEREOGRAPHIC: Info.model_ = "stereographic"; break;
+		default: Info.model_ = "equidistant"; break;
+	}
+	Info.fx_ = Info.fy_ = FocalPx(C.LensModel, C.FOVAngle, C.Width, C.Height, C.FullFrame);
+	Info.cx_             = C.Width * 0.5;
+	Info.cy_             = C.Height * 0.5;
+	Info.fov_deg_        = C.FOVAngle;
+	Info.offset_x_       = C.Offset.X;
+	Info.offset_y_       = C.Offset.Y;
+	Info.offset_z_       = C.Offset.Z;
+	Info.rotation_pitch_ = C.Orientation.Pitch;
+	Info.rotation_yaw_   = C.Orientation.Yaw;
+	Info.rotation_roll_  = C.Orientation.Roll;
+	Out.push_back(Info);
+}
+
+//}
+
 /* RebuildLUT() //{ */
 
 void UFisheyeCamera::RebuildLUT()

@@ -39,6 +39,12 @@ public:
 
 	bool SetDepthCameraConfig(const FRgbCameraConfig& Config);
 
+	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	{
+		const FRgbCameraConfig& C = depth_camera_config_;
+		Out.push_back(PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, FCameraDistortion{}, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation));
+	}
+
 	FRgbCameraConfig GetDepthCameraConfig() const
 	{
 		return depth_camera_config_;
