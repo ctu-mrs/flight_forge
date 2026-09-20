@@ -44,8 +44,8 @@ void ConfigureStereo(USensor* Sensor, const FVector& Offset, const FRotator& Rot
 	}
 }
 
-void ConfigureGridLidar(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, int HorRays, int VertRays, double FovVertUpDeg, double FovVertDownDeg,
-                        double RangeCm, double FrequencyHz)
+void ConfigureGridLidar(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, int HorRays, int VertRays, double FovHorDeg, double FovVertUpDeg,
+                        double FovVertDownDeg, double RangeCm, double FrequencyHz)
 {
 	if (ULidar* Lidar = Cast<ULidar>(Sensor))
 	{
@@ -56,8 +56,8 @@ void ConfigureGridLidar(USensor* Sensor, const FVector& Offset, const FRotator& 
 		Config.Orientation  = Rotation;
 		Config.BeamHorRays  = HorRays;
 		Config.BeamVertRays = VertRays;
-		Config.FOVHorLeft   = 180;
-		Config.FOVHorRight  = 180;
+		Config.FOVHorLeft   = FovHorDeg * 0.5;
+		Config.FOVHorRight  = FovHorDeg * 0.5;
 		Config.FOVVertUp    = FovVertUpDeg;
 		Config.FOVVertDown  = FovVertDownDeg;
 		Config.BeamLength   = RangeCm;
@@ -122,7 +122,7 @@ void ConfigureEvent(USensor* Sensor, const FVector& Offset, const FRotator& Rota
 	}
 }
 
-void ConfigureFisheye(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, double FovDeg, int W, int H, EFisheyeLensModel Model)
+void ConfigureFisheye(USensor* Sensor, const FVector& Offset, const FRotator& Rotation, double FovDeg, int W, int H, EFisheyeLensModel Model, bool bFullFrame)
 {
 	if (UFisheyeCamera* Cam = Cast<UFisheyeCamera>(Sensor))
 	{
@@ -133,6 +133,7 @@ void ConfigureFisheye(USensor* Sensor, const FVector& Offset, const FRotator& Ro
 		Config.Width       = W;
 		Config.Height      = H;
 		Config.LensModel   = Model;
+		Config.FullFrame   = bFullFrame;
 		Cam->SetFisheyeCameraConfig(Config);
 	}
 }
@@ -209,7 +210,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
-		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 32, 45, 45, 5000, 10); };
+		Lidar.RelOffset = FVector(0, 0, 3.82);  // beam origin above the base, Rev7 drawing
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 32, 360, 45, 45, 5000, 10); };
 		D.Sensors.Add(Lidar);
 
 		Devices.Add(D);
@@ -224,7 +226,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
-		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 64, 22.5, 22.5, 12000, 10); };
+		Lidar.RelOffset = FVector(0, 0, 3.82);  // taken from the OS0 drawing, OS1 not checked
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 64, 360, 22.5, 22.5, 12000, 10); };
 		D.Sensors.Add(Lidar);
 
 		Devices.Add(D);
@@ -242,6 +245,7 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
+		Lidar.RelOffset = FVector(0, 0, 4.7);  // point-cloud origin O above the bottom surface, user manual drawing
 		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureLivox(S, O, R, TEXT("mid360"), 4000, 10); };
 		D.Sensors.Add(Lidar);
 
@@ -265,6 +269,33 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 	{
 		FSensorDeviceSpec D;
+		D.Name             = TEXT("odin1");
+		D.Description      = TEXT("Manifold Odin1: 120x90deg solid-state lidar 240x180 @10 Hz, 70 m + 173deg-diagonal global-shutter RGB 1600x1296");
+		D.MeshShape        = EDeviceMeshShape::Box;
+		D.MeshDimensionsCm = FVector(10.0, 6.2, 4.3);
+		D.MeshFile         = TEXT("Odin1");
+		D.MeshRotation     = FRotator(0, 180, 0);  // CAD has the optics along -X and the mounting plate along +X
+		D.MeshOffsetCm     = FVector(0, 0, 3.1);
+
+		// both look out of the front face; the camera sits left of the lidar window
+		FDeviceSensorEntry Lidar;
+		Lidar.Type      = SensorType::LIDAR;
+		Lidar.RelOffset = FVector(2.0, 1.3, 3.1);
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 240, 180, 120, 45, 45, 7000, 10); };
+		D.Sensors.Add(Lidar);
+
+		// 129 x 104 x 173 deg on a full frame is an equidistant lens whose image circle reaches the corners
+		FDeviceSensorEntry Rgb;
+		Rgb.Type      = SensorType::FISHEYE_CAMERA;
+		Rgb.RelOffset = FVector(2.0, -3.4, 3.1);
+		Rgb.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureFisheye(S, O, R, 173, 1600, 1296, EFisheyeLensModel::EQUIDISTANT, true); };
+		D.Sensors.Add(Rgb);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
 		D.Name             = TEXT("garmin_lidar_lite_v3");
 		D.Description      = TEXT("Garmin LIDAR-Lite v3 rangefinder, 40 m, downward");
 		D.MeshShape        = EDeviceMeshShape::Box;
@@ -274,6 +305,7 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Finder;
 		Finder.Type      = SensorType::RANGEFINDER;
+		Finder.RelOffset = FVector(0, 0, -3.9);  // lens face of the housing hanging under the mount
 		Finder.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureRangefinder(S, O, 4000); };
 		D.Sensors.Add(Finder);
 
@@ -321,7 +353,7 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Fisheye;
 		Fisheye.Type      = SensorType::FISHEYE_CAMERA;
-		Fisheye.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureFisheye(S, O, R, 220, 1024, 1024, EFisheyeLensModel::EQUIDISTANT); };
+		Fisheye.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureFisheye(S, O, R, 220, 1024, 1024, EFisheyeLensModel::EQUIDISTANT, false); };
 		D.Sensors.Add(Fisheye);
 
 		Devices.Add(D);

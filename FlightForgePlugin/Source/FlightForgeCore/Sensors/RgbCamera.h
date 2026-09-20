@@ -41,12 +41,12 @@ struct FRgbCameraConfig
 {
 	bool ShowCameraComponent = false;
 
-	FVector  Offset             = FVector::ZeroVector;
+	FVector  Offset             = DEFAULT_CAMERA_MOUNT;
 	FRotator Orientation        = FRotator::ZeroRotator;
 	double   FOVAngle           = 90.0;
 	int      Width              = 640;
 	int      Height             = 480;
-	bool     enable_temporal_aa = false;
+	bool     enable_temporal_aa = true;
 	bool     enable_hdr         = true;
 	bool     enable_raytracing  = true;
 	bool     enable_motion_blur     = true;

@@ -5,15 +5,12 @@
 
 #include "yaml.h"
 
+#include "YamlUtils.h"
+
 namespace
 {
 
 /* yaml readers //{ */
-
-FString ToFString(const std::string& In)
-{
-  return FString(UTF8_TO_TCHAR(In.c_str()));
-}
 
 double ReadScalar(const YAML::Node& Node, const char* Key, const double Default)
 {

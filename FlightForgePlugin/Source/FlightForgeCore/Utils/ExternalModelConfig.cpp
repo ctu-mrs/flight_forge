@@ -5,15 +5,12 @@
 
 #include "yaml.h"
 
+#include "YamlUtils.h"
+
 namespace
 {
 
 /* helpers //{ */
-
-FString ToFString(const std::string& In)
-{
-  return FString(UTF8_TO_TCHAR(In.c_str()));
-}
 
 FVector ReadTriplet(const YAML::Node& Node, const FVector& Default)
 {

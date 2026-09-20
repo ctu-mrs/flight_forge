@@ -18,6 +18,13 @@
 
 using Serializable::GameMode::CameraCaptureModeEnum;
 
+/* DEFAULT_CAMERA_MOUNT //{ */
+
+// clear of the airframe: at the origin a camera stares into the Mid-360's dome
+inline const FVector DEFAULT_CAMERA_MOUNT = FVector(25.0, 0.0, 0.0);
+
+/* //} */
+
 /* FCameraIntrinsics //{ */
 
 // pinhole intrinsics in pixels, image origin top-left; when UseCustom the capture's

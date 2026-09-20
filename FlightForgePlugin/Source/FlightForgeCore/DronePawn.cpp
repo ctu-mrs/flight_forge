@@ -877,17 +877,25 @@ FString ADronePawn::DeviceMeshPath(const FSensorDeviceSpec& Device) const
     return FString();
   }
 
-  const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("FlightForgePlugin"));
-  const FString             Path   = Plugin ? FPaths::Combine(Plugin->GetContentDir(), TEXT("Meshes"), TEXT("Sensors"), Device.MeshFile + TEXT(".glb")) : FString();
-
-  if (Path.IsEmpty() || !FPaths::FileExists(Path))
+  // a project can override or add a housing without touching the plugin
+  TArray<FString> Dirs = {FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge"), TEXT("Models"), TEXT("Sensors"))};
+  if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("FlightForgePlugin")))
   {
-    UE_LOG(LogTemp, Warning, TEXT("AddDevice: '%s' has no mesh at %s, keeping the %s"), *Device.Name, *Path,
-           Device.MeshShape == EDeviceMeshShape::Cylinder ? TEXT("cylinder") : TEXT("box"));
-    return FString();
+    Dirs.Add(FPaths::Combine(Plugin->GetContentDir(), TEXT("Meshes"), TEXT("Sensors")));
   }
 
-  return Path;
+  for (const FString& Dir : Dirs)
+  {
+    const FString Path = FPaths::Combine(Dir, Device.MeshFile + TEXT(".glb"));
+    if (FPaths::FileExists(Path))
+    {
+      return Path;
+    }
+  }
+
+  UE_LOG(LogTemp, Warning, TEXT("AddDevice: '%s' has no %s.glb under %s, keeping the %s"), *Device.Name, *Device.MeshFile, *FString::Join(Dirs, TEXT(" or ")),
+         Device.MeshShape == EDeviceMeshShape::Cylinder ? TEXT("cylinder") : TEXT("box"));
+  return FString();
 }
 
 //}

@@ -26,6 +26,8 @@ struct FFisheyeCameraConfig
 
 	EFisheyeLensModel LensModel;
 
+	bool FullFrame = false;
+
 	FCameraCompression Compression;
 };
 

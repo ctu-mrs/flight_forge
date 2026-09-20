@@ -5,8 +5,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Chaos/HeightField.h"
 #include "FlightForgeCore/DronePawn.h"
-#include "LandscapeDataAccess.h"
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "StaticMeshResources.h"
 
@@ -15,36 +15,29 @@
 static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heightfield, const FVector& WorldOrigin, const FBox& SceneBounds,
                             const int32 MaxTriangles, FWorldMeshResult& Out)
 {
-	const int32 Size = Heightfield->CollisionSizeQuads + 1;
-	if (Size <= 1)
+	// the cooked physics heightfield is what a packaged build has; the editor's raw height data is editor-only
+	const Chaos::FHeightField* Field = Heightfield->HeightfieldRef.IsValid() ? Heightfield->HeightfieldRef->HeightfieldGeometry.GetReference() : nullptr;
+	if (!Field || Field->GetNumCols() <= 1 || Field->GetNumRows() != Field->GetNumCols())
 	{
 		return;
 	}
 
-	const uint16* Heights = static_cast<const uint16*>(const_cast<ULandscapeHeightfieldCollisionComponent*>(Heightfield)->CollisionHeightData.LockReadOnly());
-	if (!Heights)
-	{
-		return;
-	}
+	const int32 Size    = Field->GetNumCols();
+	const bool  bFilter = SceneBounds.IsValid != 0;
 
-	const bool       bFilter = SceneBounds.IsValid != 0;
-	const FTransform ToWorld = Heightfield->GetComponentTransform();
+	// the physics body carries the component's rotation and translation; the scale is baked into the field
+	FTransform ToWorld = Heightfield->GetComponentTransform();
+	ToWorld.SetScale3D(FVector::OneVector);
 
 	TArray<FVector3f> Scene;
 	Scene.SetNumUninitialized(Size * Size);
-	for (int32 y = 0; y < Size; ++y)
+	for (int32 Index = 0; Index < Size * Size; ++Index)
 	{
-		for (int32 x = 0; x < Size; ++x)
-		{
-			const float   Z = LandscapeDataAccess::GetLocalHeight(Heights[y * Size + x]);
-			const FVector W = ToWorld.TransformPosition(FVector(x * Heightfield->CollisionScale, y * Heightfield->CollisionScale, Z));
+		const FVector W = ToWorld.TransformPosition(FVector(Field->GetPointScaled(Index)));
 
-			Scene[y * Size + x] = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
-			                                static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
-		}
+		Scene[Index] = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
+		                         static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
 	}
-
-	const_cast<ULandscapeHeightfieldCollisionComponent*>(Heightfield)->CollisionHeightData.Unlock();
 
 	// a landscape component covers hundreds of metres, so without per-quad clipping a
 	// small query still drags the whole tile over the wire

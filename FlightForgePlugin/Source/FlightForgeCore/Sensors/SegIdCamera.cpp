@@ -221,6 +221,24 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 
 /* //} */
 
+/* CopyLastFrame() //{ */
+
+bool USegIdCamera::CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<TPair<int32, FString>>& OutMap)
+{
+	CameraBufferCriticalSection->Lock();
+	const bool bHave = CameraRendered;
+	if (bHave)
+	{
+		OutIds  = CameraBuffer;
+		OutSize = CameraBufferSize;
+		OutMap  = InstanceMap;
+	}
+	CameraBufferCriticalSection->Unlock();
+	return bHave;
+}
+
+//}
+
 /* GetData() / GetMapData() //{ */
 
 void USegIdCamera::GetData(std::stringstream& OutputStream)

@@ -67,12 +67,13 @@ void UFisheyeCamera::BeginPlay()
 	Super::BeginPlay();
 
 	fisheye_camera_config_.ShowCameraComponent = false;
-	fisheye_camera_config_.Offset              = FVector(0, 0, 0);
+	fisheye_camera_config_.Offset              = DEFAULT_CAMERA_MOUNT;
 	fisheye_camera_config_.Orientation         = FRotator(0, 0, 0);
 	fisheye_camera_config_.FOVAngle            = 180;
 	fisheye_camera_config_.Width               = 640;
 	fisheye_camera_config_.Height              = 640;
 	fisheye_camera_config_.LensModel           = EFisheyeLensModel::EQUIDISTANT;
+	fisheye_camera_config_.FullFrame           = false;
 
 	const int32 Size = FaceSize();
 
@@ -165,7 +166,7 @@ void UFisheyeCamera::RebuildLUT()
 
 	const float HalfFov     = FMath::DegreesToRadians((float)FMath::Clamp(fisheye_camera_config_.FOVAngle, 10.0, 220.0)) * 0.5f;
 	const float TanHalfFace = FMath::Tan(FMath::DegreesToRadians(FaceFovDeg) * 0.5f);
-	const float ImageRadius = 0.5f * FMath::Min(W, H);
+	const float ImageRadius = fisheye_camera_config_.FullFrame ? 0.5f * FMath::Sqrt((float)(W * W + H * H)) : 0.5f * FMath::Min(W, H);
 	const int32 Size        = FaceSize();
 
 	const EFisheyeLensModel Model = fisheye_camera_config_.LensModel;
@@ -524,6 +525,7 @@ void UFisheyeCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.width_      = fisheye_camera_config_.Width;
 	Response.config.height_     = fisheye_camera_config_.Height;
 	Response.config.lens_model_ = static_cast<int>(fisheye_camera_config_.LensModel);
+	Response.config.full_frame_ = fisheye_camera_config_.FullFrame;
 
 	Response.config.compression_.format_ =
 	    fisheye_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
@@ -547,6 +549,7 @@ void UFisheyeCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<
 	Config.Width     = Request.config.width_;
 	Config.Height    = Request.config.height_;
 	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 2));
+	Config.FullFrame = Request.config.full_frame_;
 
 	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
 	Config.Compression.Quality = Request.config.compression_.quality_;

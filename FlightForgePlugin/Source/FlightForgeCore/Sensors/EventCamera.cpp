@@ -63,7 +63,7 @@ void UEventCamera::BeginPlay()
 	PP.DepthOfFieldFstop            = 4.0f;
 
 	event_camera_config_.ShowCameraComponent  = false;
-	event_camera_config_.Offset               = FVector(0, 0, 0);
+	event_camera_config_.Offset               = DEFAULT_CAMERA_MOUNT;
 	event_camera_config_.Orientation          = FRotator(0, 0, 0);
 	event_camera_config_.FOVAngle             = 90;
 	event_camera_config_.Width                = 640;

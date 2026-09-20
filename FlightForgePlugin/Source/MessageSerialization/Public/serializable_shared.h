@@ -1499,10 +1499,13 @@ struct FisheyeCameraConfig
 
   CameraCompression compression_;
 
+  // image circle fitted to the frame corner (fov_ is the diagonal) instead of the short side
+  bool full_frame_;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, lens_model_,
-            compression_);
+            compression_, full_frame_);
   }
 };
 

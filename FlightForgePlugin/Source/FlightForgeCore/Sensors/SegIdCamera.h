@@ -36,6 +36,14 @@ public:
 
 	bool SetSegIdCameraConfig(const FRgbCameraConfig& Config);
 
+	const FRgbCameraConfig& GetSegIdCameraConfig() const
+	{
+		return seg_camera_config_;
+	}
+
+	// raw ids of the last frame at the render target size, with the id -> actor map it was rendered against
+	bool CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TArray<TPair<int32, FString>>& OutMap);
+
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 
 	virtual void GetConfig(std::stringstream& OutputStream) override;

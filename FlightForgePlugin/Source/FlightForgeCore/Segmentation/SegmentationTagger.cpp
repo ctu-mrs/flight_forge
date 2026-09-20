@@ -1,5 +1,7 @@
 #include "SegmentationTagger.h"
 
+#include "HAL/IConsoleManager.h"
+
 #include "SegIdPass.h"
 
 #include "Components/PrimitiveComponent.h"
@@ -119,10 +121,15 @@ uint32 USegmentationTagger::GetOrAssignInstanceId(const AActor* Actor)
 	return Id;
 }
 
+static TAutoConsoleVariable<int32> CVarSegIdDisallowNanite(TEXT("FlightForge.SegId.DisallowNanite"), 0,
+                                                            TEXT("render Nanite meshes through the classic path so the instance segmentation can draw them"));
+
 void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems, TArray<TPair<int32, FString>>& OutMap)
 {
 	OutItems.Reset();
 	OutMap.Reset();
+
+	const bool bDisallowNanite = CVarSegIdDisallowNanite.GetValueOnGameThread() != 0;
 
 	UWorld* World = GetWorld();
 	if (!World)
@@ -140,11 +147,18 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 
 		bool bAnyProxy = false;
 
-		for (const UStaticMeshComponent* Component : Components)
+		for (UStaticMeshComponent* Component : Components)
 		{
 			if (!Component || !Component->SceneProxy || !Component->IsVisible())
 			{
 				continue;
+			}
+
+			// the pass is a classic mesh pass; Nanite geometry only gets an id when pushed onto the classic path
+			if (bDisallowNanite && !Component->IsDisallowNanite() && Component->GetStaticMesh() && Component->GetStaticMesh()->IsNaniteEnabled())
+			{
+				Component->bDisallowNanite = true;
+				Component->MarkRenderStateDirty();
 			}
 
 			const uint32 Id = GetOrAssignInstanceId(Actor);

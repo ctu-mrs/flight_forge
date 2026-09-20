@@ -8,7 +8,9 @@
 #include "Engine/Engine.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
+#include "LandscapeProxy.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -22,6 +24,7 @@
 #include "Misc/Paths.h"
 #include "RenderingThread.h"
 #include "Misc/App.h"
+#include "HAL/IConsoleManager.h"
 #include <string>
 
 #include "FlightForgeGameModeBase.generated.h"
@@ -114,6 +117,16 @@ private:
 	virtual void BeginPlay() override
 	{
 		Super::BeginPlay();
+
+		// scene captures keep their history between grabs, so temporal AA costs nothing; without any AA method every sensor image aliases
+		if (IConsoleVariable* AntiAliasing = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod")))
+		{
+			if (AntiAliasing->GetInt() == 0)
+			{
+				AntiAliasing->Set(2, ECVF_SetByConsole);
+				UE_LOG(LogTemp, Warning, TEXT("FlightForge: the project has no anti-aliasing method, enabling TAA for the sensors"));
+			}
+		}
 
 		// A Blueprint that fills in DronePawnClass wins over the class the constructor found.
 		if (DronePawnClass)
@@ -277,8 +290,6 @@ public:
 	
 	int SpawnDrone()
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone"));
-		
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
 		ADronePawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
@@ -291,30 +302,7 @@ public:
 			return -1;
 		}
 
-		// Realistic spawner
-		// First Find pawn point by raycast DOWNWARDS 
-		// if(UWorld* World = GetWorld())
-		// {
-		// 	FHitResult HitResult;
-		// 	FVector Start = PlayerStart->GetTransform().GetLocation();
-		// 	FVector End = Start + FVector::DownVector * 100000;
-		// 	FVector SpawnOffset = 100*FVector::UpVector;
-		// 	if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone by raycast DOWN"));
-		// 		DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// 	else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		
-		// 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone by raycast UP"));
-		// 		DrawDebugSphere(World, HitResult.Location, 30, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// }
-		
-		if(PlayerPawn == nullptr)
+		if (PlayerPawn == nullptr)
 		{
 			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
 			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at PlayerStart"));
@@ -338,37 +326,48 @@ public:
 		return PlayerPawn->droneServer->GetPort();
 	}
 
+	/* LiftOntoSurface() //{ */
+
+	// landscape collision is one-sided, so a drone asked for below the terrain falls through
+	// every trace and renders the world from underneath; the heightfield is what tells us
+	FVector LiftOntoSurface(const FVector& Location)
+	{
+		UWorld* World = GetWorld();
+
+		if (!World)
+		{
+			return Location;
+		}
+
+		constexpr double ClearanceCm = 100.0;
+
+		for (TActorIterator<ALandscapeProxy> It(World); It; ++It)
+		{
+			const TOptional<float> Height = It->GetHeightAtLocation(Location);
+
+			if (!Height.IsSet() || Location.Z >= *Height)
+			{
+				continue;
+			}
+
+			const FVector Lifted = FVector(Location.X, Location.Y, *Height + ClearanceCm);
+			UE_LOG(LogTemp, Warning, TEXT("SpawnDroneAtLocation: %s is under the terrain, spawning at %s instead"), *Location.ToCompactString(),
+			       *Lifted.ToCompactString());
+
+			return Lifted;
+		}
+
+		return Location;
+	}
+
+	/* //} */
+
 	int SpawnDroneAtLocation(FVector Location, std::string MeshName)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation at location: %lf, %lf, %lf [mesh %s]"), Location.X, Location.Y, Location.Z, *FString(MeshName.c_str()));
-		
-		// ADronePawn* PlayerPawn = nullptr;
-		// auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
-		// Realistic spawner
-		// First Find spawn point by raycast DOWNWARDS
+		Location = LiftOntoSurface(Location);
 		
-		// if(UWorld* World = GetWorld())
-		// {
-		// 	FHitResult HitResult;
-		// 	FVector Start = Location;
-		// 	FVector End = Start + FVector::DownVector * 100000;
-		// 	FVector SpawnOffset = 300*FVector::UpVector;
-		// 	if(World->LineTraceSingleByChannel(HitResult, Start, End, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone by raycast DOWN"));
-		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// 	else if(World->LineTraceSingleByChannel(HitResult, Start, Start + FVector::UpVector * 100000, ECC_MAX, FCollisionQueryParams::DefaultQueryParam))
-		// 	{
-		// 		
-		// 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone by raycast UP"));
-		// 		DrawDebugSphere(World, HitResult.Location, 10, 10,FColor::Red, true, -1, 0, 3);
-		// 		PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, FTransform(HitResult.Location+SpawnOffset)));
-		// 	}
-		// }
-
 		FPooledDrone ReadyDrone;
 		if (DronePool.Num() > 0)
 		{
@@ -734,6 +733,15 @@ public:
 		{
 			UE_LOG(LogTemp, Error, TEXT("Failed to load map package to RAM: %s"), *PackageName.ToString());
 		}
+	}
+
+	ADronePawn* FindDronePawn(const int Port)
+	{
+		DronePawnsCriticalSection->Lock();
+		const auto* Entry = DronePawns.Find(Port);
+		ADronePawn* Pawn  = Entry ? Entry->first : nullptr;
+		DronePawnsCriticalSection->Unlock();
+		return Pawn;
 	}
 
 	FVector GetWorldOrigin()

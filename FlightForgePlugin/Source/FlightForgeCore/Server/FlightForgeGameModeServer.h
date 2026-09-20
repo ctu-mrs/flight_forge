@@ -6,7 +6,7 @@
 #include "TcpServer.h"
 
 #define API_VERSION_MAJOR 0
-#define API_VERSION_MINOR 17
+#define API_VERSION_MINOR 18
 
 class AFlightForgeGameModeBase;
 

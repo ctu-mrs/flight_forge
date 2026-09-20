@@ -32,21 +32,17 @@ void URangeFinder::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 
 void URangeFinder::GetRangefinderData(double& range) {
 	RangefinderHitsCriticalSection->Lock();
-	// FVector Start                = GetActorLocation() + GetActorRotation().RotateVector(RangefinderConfig.Offset);
-	// FVector RangefinderDirection = -GetActorUpVector();
 
 	FVector Start                = Owner->GetActorLocation() + Owner->GetActorRotation().RotateVector(RangefinderConfig.Offset);
 	FVector RangefinderDirection = Owner->GetActorUpVector() * -1;
 	
+	range = -1;
+
 	if (UWorld* World = GetWorld()) {
 		FHitResult HitResult;
-		if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility)) {
-			if (HitResult.bBlockingHit) {
-				range = HitResult.Distance;
-			} else {
-				range = -1;
-			}
-			// UE_LOG(LogTemp, Warning, TEXT("Rangefinder range = %lf"), range);
+		if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility)
+		    && HitResult.bBlockingHit) {
+			range = HitResult.Distance;
 		}
 	}
 
