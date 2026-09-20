@@ -15,3 +15,6 @@ UnrealYAML/Intermediate
 
 # sibling client checkout
 /mrs_flight_forge_connector/
+
+# high-poly CAD sources of the decimated device housings
+FlightForgePlugin/Content/Meshes/Sensors/*.source.glb
