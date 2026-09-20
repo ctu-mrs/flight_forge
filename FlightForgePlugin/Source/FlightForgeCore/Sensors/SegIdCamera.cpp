@@ -86,6 +86,11 @@ void USegIdCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 
 bool USegIdCamera::SetSegIdCameraConfig(const FRgbCameraConfig& Config)
 {
+	if (!ValidDimensions(Config.Width, Config.Height))
+	{
+		return false;
+	}
+
 	seg_camera_config_ = Config;
 
 	CameraBufferCriticalSection->Lock();

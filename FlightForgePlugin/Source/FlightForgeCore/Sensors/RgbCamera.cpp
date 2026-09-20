@@ -146,6 +146,10 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 {
   UE_LOG(LogTemp, Log, TEXT("UCamera::SetRgbCameraConfig"));
 
+  if (!ValidDimensions(Config.Width, Config.Height)) {
+    return false;
+  }
+
   rgb_camera_config_ = Config;
 
   CameraBufferCriticalSection->Lock();

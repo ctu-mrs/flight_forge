@@ -169,6 +169,9 @@ public:
 
 	static FCameraIntrinsics EffectiveIntrinsics(const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
+	// a garbled config (a client reading a stale reply) must fail the request, not fatal the engine in a LUT allocation
+	static bool ValidDimensions(int32 Width, int32 Height);
+
 	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
 	static TSharedPtr<const FDistortionLUT, ESPMode::ThreadSafe> BuildDistortionLUT(const FCameraDistortion& Distortion, const FCameraIntrinsics& EffectiveK,

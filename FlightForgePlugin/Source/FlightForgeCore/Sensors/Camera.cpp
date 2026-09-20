@@ -418,6 +418,17 @@ FMatrix UCamera::IntrinsicsProjectionMatrix(const FCameraIntrinsics& Intrinsics,
 	    FPlane(0.0, 0.0, GNearClippingPlane, 0.0));
 }
 
+bool UCamera::ValidDimensions(const int32 Width, const int32 Height)
+{
+	constexpr int32 MaxSide = 16384;  // GMaxTextureDimensions on every RHI we ship
+	if (Width > 0 && Height > 0 && Width <= MaxSide && Height <= MaxSide)
+	{
+		return true;
+	}
+	UE_LOG(LogTemp, Error, TEXT("FlightForge: rejecting camera config with %dx%d pixels"), Width, Height);
+	return false;
+}
+
 FCameraIntrinsics UCamera::EffectiveIntrinsics(const FCameraIntrinsics& Intrinsics, const double FovDeg, const int32 Width, const int32 Height)
 {
 	if (Intrinsics.UseCustom && Intrinsics.Fx > 0.0 && Intrinsics.Fy > 0.0)

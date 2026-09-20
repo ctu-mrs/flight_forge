@@ -79,6 +79,11 @@ void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 
 bool UDepthCamera::SetDepthCameraConfig(const FRgbCameraConfig& Config)
 {
+	if (!ValidDimensions(Config.Width, Config.Height))
+	{
+		return false;
+	}
+
 	depth_camera_config_ = Config;
 
 	CameraBufferCriticalSection->Lock();

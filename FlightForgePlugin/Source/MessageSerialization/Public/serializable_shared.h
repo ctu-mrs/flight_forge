@@ -11,15 +11,23 @@
 
 namespace Serializable
 {
+// bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
+constexpr int api_version_major = 0;
+constexpr int api_version_minor = 19;
+
 namespace Common
 {
+// ids 0x80..0xFF are reserved for Common so both servers can answer them
 enum MessageType : unsigned short
 {
-  ping = 0x1
+  ping     = 0x1,
+  get_meta = 0xFF
 };
 
 /* NetworkRequest //{ */
 
+// seq is set by the client and echoed by the server, so a reply that arrives after its
+// request timed out is recognised and dropped instead of being read as the next reply
 struct NetworkRequest
 {
   NetworkRequest() = default;
@@ -27,10 +35,11 @@ struct NetworkRequest
   }
 
   unsigned short type;
+  uint32_t       seq = 0;
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(type);
+    archive(CEREAL_NVP(type), CEREAL_NVP(seq));
   }
 };
 
@@ -50,10 +59,11 @@ struct NetworkResponse
 
   unsigned short type;
   bool           status;
+  uint32_t       seq = 0;  // the server patches it in at byte offset 3, so it must stay the third field
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(type, status);
+    archive(CEREAL_NVP(type), CEREAL_NVP(status), CEREAL_NVP(seq));
   }
 };
 
@@ -77,6 +87,55 @@ struct Response : public Common::NetworkResponse
   }
 };
 }  // namespace Ping
+
+//}
+
+/* GetMeta //{ */
+
+// one op of the catalogue; hash_ covers the request and response field layout (see serializable_schema.h)
+struct OpMeta
+{
+  unsigned char  scope_ = 0;  // Registry::Scope
+  unsigned short id_    = 0;
+  std::string    name_;
+  std::string    request_;   // canonical signature, e.g. {u16 type,i32 sensor_id_}
+  std::string    response_;
+  uint64_t       hash_ = 0;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(CEREAL_NVP(scope_), CEREAL_NVP(id_), CEREAL_NVP(name_), CEREAL_NVP(request_), CEREAL_NVP(response_), CEREAL_NVP(hash_));
+  }
+};
+
+namespace GetMeta
+{
+struct Request : public Common::NetworkRequest
+{
+  Request() : Common::NetworkRequest(static_cast<unsigned short>(MessageType::get_meta)) {
+  }
+};
+
+struct Response : public Common::NetworkResponse
+{
+  Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::get_meta)) {
+  }
+  explicit Response(bool _status) : Common::NetworkResponse(MessageType::get_meta, _status) {
+  }
+
+  int                 api_version_major_ = 0;
+  int                 api_version_minor_ = 0;
+  uint64_t            catalogue_hash_    = 0;  // over every op hash in table order
+  std::vector<OpMeta> ops_;
+  std::string         catalogue_json_;  // the same catalogue with nested field trees, for clients without the C++ header
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(api_version_major_), CEREAL_NVP(api_version_minor_),
+            CEREAL_NVP(catalogue_hash_), CEREAL_NVP(ops_), CEREAL_NVP(catalogue_json_));
+  }
+};
+}  // namespace GetMeta
 
 //}
 
@@ -166,8 +225,10 @@ struct LidarConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(Enable, ShowBeams, BeamLength, BeamHorRays, BeamVertRays, Frequency, OffsetX, OffsetY, OffsetZ, OrientationPitch, OrientationYaw, OrientationRoll,
-            FOVHorLeft, FOVHorRight, FOVVertUp, FOVVertDown, Livox, LivoxSensor, ShowSensorBody);
+    archive(CEREAL_NVP(Enable), CEREAL_NVP(ShowBeams), CEREAL_NVP(BeamLength), CEREAL_NVP(BeamHorRays), CEREAL_NVP(BeamVertRays),
+            CEREAL_NVP(Frequency), CEREAL_NVP(OffsetX), CEREAL_NVP(OffsetY), CEREAL_NVP(OffsetZ), CEREAL_NVP(OrientationPitch),
+            CEREAL_NVP(OrientationYaw), CEREAL_NVP(OrientationRoll), CEREAL_NVP(FOVHorLeft), CEREAL_NVP(FOVHorRight), CEREAL_NVP(FOVVertUp),
+            CEREAL_NVP(FOVVertDown), CEREAL_NVP(Livox), CEREAL_NVP(LivoxSensor), CEREAL_NVP(ShowSensorBody));
   }
 };
 
@@ -189,7 +250,7 @@ struct CameraIntrinsics
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(use_custom_, fx_, fy_, cx_, cy_);
+    archive(CEREAL_NVP(use_custom_), CEREAL_NVP(fx_), CEREAL_NVP(fy_), CEREAL_NVP(cx_), CEREAL_NVP(cy_));
   }
 };
 
@@ -212,7 +273,7 @@ struct CameraDistortion
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(enable_, k1_, k2_, k3_, p1_, p2_);
+    archive(CEREAL_NVP(enable_), CEREAL_NVP(k1_), CEREAL_NVP(k2_), CEREAL_NVP(k3_), CEREAL_NVP(p1_), CEREAL_NVP(p2_));
   }
 };
 
@@ -233,7 +294,7 @@ struct CameraNoise
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(enable_, shot_scale_, read_sigma_, row_sigma_);
+    archive(CEREAL_NVP(enable_), CEREAL_NVP(shot_scale_), CEREAL_NVP(read_sigma_), CEREAL_NVP(row_sigma_));
   }
 };
 
@@ -252,7 +313,7 @@ struct CameraRollingShutter
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(enable_, readout_time_);
+    archive(CEREAL_NVP(enable_), CEREAL_NVP(readout_time_));
   }
 };
 
@@ -277,7 +338,7 @@ struct CameraCompression
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(format_, quality_);
+    archive(CEREAL_NVP(format_), CEREAL_NVP(quality_));
   }
 };
 
@@ -296,7 +357,7 @@ struct CameraExposure
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(manual_, shutter_time_, iso_, ev_compensation_);
+    archive(CEREAL_NVP(manual_), CEREAL_NVP(shutter_time_), CEREAL_NVP(iso_), CEREAL_NVP(ev_compensation_));
   }
 };
 
@@ -324,8 +385,9 @@ struct CameraLensEffects
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(fstop_, focal_distance_, sensor_width_mm_, vignette_intensity_, chromatic_aberration_, bloom_intensity_, lens_flare_intensity_, white_temp_,
-            white_tint_, motion_blur_from_shutter_);
+    archive(CEREAL_NVP(fstop_), CEREAL_NVP(focal_distance_), CEREAL_NVP(sensor_width_mm_), CEREAL_NVP(vignette_intensity_),
+            CEREAL_NVP(chromatic_aberration_), CEREAL_NVP(bloom_intensity_), CEREAL_NVP(lens_flare_intensity_), CEREAL_NVP(white_temp_),
+            CEREAL_NVP(white_tint_), CEREAL_NVP(motion_blur_from_shutter_));
   }
 };
 
@@ -368,9 +430,11 @@ struct RgbCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, enable_temporal_aa_,
-            enable_raytracing_, enable_hdr_, enable_motion_blur_, motion_blur_amount_, motion_blur_distortion_, exposure_, lens_, intrinsics_, distortion_,
-            noise_, rolling_shutter_, compression_);
+    archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
+            CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_),
+            CEREAL_NVP(enable_temporal_aa_), CEREAL_NVP(enable_raytracing_), CEREAL_NVP(enable_hdr_), CEREAL_NVP(enable_motion_blur_),
+            CEREAL_NVP(motion_blur_amount_), CEREAL_NVP(motion_blur_distortion_), CEREAL_NVP(exposure_), CEREAL_NVP(lens_), CEREAL_NVP(intrinsics_),
+            CEREAL_NVP(distortion_), CEREAL_NVP(noise_), CEREAL_NVP(rolling_shutter_), CEREAL_NVP(compression_));
   }
 };
 
@@ -414,13 +478,11 @@ struct StereoCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_,
-            offset_x_left_, offset_y_left_, offset_z_left_,
-            offset_x_right_, offset_y_right_, offset_z_right_,
-            rotation_pitch_left_, rotation_yaw_left_, rotation_roll_left_,
-            rotation_pitch_right_, rotation_yaw_right_, rotation_roll_right_,
-            fov_, width_, height_,
-            enable_temporal_aa_, enable_raytracing_, enable_hdr_, intrinsics_, distortion_, compression_);
+    archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_left_), CEREAL_NVP(offset_y_left_), CEREAL_NVP(offset_z_left_),
+            CEREAL_NVP(offset_x_right_), CEREAL_NVP(offset_y_right_), CEREAL_NVP(offset_z_right_), CEREAL_NVP(rotation_pitch_left_),
+            CEREAL_NVP(rotation_yaw_left_), CEREAL_NVP(rotation_roll_left_), CEREAL_NVP(rotation_pitch_right_), CEREAL_NVP(rotation_yaw_right_),
+            CEREAL_NVP(rotation_roll_right_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(enable_temporal_aa_),
+            CEREAL_NVP(enable_raytracing_), CEREAL_NVP(enable_hdr_), CEREAL_NVP(intrinsics_), CEREAL_NVP(distortion_), CEREAL_NVP(compression_));
   }
 };
 
@@ -449,7 +511,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), x, y, z);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z));
   }
 };
 }  // namespace GetLocation
@@ -472,7 +534,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, checkCollisions);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z), CEREAL_NVP(checkCollisions));
   }
 };
 
@@ -494,7 +556,8 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), teleportedToX, teleportedToY, teleportedToZ, isHit, impactPointX, impactPointY, impactPointZ);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(teleportedToX), CEREAL_NVP(teleportedToY), CEREAL_NVP(teleportedToZ),
+            CEREAL_NVP(isHit), CEREAL_NVP(impactPointX), CEREAL_NVP(impactPointY), CEREAL_NVP(impactPointZ));
   }
 };
 }  // namespace SetLocation
@@ -514,7 +577,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -530,7 +593,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_), CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetRgbCameraData
@@ -550,7 +613,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -566,7 +629,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_), CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetRgbSegCameraData
@@ -586,7 +649,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -603,7 +666,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_left_, image_right_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_left_), CEREAL_NVP(image_right_), CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetStereoCameraData
@@ -633,7 +696,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), pitch, yaw, roll);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(pitch), CEREAL_NVP(yaw), CEREAL_NVP(roll));
   }
 };
 }  // namespace GetRotation
@@ -655,7 +718,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), pitch, yaw, roll);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(pitch), CEREAL_NVP(yaw), CEREAL_NVP(roll));
   }
 };
 
@@ -677,7 +740,8 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), rotatedToPitch, rotatedToYaw, rotatedToRoll, isHit, impactPointX, impactPointY, impactPointZ);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(rotatedToPitch), CEREAL_NVP(rotatedToYaw), CEREAL_NVP(rotatedToRoll),
+            CEREAL_NVP(isHit), CEREAL_NVP(impactPointX), CEREAL_NVP(impactPointY), CEREAL_NVP(impactPointZ));
   }
 };
 }  // namespace SetRotation
@@ -705,7 +769,8 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, pitch, yaw, roll, should_collide);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z), CEREAL_NVP(pitch), CEREAL_NVP(yaw),
+            CEREAL_NVP(roll), CEREAL_NVP(should_collide));
   }
 };
 
@@ -731,8 +796,9 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), teleportedToX, teleportedToY, teleportedToZ, rotatedToPitch, rotatedToYaw, rotatedToRoll, isHit,
-            impactPointX, impactPointY, impactPointZ);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(teleportedToX), CEREAL_NVP(teleportedToY), CEREAL_NVP(teleportedToZ),
+            CEREAL_NVP(rotatedToPitch), CEREAL_NVP(rotatedToYaw), CEREAL_NVP(rotatedToRoll), CEREAL_NVP(isHit), CEREAL_NVP(impactPointX),
+            CEREAL_NVP(impactPointY), CEREAL_NVP(impactPointZ));
   }
 };
 }  // namespace SetLocationAndRotation
@@ -760,7 +826,8 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, pitch, yaw, roll, should_collide);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z), CEREAL_NVP(pitch), CEREAL_NVP(yaw),
+            CEREAL_NVP(roll), CEREAL_NVP(should_collide));
   }
 };
 
@@ -797,7 +864,7 @@ struct PoseSample
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(t, x, y, z, pitch, yaw, roll);
+    archive(CEREAL_NVP(t), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z), CEREAL_NVP(pitch), CEREAL_NVP(yaw), CEREAL_NVP(roll));
   }
 };
 
@@ -812,7 +879,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), samples);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(samples));
   }
 };
 
@@ -842,7 +909,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), speeds);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(speeds));
   }
 };
 
@@ -858,7 +925,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), propeller_count);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(propeller_count));
   }
 };
 }  // namespace SetPropellerSpeeds
@@ -876,7 +943,7 @@ namespace GetRangefinderData
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -889,7 +956,7 @@ namespace GetRangefinderData
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), range);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(range));
     }
   };
 }  // namespace GetRangefinderData
@@ -909,7 +976,7 @@ struct LidarData
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(distance, directionX, directionY, directionZ);
+    archive(CEREAL_NVP(distance), CEREAL_NVP(directionX), CEREAL_NVP(directionY), CEREAL_NVP(directionZ));
   }
 };
 
@@ -922,7 +989,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -943,7 +1010,8 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(startX), CEREAL_NVP(startY), CEREAL_NVP(startZ), CEREAL_NVP(lidarData),
+            CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetLidarData
@@ -965,7 +1033,7 @@ struct LidarSegData
   int    segmentation;
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(distance, directionX, directionY, directionZ, segmentation);
+    archive(CEREAL_NVP(distance), CEREAL_NVP(directionX), CEREAL_NVP(directionY), CEREAL_NVP(directionZ), CEREAL_NVP(segmentation));
   }
 };
 
@@ -978,7 +1046,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -998,7 +1066,8 @@ struct Response : public Common::NetworkResponse
   double                     stamp_;
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarSegData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(startX), CEREAL_NVP(startY), CEREAL_NVP(startZ), CEREAL_NVP(lidarSegData),
+            CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetLidarSegData
@@ -1020,7 +1089,7 @@ struct LidarIntData
   int    intensity;
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(distance, directionX, directionY, directionZ, intensity);
+    archive(CEREAL_NVP(distance), CEREAL_NVP(directionX), CEREAL_NVP(directionY), CEREAL_NVP(directionZ), CEREAL_NVP(intensity));
   }
 };
 
@@ -1033,7 +1102,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1054,7 +1123,8 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), startX, startY, startZ, lidarIntData, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(startX), CEREAL_NVP(startY), CEREAL_NVP(startZ), CEREAL_NVP(lidarIntData),
+            CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetLidarIntData
@@ -1073,7 +1143,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1086,7 +1156,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(config));
   }
 };
 }  // namespace GetLidarConfig
@@ -1107,7 +1177,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(config));
   }
 };
 
@@ -1132,7 +1202,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1145,7 +1215,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(config));
   }
 };
 }  // namespace GetRgbCameraConfig
@@ -1166,7 +1236,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(config));
   }
 };
 
@@ -1191,7 +1261,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1204,7 +1274,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(config));
   }
 };
 }  // namespace GetStereoCameraConfig
@@ -1225,7 +1295,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(config));
   }
 };
 
@@ -1252,7 +1322,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_type_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_type_));
   }
 };
 
@@ -1265,7 +1335,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(sensor_id_));
   }
 };
 }  // namespace AddSensor
@@ -1284,7 +1354,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1316,7 +1386,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_ids_, sensor_types_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(sensor_ids_), CEREAL_NVP(sensor_types_));
   }
 };
 }  // namespace ListSensors
@@ -1364,9 +1434,12 @@ struct EventCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_,
-            contrast_threshold_pos_, contrast_threshold_neg_, use_sim_time_, threshold_sigma_, refractory_period_, cutoff_hz_, leak_rate_hz_,
-            shot_noise_rate_hz_, hot_pixel_fraction_, max_event_rate_hz_, max_events_per_frame_, use_gpu_, seed_);
+    archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
+            CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_),
+            CEREAL_NVP(contrast_threshold_pos_), CEREAL_NVP(contrast_threshold_neg_), CEREAL_NVP(use_sim_time_), CEREAL_NVP(threshold_sigma_),
+            CEREAL_NVP(refractory_period_), CEREAL_NVP(cutoff_hz_), CEREAL_NVP(leak_rate_hz_), CEREAL_NVP(shot_noise_rate_hz_),
+            CEREAL_NVP(hot_pixel_fraction_), CEREAL_NVP(max_event_rate_hz_), CEREAL_NVP(max_events_per_frame_), CEREAL_NVP(use_gpu_),
+            CEREAL_NVP(seed_));
   }
 };
 
@@ -1385,7 +1458,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1407,7 +1480,8 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), xyp_, t_us_, base_stamp_, stamp_, dropped_, width_, height_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(xyp_), CEREAL_NVP(t_us_), CEREAL_NVP(base_stamp_), CEREAL_NVP(stamp_),
+            CEREAL_NVP(dropped_), CEREAL_NVP(width_), CEREAL_NVP(height_));
   }
 };
 }  // namespace GetEventCameraData
@@ -1426,7 +1500,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1439,7 +1513,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(config));
   }
 };
 }  // namespace GetEventCameraConfig
@@ -1460,7 +1534,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(config));
   }
 };
 
@@ -1504,8 +1578,9 @@ struct FisheyeCameraConfig
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(show_debug_camera_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_, fov_, width_, height_, lens_model_,
-            compression_, full_frame_);
+    archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
+            CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(lens_model_),
+            CEREAL_NVP(compression_), CEREAL_NVP(full_frame_));
   }
 };
 
@@ -1523,7 +1598,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1537,7 +1612,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_), CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetFisheyeCameraData
@@ -1556,7 +1631,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1569,7 +1644,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), config);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(config));
   }
 };
 }  // namespace GetFisheyeCameraConfig
@@ -1590,7 +1665,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_, config);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_), CEREAL_NVP(config));
   }
 };
 
@@ -1630,8 +1705,8 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), device_name_, offset_x_, offset_y_, offset_z_, rotation_pitch_, rotation_yaw_, rotation_roll_,
-            show_mesh_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(device_name_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_),
+            CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_), CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(show_mesh_));
   }
 };
 
@@ -1645,7 +1720,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), sensor_ids_, sensor_types_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(sensor_ids_), CEREAL_NVP(sensor_types_));
   }
 };
 }  // namespace AddDevice
@@ -1671,7 +1746,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), names_, descriptions_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(names_), CEREAL_NVP(descriptions_));
   }
 };
 }  // namespace ListDevices
@@ -1696,7 +1771,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), visible);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(visible));
   }
 };
 }  // namespace GetMoveLineVisible
@@ -1715,7 +1790,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), visible);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(visible));
   }
 };
 
@@ -1749,7 +1824,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), crashed);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(crashed));
   }
 };
 }  // namespace GetCrashState
@@ -1772,7 +1847,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1790,7 +1865,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_, width_, height_, stamp_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(stamp_));
   }
 };
 }  // namespace GetDepthCameraData
@@ -1813,7 +1888,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1830,7 +1905,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), image_, stamp_, size_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(image_), CEREAL_NVP(stamp_), CEREAL_NVP(size_));
   }
 };
 }  // namespace GetInstanceSegData
@@ -1846,7 +1921,7 @@ struct InstanceSegMapEntry
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(id, actor);
+    archive(CEREAL_NVP(id), CEREAL_NVP(actor));
   }
 };
 
@@ -1863,7 +1938,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), sensor_id_);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(sensor_id_));
   }
 };
 
@@ -1878,7 +1953,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), entries_);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(entries_));
   }
 };
 }  // namespace GetInstanceSegMap
@@ -1937,7 +2012,7 @@ struct SpawnedObjectInfo
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(id, asset, stencil, position, orientation, scale);
+    archive(CEREAL_NVP(id), CEREAL_NVP(asset), CEREAL_NVP(stencil), CEREAL_NVP(position), CEREAL_NVP(orientation), CEREAL_NVP(scale));
   }
 };
 
@@ -1960,7 +2035,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), ports);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(ports));
   }
 };
 }  // namespace GetDrones
@@ -1975,7 +2050,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), Density_Level);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(Density_Level));
   }
 };
 
@@ -1995,7 +2070,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), Hilly_Level);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(Hilly_Level));
   }
 };
 struct Response : public Common::NetworkResponse
@@ -2025,7 +2100,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), port);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(port));
   }
 };
 }  // namespace SpawnDrone
@@ -2043,20 +2118,20 @@ namespace SpawnDroneAtLocation
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), x, y, z, MeshName);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z), CEREAL_NVP(MeshName));
     }
   };
 
   struct Response : public Common::NetworkResponse
   {
     Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::spawn_drone_at_location)){};
-    explicit Response(bool _status) : Common::NetworkResponse(MessageType::spawn_drone, _status){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::spawn_drone_at_location, _status){};
 
     int port;
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), port);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(port));
     }
   };
 };  // namespace SpawnDrone
@@ -2072,7 +2147,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), port);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(port));
   }
 };
 
@@ -2109,7 +2184,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), cameraCaptureMode);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(cameraCaptureMode));
   }
 };
 }  // namespace GetCameraCaptureMode
@@ -2124,7 +2199,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), cameraCaptureMode);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(cameraCaptureMode));
   }
 };
 
@@ -2154,7 +2229,7 @@ namespace SetGraphicsSettings
 
     template <class Archive>
     void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), graphicsSettings);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(graphicsSettings));
     }
   };
 
@@ -2191,7 +2266,7 @@ namespace SetWeather
     template <class Archive>
     void serialize(Archive& archive)
     {
-      archive(cereal::base_class<Common::NetworkRequest>(this), weather_id);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(weather_id));
     }
   };
 
@@ -2214,7 +2289,7 @@ namespace SetWeather
     template <class Archive>
     void serialize(Archive& archive)
     {
-      archive(cereal::base_class<Common::NetworkRequest>(this), hour, minute);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(hour), CEREAL_NVP(minute));
     }
   };
 
@@ -2235,7 +2310,7 @@ namespace SwitchWorldLevel
 
     template <class Archive>
     void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), worldLevelName);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(worldLevelName));
     }
   };
 
@@ -2262,7 +2337,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), fps);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(fps));
   }
 };
 }  // namespace GetFps
@@ -2284,7 +2359,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), api_version_major, api_version_minor);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(api_version_major), CEREAL_NVP(api_version_minor));
   }
 };
 }  // namespace GetApiVersion
@@ -2313,7 +2388,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), time, sim_time, time_dilation);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(time), CEREAL_NVP(sim_time), CEREAL_NVP(time_dilation));
   }
 };
 }  // namespace GetTime
@@ -2332,7 +2407,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), dilation);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(dilation));
   }
 };
 
@@ -2345,7 +2420,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), applied);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(applied));
   }
 };
 }  // namespace SetTimeDilation
@@ -2365,7 +2440,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), dt, adaptive_min_dt);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(dt), CEREAL_NVP(adaptive_min_dt));
   }
 };
 
@@ -2378,7 +2453,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), applied);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(applied));
   }
 };
 }  // namespace SetFixedTimestep
@@ -2398,7 +2473,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), enabled);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(enabled));
   }
 };
 
@@ -2419,7 +2494,7 @@ struct Request : public Common::NetworkRequest
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkRequest>(this), ticks);
+    archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(ticks));
   }
 };
 
@@ -2433,7 +2508,7 @@ struct Response : public Common::NetworkResponse
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(cereal::base_class<Common::NetworkResponse>(this), sim_time, tick_count);
+    archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(sim_time), CEREAL_NVP(tick_count));
   }
 };
 }  // namespace Step
@@ -2458,7 +2533,7 @@ namespace GetWorldOrigin
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), x, y, z);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(x), CEREAL_NVP(y), CEREAL_NVP(z));
     }
   };
 }  // namespace GetWorldOrigin
@@ -2473,7 +2548,7 @@ namespace SetMutualVisibility
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), mutual_visibiliti_enabled);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(mutual_visibiliti_enabled));
     }
   };
 
@@ -2496,7 +2571,7 @@ namespace SpawnObjectsFromYaml
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), yaml);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(yaml));
     }
   };
 
@@ -2513,7 +2588,7 @@ namespace SpawnObjectsFromYaml
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), object_ids, error);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(object_ids), CEREAL_NVP(error));
     }
   };
 }
@@ -2531,7 +2606,7 @@ namespace RemoveSpawnedObject
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), object_id);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(object_id));
     }
   };
 
@@ -2544,7 +2619,7 @@ namespace RemoveSpawnedObject
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), removed_count);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(removed_count));
     }
   };
 }
@@ -2566,7 +2641,8 @@ namespace MoveSpawnedObject
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), object_id, position, orientation, scale);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(object_id), CEREAL_NVP(position), CEREAL_NVP(orientation),
+              CEREAL_NVP(scale));
     }
   };
 
@@ -2601,7 +2677,7 @@ namespace ListSpawnedObjects
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), objects);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(objects));
     }
   };
 }
@@ -2627,7 +2703,7 @@ namespace ExportScene
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), yaml);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(yaml));
     }
   };
 }
@@ -2648,7 +2724,7 @@ namespace ListAssets
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), path_prefix, name_filter);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(path_prefix), CEREAL_NVP(name_filter));
     }
   };
 
@@ -2665,7 +2741,7 @@ namespace ListAssets
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), assets, truncated);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(assets), CEREAL_NVP(truncated));
     }
   };
 }
@@ -2692,7 +2768,8 @@ namespace GetWorldMesh
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), center_x_, center_y_, center_z_, extent_x_, extent_y_, extent_z_, max_triangles_);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(center_x_), CEREAL_NVP(center_y_), CEREAL_NVP(center_z_),
+              CEREAL_NVP(extent_x_), CEREAL_NVP(extent_y_), CEREAL_NVP(extent_z_), CEREAL_NVP(max_triangles_));
     }
   };
 
@@ -2714,7 +2791,8 @@ namespace GetWorldMesh
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), vertices_, indices_, truncated_, source_count_);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(vertices_), CEREAL_NVP(indices_), CEREAL_NVP(truncated_),
+              CEREAL_NVP(source_count_));
     }
   };
 }
@@ -2744,7 +2822,8 @@ namespace GetDistanceBatch
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkRequest>(this), query_points_, max_radius_, tolerance_, terrain_only_);
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(query_points_), CEREAL_NVP(max_radius_), CEREAL_NVP(tolerance_),
+              CEREAL_NVP(terrain_only_));
     }
   };
 
@@ -2759,12 +2838,132 @@ namespace GetDistanceBatch
 
     template <class Archive>
     void serialize(Archive& archive) {
-      archive(cereal::base_class<Common::NetworkResponse>(this), distances_);
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(distances_));
     }
   };
 }
 /*//}*/
 
 }  // namespace GameMode
+
+/* Registry //{ */
+
+// the one list of every op on the wire: get_meta is built from it and the tests check the MessageType enums against it
+namespace Registry
+{
+enum class Scope : unsigned char
+{
+  Common   = 0,
+  Drone    = 1,
+  GameMode = 2
+};
+
+template <class Req, class Res>
+struct Op
+{
+  using Request  = Req;
+  using Response = Res;
+  Scope          scope;
+  unsigned short id;
+  const char*    name;
+};
+
+#define FF_OP(Scope_, Ns, msg) f(Op<Scope_::Ns::Request, Scope_::Ns::Response>{Scope::Scope_, static_cast<unsigned short>(Scope_::MessageType::msg), #msg})
+
+template <class F>
+void ForEachOp(F&& f) {
+  FF_OP(Common, Ping, ping);
+  FF_OP(Common, GetMeta, get_meta);
+
+  FF_OP(Drone, GetLocation, get_location);
+  FF_OP(Drone, SetLocation, set_location);
+  FF_OP(Drone, GetRgbCameraData, get_rgb_camera_data);
+  FF_OP(Drone, GetStereoCameraData, get_stereo_camera_data);
+  FF_OP(Drone, GetRotation, get_rotation);
+  FF_OP(Drone, SetRotation, set_rotation);
+  FF_OP(Drone, SetLocationAndRotation, set_location_and_rotation);
+  FF_OP(Drone, GetLidarData, get_lidar_data);
+  FF_OP(Drone, GetLidarConfig, get_lidar_config);
+  FF_OP(Drone, SetLidarConfig, set_lidar_config);
+  FF_OP(Drone, GetRgbCameraConfig, get_rgb_camera_config);
+  FF_OP(Drone, SetRgbCameraConfig, set_rgb_camera_config);
+  FF_OP(Drone, GetStereoCameraConfig, get_stereo_camera_config);
+  FF_OP(Drone, SetStereoCameraConfig, set_stereo_camera_config);
+  FF_OP(Drone, GetMoveLineVisible, get_move_line_visible);
+  FF_OP(Drone, SetMoveLineVisible, set_move_line_visible);
+  FF_OP(Drone, GetRgbSegCameraData, get_rgb_seg_camera_data);
+  FF_OP(Drone, GetLidarSegData, get_lidar_seg);
+  FF_OP(Drone, SetLocationAndRotationAsync, set_location_and_rotation_async);
+  FF_OP(Drone, GetCrashState, get_crash_state);
+  FF_OP(Drone, GetLidarIntData, get_lidar_int);
+  FF_OP(Drone, GetRangefinderData, get_rangefinder_data);
+  FF_OP(Drone, AddSensor, add_sensor);
+  FF_OP(Drone, RemoveSensor, remove_sensor);
+  FF_OP(Drone, ListSensors, list_sensors);
+  FF_OP(Drone, GetEventCameraData, get_event_camera_data);
+  FF_OP(Drone, GetEventCameraConfig, get_event_camera_config);
+  FF_OP(Drone, SetEventCameraConfig, set_event_camera_config);
+  FF_OP(Drone, GetFisheyeCameraData, get_fisheye_camera_data);
+  FF_OP(Drone, GetFisheyeCameraConfig, get_fisheye_camera_config);
+  FF_OP(Drone, SetFisheyeCameraConfig, set_fisheye_camera_config);
+  FF_OP(Drone, AddDevice, add_device);
+  FF_OP(Drone, ListDevices, list_devices);
+  FF_OP(Drone, GetInstanceSegData, get_instance_seg_data);
+  FF_OP(Drone, GetInstanceSegMap, get_instance_seg_map);
+  FF_OP(Drone, GetDepthCameraData, get_depth_camera_data);
+  FF_OP(Drone, SetPoseTrajectory, set_pose_trajectory);
+  FF_OP(Drone, SetPropellerSpeeds, set_propeller_speeds);
+
+  FF_OP(GameMode, GetDrones, get_drones);
+  FF_OP(GameMode, SpawnDrone, spawn_drone);
+  FF_OP(GameMode, RemoveDrone, remove_drone);
+  FF_OP(GameMode, GetCameraCaptureMode, get_camera_capture_mode);
+  FF_OP(GameMode, SetCameraCaptureMode, set_camera_capture_mode);
+  FF_OP(GameMode, GetFps, get_fps);
+  FF_OP(GameMode, GetTime, get_time);
+  FF_OP(GameMode, GetApiVersion, get_api_version);
+  FF_OP(GameMode, SetGraphicsSettings, set_graphics_settings);
+  FF_OP(GameMode, SwitchWorldLevel, switch_world_level);
+  FF_OP(GameMode, SetForestDensity, set_forest_density);
+  FF_OP(GameMode, SetForestHillyLevel, set_forest_hilly_level);
+  FF_OP(GameMode, GetWorldOrigin, get_world_origin);
+  FF_OP(GameMode, SpawnDroneAtLocation, spawn_drone_at_location);
+  FF_OP(GameMode, SetWeather, set_weather);
+  FF_OP(GameMode, SetDaytime, set_daytime);
+  FF_OP(GameMode, SetMutualVisibility, set_mutual_visibility);
+  FF_OP(GameMode, SpawnObjectsFromYaml, spawn_objects_from_yaml);
+  FF_OP(GameMode, RemoveSpawnedObject, remove_spawned_object);
+  FF_OP(GameMode, MoveSpawnedObject, move_spawned_object);
+  FF_OP(GameMode, ListSpawnedObjects, list_spawned_objects);
+  FF_OP(GameMode, ExportScene, export_scene);
+  FF_OP(GameMode, ListAssets, list_assets);
+  FF_OP(GameMode, GetWorldMesh, get_world_mesh);
+  FF_OP(GameMode, GetDistanceBatch, get_distance_batch);
+  FF_OP(GameMode, SetTimeDilation, set_time_dilation);
+  FF_OP(GameMode, SetFixedTimestep, set_fixed_timestep);
+  FF_OP(GameMode, SetLockstep, set_lockstep);
+  FF_OP(GameMode, Step, step);
+}
+
+#undef FF_OP
+
+// reads one whole reply of `type` from the archive so a client can step past a stale reply; false when the id is not known in scope
+template <class Archive>
+bool LoadResponse(Archive& archive, Scope scope, unsigned short type) {
+  bool found = false;
+  ForEachOp([&](auto op) {
+    if (found || op.id != type || (op.scope != scope && op.scope != Scope::Common)) {
+      return;
+    }
+    typename decltype(op)::Response response;
+    archive(response);
+    found = true;
+  });
+  return found;
+}
+
+}  // namespace Registry
+
+//}
 
 }  // namespace Serializable

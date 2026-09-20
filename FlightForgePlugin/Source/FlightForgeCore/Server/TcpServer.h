@@ -51,6 +51,9 @@ protected:
 	bool Respond(const FTCPClient& Client, const FString& Message) const;
 	bool Respond(const FTCPClient& Client, const std::string& Message) const;
 	bool Respond(const FTCPClient& Client, const std::stringstream& Message) const;
+
+	// the seq of the request being routed; Respond echoes it into the response header
+	uint32_t RequestSeq = 0;
 private:
 	int32 Port;
 	FSocket* ListenSocket;

@@ -5,8 +5,8 @@
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "TcpServer.h"
 
-#define API_VERSION_MAJOR 0
-#define API_VERSION_MINOR 18
+#define API_VERSION_MAJOR Serializable::api_version_major
+#define API_VERSION_MINOR Serializable::api_version_minor
 
 class AFlightForgeGameModeBase;
 

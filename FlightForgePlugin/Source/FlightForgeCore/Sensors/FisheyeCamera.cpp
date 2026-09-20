@@ -474,6 +474,11 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArra
 
 bool UFisheyeCamera::SetFisheyeCameraConfig(const FFisheyeCameraConfig& Config)
 {
+	if (!ValidDimensions(Config.Width, Config.Height))
+	{
+		return false;
+	}
+
 	fisheye_camera_config_ = Config;
 
 	CameraBufferCriticalSection->Lock();

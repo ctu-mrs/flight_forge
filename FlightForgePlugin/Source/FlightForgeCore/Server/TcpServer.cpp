@@ -12,6 +12,7 @@
 
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "MessageSerialization/Public/Serialize.h"
+#include "MessageSerialization/Public/serializable_schema.h"
 
 // https://github.com/getnamo/TCP-Unreal/blob/master/Source/TCPWrapper/Private/TCPServerComponent.cpp
 
@@ -103,6 +104,7 @@ bool TcpServer::Route(const FTCPClient& Client, std::shared_ptr<std::stringstrea
 {
 	Serializable::Common::NetworkRequest Request;
 	Serialization::SerializeRequest<Serializable::Common::NetworkRequest>(Request, *InputStream);
+	RequestSeq = Request.seq;
 
 	if(Request.type == Serializable::Common::MessageType::ping)
 	{
@@ -110,6 +112,17 @@ bool TcpServer::Route(const FTCPClient& Client, std::shared_ptr<std::stringstrea
 		Serializable::Common::Ping::Response Response(true);
 		Serialization::DeserializeResponse<Serializable::Common::Ping::Response>(Response, OutputStream);
 		return Respond(Client, OutputStream);
+	}
+
+	if(Request.type == Serializable::Common::MessageType::get_meta)
+	{
+		static const std::string Catalogue = [] {
+			std::stringstream Stream;
+			auto Response = Serializable::Schema::BuildMetaResponse();
+			Serialization::DeserializeResponse(Response, Stream);
+			return Stream.str();
+		}();
+		return Respond(Client, Catalogue);
 	}
 
 	return false;
@@ -136,6 +149,13 @@ bool TcpServer::Respond(const FTCPClient& Client, const std::string& Message) co
 	TArray<uint8> OutBytes;
 	OutBytes.SetNumUninitialized(Message.length() + 3);
 	FMemory::Memcpy(OutBytes.GetData(), Message.data(), Message.length());
+
+	// every response starts with the NetworkResponse header {u16 type, bool status, u32 seq}
+	constexpr int32 SeqOffset = 3;
+	if (Message.length() >= SeqOffset + sizeof(RequestSeq))
+	{
+		FMemory::Memcpy(OutBytes.GetData() + SeqOffset, &RequestSeq, sizeof(RequestSeq));
+	}
 
 	OutBytes[Message.length()]     = END_OF_MESSAGE;
 	OutBytes[Message.length() + 1] = END_OF_MESSAGE;

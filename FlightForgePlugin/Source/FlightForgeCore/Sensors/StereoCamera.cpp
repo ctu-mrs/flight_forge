@@ -132,6 +132,10 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
 
   UE_LOG(LogTemp, Log, TEXT("UCamera::SetStereoCameraConfig"));
 
+  if (!ValidDimensions(Config.Width, Config.Height)) {
+    return false;
+  }
+
   stereo_camera_config_ = Config;
 
   CameraBufferCriticalSection->Lock();

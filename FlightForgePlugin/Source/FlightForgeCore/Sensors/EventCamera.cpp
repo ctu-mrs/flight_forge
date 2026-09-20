@@ -749,6 +749,11 @@ void UEventCamera::PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxL
 
 bool UEventCamera::SetEventCameraConfig(const FEventCameraConfig& Config)
 {
+	if (!ValidDimensions(Config.Width, Config.Height))
+	{
+		return false;
+	}
+
 	// frames from the old optics must not land in the new stream
 	DrainReadback();
 
