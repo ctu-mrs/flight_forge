@@ -274,27 +274,138 @@ bool FFlightForgeCameraInfoTest::RunTest(const FString& Parameters)
 	const double Ff = UFisheyeCamera::FocalPx(EFisheyeLensModel::EQUIDISTANT, FovDeg, W, H, true);
 	TestEqual(TEXT("full-frame edge is the diagonal"), Ff * HalfFov, 0.5 * FMath::Sqrt((double)(W * W + H * H)), 1.0e-9);
 
-	// pinhole: FOV -> fx, and D in plumb_bob order
+	// pinhole: FOV -> fx, OpenCV pixel convention, D in plumb_bob order
 	FCameraDistortion D;
 	D.Enable = true;
 	D.K1 = 0.1; D.K2 = 0.02; D.K3 = 0.003; D.P1 = 0.0004; D.P2 = 0.00005;
 	const auto Info = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, FCameraIntrinsics{}, D, 90.0, W, H, FVector(10.0, 0.0, -5.0), FRotator(-30.0, 0.0, 0.0));
 	TestEqual(TEXT("fx from fov"), Info.fx_, (W * 0.5) / FMath::Tan(FMath::DegreesToRadians(45.0)), 1.0e-9);
 	TestEqual(TEXT("fov round-trips"), Info.fov_deg_, 90.0, 1.0e-9);
-	TestEqual(TEXT("cx centred"), Info.cx_, W * 0.5, 1.0e-9);
+	TestEqual(TEXT("cx is the image centre in OpenCV convention"), Info.cx_, W * 0.5 - 0.5, 1.0e-9);
+	TestEqual(TEXT("cy likewise"), Info.cy_, H * 0.5 - 0.5, 1.0e-9);
 	TestEqual(TEXT("D size"), (int32)Info.d_.size(), 5);
 	TestTrue(TEXT("D is k1 k2 p1 p2 k3"), Info.d_[0] == 0.1 && Info.d_[2] == 0.0004 && Info.d_[3] == 0.00005 && Info.d_[4] == 0.003);
-	TestEqual(TEXT("model"), FString(Info.model_.c_str()), FString(TEXT("pinhole")));
+	TestEqual(TEXT("projection"), FString(Info.projection_.c_str()), FString(TEXT("pinhole")));
+	TestEqual(TEXT("distortion model"), FString(Info.distortion_model_.c_str()), FString(TEXT("plumb_bob")));
 	TestEqual(TEXT("pitch"), Info.rotation_pitch_, -30.0, 1.0e-9);
 
-	// custom K: reported as-is, fov is what fx implies
+	// custom K: reported as-is (wire convention), fov is what fx implies, D present but zero
 	FCameraIntrinsics K;
 	K.UseCustom = true;
-	K.Fx = 500.0; K.Fy = 510.0; K.Cx = 300.0; K.Cy = 250.0;
+	K.Fx = 500.0; K.Fy = 510.0; K.Cx = 300.5; K.Cy = 250.5;
 	const auto Custom = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, K, FCameraDistortion{}, 90.0, W, H, FVector::ZeroVector, FRotator::ZeroRotator);
 	TestEqual(TEXT("custom fy"), Custom.fy_, 510.0, 1.0e-9);
+	TestEqual(TEXT("custom cx back in wire convention"), Custom.cx_, 300.0, 1.0e-9);
 	TestEqual(TEXT("custom fov"), Custom.fov_deg_, FMath::RadiansToDegrees(2.0 * FMath::Atan(320.0 / 500.0)), 1.0e-9);
-	TestTrue(TEXT("no D without distortion"), Custom.d_.empty());
+	TestEqual(TEXT("zero D without distortion"), (int32)Custom.d_.size(), 5);
+	TestTrue(TEXT("zero D values"), Custom.d_[0] == 0.0 && Custom.d_[4] == 0.0);
+
+	return true;
+}
+
+//}
+
+/* fisheye calibration vs the LUT model //{ */
+
+// Projects a ray through a reported CameraInfo the way OpenCV's fisheye::projectPoints does
+// (theta-polynomial on the equidistant model, OpenCV pixel convention).
+static FVector2D ProjectKannalaBrandt(const Serializable::Drone::CameraInfo& Info, const double Theta, const double Phi)
+{
+	const double T2 = Theta * Theta;
+	const double Td = Theta * (1.0 + Info.d_[0] * T2 + Info.d_[1] * T2 * T2 + Info.d_[2] * T2 * T2 * T2 + Info.d_[3] * T2 * T2 * T2 * T2);
+	return FVector2D(Info.cx_ + Info.fx_ * Td * FMath::Cos(Phi), Info.cy_ + Info.fy_ * Td * FMath::Sin(Phi));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeFisheyeCalibrationTest, "FlightForge.Math.FisheyeCalibration",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeFisheyeCalibrationTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		const TCHAR*         Name;
+		FFisheyeCameraConfig Config;
+		double               MaxErrorPx;  // 0 for models KB carries exactly, series truncation otherwise
+	};
+
+	FFisheyeCameraConfig Base;
+	Base.FOVAngle  = 190.0;
+	Base.Width     = 800;
+	Base.Height    = 600;
+	Base.LensModel = EFisheyeLensModel::EQUIDISTANT;
+
+	TArray<FCase> Cases;
+	Cases.Add({TEXT("equidistant"), Base, 1.0e-6});
+
+	FCase Solid{TEXT("equisolid"), Base, 0.05};
+	Solid.Config.LensModel = EFisheyeLensModel::EQUISOLID;
+	Cases.Add(Solid);
+
+	FCase Stereo{TEXT("stereographic"), Base, 0.5};
+	Stereo.Config.LensModel = EFisheyeLensModel::STEREOGRAPHIC;
+	Cases.Add(Stereo);
+
+	FCase FullFrame{TEXT("equidistant full-frame"), Base, 1.0e-6};
+	FullFrame.Config.FullFrame = true;
+	Cases.Add(FullFrame);
+
+	// a Kalibr-style calibration: fx != fy, off-centre principal point, real-looking coefficients
+	FCase Kb{TEXT("kannala-brandt custom"), Base, 1.0e-6};
+	Kb.Config.LensModel            = EFisheyeLensModel::KANNALA_BRANDT;
+	Kb.Config.Intrinsics.UseCustom = true;
+	Kb.Config.Intrinsics.Fx        = 254.3;
+	Kb.Config.Intrinsics.Fy        = 252.9;
+	Kb.Config.Intrinsics.Cx        = 405.7 + WirePixelShift;  // engine convention, as SetConfig stores it
+	Kb.Config.Intrinsics.Cy        = 291.2 + WirePixelShift;
+	Kb.Config.K1                   = -0.012;
+	Kb.Config.K2                   = 0.021;
+	Kb.Config.K3                   = -0.017;
+	Kb.Config.K4                   = 0.004;
+	Cases.Add(Kb);
+
+	FCase CustomEqui{TEXT("equidistant custom K"), Base, 1.0e-6};
+	CustomEqui.Config.Intrinsics = Kb.Config.Intrinsics;
+	Cases.Add(CustomEqui);
+
+	for (const FCase& Case : Cases)
+	{
+		const FFisheyeCameraConfig&           C    = Case.Config;
+		const FCameraIntrinsics               K    = UFisheyeCamera::EffectiveFisheyeIntrinsics(C);
+		const Serializable::Drone::CameraInfo Info = UFisheyeCamera::FisheyeInfo(C);
+
+		TestEqual(*FString::Printf(TEXT("%s: four KB coefficients"), Case.Name), (int32)Info.d_.size(), 4);
+		TestEqual(*FString::Printf(TEXT("%s: distortion model"), Case.Name), FString(Info.distortion_model_.c_str()), FString(TEXT("equidistant")));
+		if (C.Intrinsics.UseCustom)
+		{
+			TestEqual(*FString::Printf(TEXT("%s: custom cx round-trips to wire convention"), Case.Name), Info.cx_, 405.7, 1.0e-9);
+		}
+
+		double MaxError = 0.0;
+		int32  Rendered = 0;
+		for (int32 py = 0; py < C.Height; py += 7)
+		{
+			for (int32 px = 0; px < C.Width; px += 7)
+			{
+				double Theta, Phi;
+				if (!UFisheyeCamera::PixelToAngles(C, K, px + 0.5, py + 0.5, Theta, Phi))
+				{
+					continue;
+				}
+				++Rendered;
+				const FVector2D Back = ProjectKannalaBrandt(Info, Theta, Phi);
+				MaxError            = FMath::Max(MaxError, FVector2D::Distance(Back, FVector2D(px, py)));
+			}
+		}
+
+		AddInfo(FString::Printf(TEXT("%s: %d pixels, max reprojection error through the reported calibration %.3g px"), Case.Name, Rendered, MaxError));
+		TestTrue(*FString::Printf(TEXT("%s: renders pixels"), Case.Name), Rendered > 1000);
+		TestTrue(*FString::Printf(TEXT("%s: reported calibration matches the LUT model (%.3g px)"), Case.Name, MaxError), MaxError <= Case.MaxErrorPx);
+	}
+
+	// the rendered angle is capped by fov even with custom intrinsics
+	double Theta, Phi;
+	const FCameraIntrinsics KbK = UFisheyeCamera::EffectiveFisheyeIntrinsics(Kb.Config);
+	TestFalse(TEXT("beyond fov/2 is not rendered"), UFisheyeCamera::PixelToAngles(Kb.Config, KbK, KbK.Cx + 2000.0, KbK.Cy, Theta, Phi));
 
 	return true;
 }

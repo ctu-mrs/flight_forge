@@ -153,8 +153,25 @@ void ADronePawn::StartServer() {
 }
 
 
+void ADronePawn::DrainInstructions() {
+  std::shared_ptr<FInstruction<ADronePawn>> Instruction;
+  while (InstructionQueue->Dequeue(Instruction)) {
+    Instruction->Function(*this);
+    Instruction->Finished = true;
+  }
+
+  SensorsCriticalSection->Lock();
+  for (auto& SensorPair : Sensors) {
+    if (SensorPair.Value) {
+      SensorPair.Value->DrainInstructions();
+    }
+  }
+  SensorsCriticalSection->Unlock();
+}
+
 void ADronePawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
-  droneServer->Stop();
+  // the server thread may be mid-request, spinning on an instruction only this thread can run
+  droneServer->Stop([this]() { DrainInstructions(); });
 
   for (auto& SensorPair : Sensors)
   {
@@ -634,13 +651,8 @@ void ADronePawn::Tick(float DeltaSeconds) {
     }
   }
   
-  std::shared_ptr<FInstruction<ADronePawn>> Instruction;
+  DrainInstructions();
 
-  while (InstructionQueue->Dequeue(Instruction)) {
-    Instruction->Function(*this);
-    Instruction->Finished = true;
-  }
-  
   Super::Tick(DeltaSeconds);
 
   // UE_LOG(LogTemp, Warning, TEXT("Tick(), delta %f, took %f s"), DeltaSeconds, FPlatformTime::Seconds() - start);

@@ -32,7 +32,9 @@ public:
 	int GetPort();
 
 	void Run();
-	void Stop();
+	// PumpWhileStopping runs on the caller while the server thread finishes its current request,
+	// so a request waiting on the game thread can complete instead of deadlocking the join
+	void Stop(TFunction<void()> PumpWhileStopping = nullptr);
 protected:
 	int32 MaxBufferSize;
 	int32 ReceiveBufferSize;

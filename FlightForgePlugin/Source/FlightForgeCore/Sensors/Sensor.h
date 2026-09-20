@@ -39,6 +39,9 @@ public:
     virtual void GetData(std::stringstream& OutputStream) {};
     virtual void GetConfig(std::stringstream& OutputStream) {};
     virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
+
+	// runs queued server-thread instructions on the game thread; the tick does this, and so does the pawn while its server stops
+	virtual void DrainInstructions() {};
 	int GetSensorID();
 
 	::SensorType GetSensorType() const { return SensorType; }

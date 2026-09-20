@@ -77,15 +77,21 @@ void URgbSegCamera::BeginPlay()
 }
 
 
+void URgbSegCamera::DrainInstructions()
+{
+	std::shared_ptr<FInstruction<URgbSegCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction))
+	{
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
+}
+
 void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	auto start = FPlatformTime::Seconds();
 
-	std::shared_ptr<FInstruction<URgbSegCamera>> Instruction;
-	while (InstructionQueue->Dequeue(Instruction)) {
-		Instruction->Function(*this);
-		Instruction->Finished = true;
-	}
+	DrainInstructions();
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
@@ -288,8 +294,8 @@ void URgbSegCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.intrinsics_.use_custom_ = rgb_camera_config_.Intrinsics.UseCustom;
 	ResponseRGB.config.intrinsics_.fx_         = Effective.Fx;
 	ResponseRGB.config.intrinsics_.fy_         = Effective.Fy;
-	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx;
-	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy;
+	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
+	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
 
 	ResponseRGB.config.distortion_.enable_ = rgb_camera_config_.Distortion.Enable;
 	ResponseRGB.config.distortion_.k1_     = rgb_camera_config_.Distortion.K1;
@@ -329,8 +335,8 @@ void URgbSegCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
 	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
 
 	Config.Distortion.Enable = Request.config.distortion_.enable_;
 	Config.Distortion.K1     = Request.config.distortion_.k1_;

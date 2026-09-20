@@ -458,15 +458,14 @@ Serializable::Drone::CameraInfo UCamera::PinholeInfo(const int SensorId, const :
 	Info.sensor_type_ = static_cast<int>(Type);
 	Info.width_       = Width;
 	Info.height_      = Height;
-	Info.model_       = "pinhole";
-	Info.fx_          = K.Fx;
-	Info.fy_          = K.Fy;
-	Info.cx_          = K.Cx;
-	Info.cy_          = K.Cy;
-	if (Distortion.Enable)
-	{
-		Info.d_ = {Distortion.K1, Distortion.K2, Distortion.P1, Distortion.P2, Distortion.K3};
-	}
+	Info.projection_       = "pinhole";
+	Info.distortion_model_ = "plumb_bob";
+	Info.fx_               = K.Fx;
+	Info.fy_               = K.Fy;
+	Info.cx_               = K.Cx - WirePixelShift;
+	Info.cy_               = K.Cy - WirePixelShift;
+	Info.d_                = Distortion.Enable ? std::vector<double>{Distortion.K1, Distortion.K2, Distortion.P1, Distortion.P2, Distortion.K3}
+	                                           : std::vector<double>(5, 0.0);
 	// custom K has no single FOV; report the horizontal one the effective fx implies
 	Info.fov_deg_        = K.Fx > 0.0 ? FMath::RadiansToDegrees(2.0 * FMath::Atan(Width * 0.5 / K.Fx)) : FovDeg;
 	Info.offset_x_       = Offset.X;

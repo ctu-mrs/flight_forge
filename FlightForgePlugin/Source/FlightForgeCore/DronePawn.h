@@ -225,6 +225,9 @@ private:
 
   void Tick(float DeltaSeconds) override;
 
+  // runs the pawn's and every sensor's queued server-thread instructions
+  void DrainInstructions();
+
   void SetPropellersTransform(const std::string &frame_name);
 
   /* external models //{ */

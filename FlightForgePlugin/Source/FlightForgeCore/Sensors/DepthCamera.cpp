@@ -49,16 +49,21 @@ void UDepthCamera::BeginPlay()
 
 /* TickComponent() //{ */
 
-void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UDepthCamera::DrainInstructions()
 {
-	const double Start = FPlatformTime::Seconds();
-
 	std::shared_ptr<FInstruction<UDepthCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
 		Instruction->Function(*this);
 		Instruction->Finished = true;
 	}
+}
+
+void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	const double Start = FPlatformTime::Seconds();
+
+	DrainInstructions();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && (Start - camera_last_request_time_) < 1.0)
 	{
@@ -239,8 +244,8 @@ void UDepthCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.intrinsics_.use_custom_ = depth_camera_config_.Intrinsics.UseCustom;
 	Response.config.intrinsics_.fx_         = Effective.Fx;
 	Response.config.intrinsics_.fy_         = Effective.Fy;
-	Response.config.intrinsics_.cx_         = Effective.Cx;
-	Response.config.intrinsics_.cy_         = Effective.Cy;
+	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
+	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
 
 	Serialization::DeserializeResponse(Response, OutputStream);
 }
@@ -264,8 +269,8 @@ void UDepthCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<st
 	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
 	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
 
 	bool Status = false;
 

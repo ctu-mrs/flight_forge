@@ -29,7 +29,9 @@ inline const FVector DEFAULT_CAMERA_MOUNT = FVector(25.0, 0.0, 0.0);
 
 // pinhole intrinsics in pixels, image origin top-left; when UseCustom the capture's
 // projection matrix is built from these (off-axis when cx/cy are off-center) instead
-// of from the FOV angle
+// of from the FOV angle. Engine convention: pixel u's centre sits at u + 0.5, so the
+// image centre is Cx = W/2; the wire uses OpenCV's integer-centre convention, hence
+// the WirePixelShift at every Get/Set.
 struct FCameraIntrinsics
 {
 	bool   UseCustom = false;
@@ -38,6 +40,8 @@ struct FCameraIntrinsics
 	double Cx        = 0.0;
 	double Cy        = 0.0;
 };
+
+constexpr double WirePixelShift = 0.5;
 
 //}
 

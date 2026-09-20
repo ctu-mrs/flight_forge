@@ -109,15 +109,21 @@ void UEventCamera::BeginDestroy()
 
 /* TickComponent() //{ */
 
+void UEventCamera::DrainInstructions()
+{
+	std::shared_ptr<FInstruction<UEventCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction))
+	{
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
+}
+
 void UEventCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	const double Start = FPlatformTime::Seconds();
 
-	std::shared_ptr<FInstruction<UEventCamera>> Instruction;
-	while (InstructionQueue->Dequeue(Instruction)) {
-		Instruction->Function(*this);
-		Instruction->Finished = true;
-	}
+	DrainInstructions();
 
 	// in lockstep wall time between steps means nothing, so one request keeps the stream
 	const bool bRecentlyAsked = (Start - camera_last_request_time_) < 1.0;

@@ -37,7 +37,7 @@ void USegIdCamera::BeginPlay()
 	SceneCaptureComponent2D->bUseRayTracingIfEnabled      = false;
 
 	seg_camera_config_.ShowCameraComponent = false;
-	seg_camera_config_.Offset              = FVector(0, 0, 0);
+	seg_camera_config_.Offset              = DEFAULT_CAMERA_MOUNT;
 	seg_camera_config_.Orientation         = FRotator(0, 0, 0);
 	seg_camera_config_.FOVAngle            = 90;
 	seg_camera_config_.Width               = 640;
@@ -54,16 +54,21 @@ void USegIdCamera::BeginPlay()
 
 /* TickComponent() //{ */
 
-void USegIdCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void USegIdCamera::DrainInstructions()
 {
-	const double Start = FPlatformTime::Seconds();
-
 	std::shared_ptr<FInstruction<USegIdCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
 		Instruction->Function(*this);
 		Instruction->Finished = true;
 	}
+}
+
+void USegIdCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	const double Start = FPlatformTime::Seconds();
+
+	DrainInstructions();
 
 	// every frame is a job submission, so bCaptureEveryFrame alone cannot drive this
 	// camera - keep capturing while requests are fresh
@@ -322,8 +327,8 @@ void USegIdCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.intrinsics_.use_custom_ = seg_camera_config_.Intrinsics.UseCustom;
 	Response.config.intrinsics_.fx_         = Effective.Fx;
 	Response.config.intrinsics_.fy_         = Effective.Fy;
-	Response.config.intrinsics_.cx_         = Effective.Cx;
-	Response.config.intrinsics_.cy_         = Effective.Cy;
+	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
+	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
 
 	Response.config.distortion_.enable_ = seg_camera_config_.Distortion.Enable;
 	Response.config.distortion_.k1_     = seg_camera_config_.Distortion.K1;
@@ -354,8 +359,8 @@ void USegIdCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<st
 	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
 	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
 
 	Config.Distortion.Enable = Request.config.distortion_.enable_;
 	Config.Distortion.K1     = Request.config.distortion_.k1_;

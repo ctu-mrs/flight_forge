@@ -13,7 +13,7 @@ namespace Serializable
 {
 // bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
 constexpr int api_version_major = 0;
-constexpr int api_version_minor = 20;
+constexpr int api_version_minor = 21;
 
 namespace Common
 {
@@ -237,10 +237,11 @@ struct LidarConfig
 
 /* struct CameraIntrinsics //{ */
 
-// pinhole intrinsics in pixels, image origin top-left. With use_custom_ unset the
-// fov_/resolution path drives the projection and Get returns the values the engine
-// derives from them; when set, the projection matrix is built from fx/fy/cx/cy
-// directly (off-axis when cx/cy are off-center) and fov_ is ignored.
+// pinhole intrinsics in pixels, image origin top-left, OpenCV convention (a pixel's centre
+// is at its integer index, so a centred camera has cx = W/2 - 0.5). With use_custom_ unset
+// the fov_/resolution path drives the projection and Get returns the values the engine
+// derives from them; when set, the projection matrix is built from fx/fy/cx/cy directly
+// (off-axis when cx/cy are off-center) and fov_ is ignored.
 struct CameraIntrinsics
 {
   bool   use_custom_ = false;
@@ -1569,7 +1570,7 @@ struct FisheyeCameraConfig
   int height_;
 
   // 0 equidistant (r = f*theta), 1 equisolid (r = 2f*sin(theta/2)),
-  // 2 stereographic (r = 2f*tan(theta/2))
+  // 2 stereographic (r = 2f*tan(theta/2)), 3 kannala_brandt (r = f*theta*(1 + k1 theta^2 + k2 theta^4 + k3 theta^6 + k4 theta^8), OpenCV fisheye)
   int lens_model_;
 
   CameraCompression compression_;
@@ -1577,11 +1578,21 @@ struct FisheyeCameraConfig
   // image circle fitted to the frame corner (fov_ is the diagonal) instead of the short side
   bool full_frame_;
 
+  // with use_custom_ the focal (pixels per radian) and principal point come from here instead of fov_/full_frame_, so a
+  // Kalibr/OpenVINS calibration can be rendered as is; fov_ then only caps the rendered angle. OpenCV pixel convention.
+  CameraIntrinsics intrinsics_;
+
+  double kb_k1_ = 0.0;
+  double kb_k2_ = 0.0;
+  double kb_k3_ = 0.0;
+  double kb_k4_ = 0.0;
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
             CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(lens_model_),
-            CEREAL_NVP(compression_), CEREAL_NVP(full_frame_));
+            CEREAL_NVP(compression_), CEREAL_NVP(full_frame_), CEREAL_NVP(intrinsics_), CEREAL_NVP(kb_k1_), CEREAL_NVP(kb_k2_), CEREAL_NVP(kb_k3_),
+            CEREAL_NVP(kb_k4_));
   }
 };
 
@@ -1962,7 +1973,8 @@ struct Response : public Common::NetworkResponse
 /* GetCameraInfo //{ */
 
 // the effective calibration of one camera eye, enough for a ROS CameraInfo + TF; mount offset
-// and rotation follow the camera configs' drone-frame convention and units
+// and rotation follow the camera configs' drone-frame convention and units. Pixel convention is
+// OpenCV's (a pixel's centre is at its integer index), so an ideal centred camera has cx = W/2 - 0.5.
 struct CameraInfo
 {
   int sensor_id_   = -1;
@@ -1972,14 +1984,19 @@ struct CameraInfo
   int width_  = 0;
   int height_ = 0;
 
-  std::string model_;  // pinhole | equidistant | equisolid | stereographic
+  // pinhole | fisheye_equidistant | fisheye_equisolid | fisheye_stereographic | fisheye_kannala_brandt
+  std::string projection_;
+
+  // sensor_msgs/CameraInfo.distortion_model: plumb_bob for pinhole, equidistant (Kannala-Brandt) for every fisheye;
+  // equisolid and stereographic lenses are reported through their theta-series, exact to the terms KB carries
+  std::string distortion_model_;
 
   double fx_ = 0.0;  // pixels; a fisheye's f is pixels per radian of theta
   double fy_ = 0.0;
   double cx_ = 0.0;
   double cy_ = 0.0;
 
-  std::vector<double> d_;  // pinhole with distortion: k1 k2 p1 p2 k3 (plumb_bob order); otherwise empty
+  std::vector<double> d_;  // plumb_bob: k1 k2 p1 p2 k3; equidistant: k1 k2 k3 k4 - zeros when the lens is ideal, never empty
 
   double fov_deg_ = 0.0;  // pinhole: horizontal; fisheye: the image circle (diagonal when full-frame)
 
@@ -1996,8 +2013,8 @@ struct CameraInfo
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(CEREAL_NVP(sensor_id_), CEREAL_NVP(sensor_type_), CEREAL_NVP(eye_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(model_),
-            CEREAL_NVP(fx_), CEREAL_NVP(fy_), CEREAL_NVP(cx_), CEREAL_NVP(cy_), CEREAL_NVP(d_), CEREAL_NVP(fov_deg_), CEREAL_NVP(offset_x_),
+    archive(CEREAL_NVP(sensor_id_), CEREAL_NVP(sensor_type_), CEREAL_NVP(eye_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(projection_),
+            CEREAL_NVP(distortion_model_), CEREAL_NVP(fx_), CEREAL_NVP(fy_), CEREAL_NVP(cx_), CEREAL_NVP(cy_), CEREAL_NVP(d_), CEREAL_NVP(fov_deg_), CEREAL_NVP(offset_x_),
             CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_), CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_),
             CEREAL_NVP(baseline_), CEREAL_NVP(readout_time_));
   }

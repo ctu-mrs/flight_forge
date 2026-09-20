@@ -35,6 +35,7 @@ protected:
 	FRgbCameraConfig depth_camera_config_;
 
 public:
+	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	bool SetDepthCameraConfig(const FRgbCameraConfig& Config);

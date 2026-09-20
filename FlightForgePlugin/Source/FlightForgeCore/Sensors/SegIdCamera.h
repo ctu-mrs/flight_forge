@@ -32,6 +32,7 @@ protected:
 	double LastSubmitTime = 0.0;
 
 public:
+	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	bool SetSegIdCameraConfig(const FRgbCameraConfig& Config);

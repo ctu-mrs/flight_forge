@@ -82,15 +82,21 @@ void UStereoCamera::Initialize(int InSensorID)
 }
 
 
+void UStereoCamera::DrainInstructions()
+{
+	std::shared_ptr<FInstruction<UStereoCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction))
+	{
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
+}
+
 void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	auto start = FPlatformTime::Seconds();
 
-	std::shared_ptr<FInstruction<UStereoCamera>> Instruction;
-	while (InstructionQueue->Dequeue(Instruction)) {
-		Instruction->Function(*this);
-		Instruction->Finished = true;
-	}
+	DrainInstructions();
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
@@ -328,8 +334,8 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseStereo.config.intrinsics_.use_custom_ = stereo_camera_config_.Intrinsics.UseCustom;
 	ResponseStereo.config.intrinsics_.fx_         = Effective.Fx;
 	ResponseStereo.config.intrinsics_.fy_         = Effective.Fy;
-	ResponseStereo.config.intrinsics_.cx_         = Effective.Cx;
-	ResponseStereo.config.intrinsics_.cy_         = Effective.Cy;
+	ResponseStereo.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
+	ResponseStereo.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
 
 	ResponseStereo.config.distortion_.enable_ = stereo_camera_config_.Distortion.Enable;
 	ResponseStereo.config.distortion_.k1_     = stereo_camera_config_.Distortion.K1;
@@ -371,8 +377,8 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
 	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
 	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
 
 	Config.Distortion.Enable = Request.config.distortion_.enable_;
 	Config.Distortion.K1     = Request.config.distortion_.k1_;

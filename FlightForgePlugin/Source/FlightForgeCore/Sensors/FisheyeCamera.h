@@ -7,9 +7,10 @@
 
 enum class EFisheyeLensModel : int
 {
-	EQUIDISTANT   = 0,  // r = f * theta
-	EQUISOLID     = 1,  // r = 2f * sin(theta/2)
-	STEREOGRAPHIC = 2,  // r = 2f * tan(theta/2)
+	EQUIDISTANT    = 0,  // r = f * theta
+	EQUISOLID      = 1,  // r = 2f * sin(theta/2)
+	STEREOGRAPHIC  = 2,  // r = 2f * tan(theta/2)
+	KANNALA_BRANDT = 3,  // r = f * theta * (1 + k1 theta^2 + k2 theta^4 + k3 theta^6 + k4 theta^8), OpenCV fisheye
 };
 
 struct FFisheyeCameraConfig
@@ -19,7 +20,7 @@ struct FFisheyeCameraConfig
 	FVector  Offset;
 	FRotator Orientation;
 
-	double FOVAngle;
+	double FOVAngle;  // rendered angle cap even with custom intrinsics
 
 	int Width;
 	int Height;
@@ -27,6 +28,15 @@ struct FFisheyeCameraConfig
 	EFisheyeLensModel LensModel;
 
 	bool FullFrame = false;
+
+	// with UseCustom, Fx/Fy are pixels per radian and Cx/Cy the principal point (engine convention) instead of the fov-fitted focal
+	FCameraIntrinsics Intrinsics;
+
+	// Kannala-Brandt theta-polynomial, used by KANNALA_BRANDT only
+	double K1 = 0.0;
+	double K2 = 0.0;
+	double K3 = 0.0;
+	double K4 = 0.0;
 
 	FCameraCompression Compression;
 };
@@ -71,6 +81,20 @@ public:
 	// pixels per radian of theta such that theta = fov/2 lands on the image circle, matching RebuildLUT
 	static double FocalPx(EFisheyeLensModel Model, double FovDeg, int32 Width, int32 Height, bool FullFrame);
 
+	// the intrinsics the LUT renders with (fov-fitted or custom), engine pixel convention
+	static FCameraIntrinsics EffectiveFisheyeIntrinsics(const FFisheyeCameraConfig& Config);
+
+	// theta (from the optical axis) and phi (image angle, +u right, +v down) of pixel centre (px, py);
+	// false outside the rendered angle. This is the model the LUT is built from, so it is also what get_camera_info must invert.
+	static bool PixelToAngles(const FFisheyeCameraConfig& Config, const FCameraIntrinsics& K, double px, double py, double& Theta, double& Phi);
+
+	// Kannala-Brandt theta-series of the closed-form lenses, for reporting them through the equidistant distortion model
+	static void KannalaBrandtCoefficients(const FFisheyeCameraConfig& Config, double& K1, double& K2, double& K3, double& K4);
+
+	// the calibration get_camera_info reports for this config (sensor id/type left for the caller), wire pixel convention
+	static Serializable::Drone::CameraInfo FisheyeInfo(const FFisheyeCameraConfig& Config);
+
+	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 

@@ -152,7 +152,7 @@ void UFisheyeCamera::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-/* FocalPx() + DescribeCameras() //{ */
+/* lens model //{ */
 
 double UFisheyeCamera::FocalPx(const EFisheyeLensModel Model, const double FovDeg, const int32 Width, const int32 Height, const bool FullFrame)
 {
@@ -162,28 +162,109 @@ double UFisheyeCamera::FocalPx(const EFisheyeLensModel Model, const double FovDe
 	{
 		case EFisheyeLensModel::EQUISOLID: return ImageRadius / (2.0 * FMath::Sin(HalfFov * 0.5));
 		case EFisheyeLensModel::STEREOGRAPHIC: return ImageRadius / (2.0 * FMath::Tan(HalfFov * 0.5));
-		default: return ImageRadius / HalfFov;
+		default: return ImageRadius / HalfFov;  // KB without custom intrinsics: the polynomial distorts an equidistant fit
 	}
 }
 
-void UFisheyeCamera::DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out)
+FCameraIntrinsics UFisheyeCamera::EffectiveFisheyeIntrinsics(const FFisheyeCameraConfig& Config)
 {
-	const FFisheyeCameraConfig& C = fisheye_camera_config_;
+	if (Config.Intrinsics.UseCustom && Config.Intrinsics.Fx > 0.0 && Config.Intrinsics.Fy > 0.0)
+	{
+		return Config.Intrinsics;
+	}
+	FCameraIntrinsics K;
+	K.Fx = K.Fy = FocalPx(Config.LensModel, Config.FOVAngle, Config.Width, Config.Height, Config.FullFrame);
+	K.Cx        = Config.Width * 0.5;
+	K.Cy        = Config.Height * 0.5;
+	return K;
+}
+
+bool UFisheyeCamera::PixelToAngles(const FFisheyeCameraConfig& Config, const FCameraIntrinsics& K, const double px, const double py, double& Theta, double& Phi)
+{
+	const double HalfFov = FMath::DegreesToRadians(FMath::Clamp(Config.FOVAngle, 10.0, 220.0)) * 0.5;
+
+	// radial distance in focal units: r = theta for an ideal equidistant lens
+	const double U = (px - K.Cx) / K.Fx;
+	const double V = (py - K.Cy) / K.Fy;
+	const double R = FMath::Sqrt(U * U + V * V);
+
+	switch (Config.LensModel)
+	{
+		case EFisheyeLensModel::EQUISOLID:
+			if (R > 2.0) return false;
+			Theta = 2.0 * FMath::Asin(R * 0.5);
+			break;
+		case EFisheyeLensModel::STEREOGRAPHIC:
+			Theta = 2.0 * FMath::Atan(R * 0.5);
+			break;
+		case EFisheyeLensModel::KANNALA_BRANDT:
+		{
+			// invert r = theta (1 + k1 theta^2 + ...) by Newton, as OpenCV's fisheye undistort does
+			Theta = R;
+			for (int32 i = 0; i < 10; ++i)
+			{
+				const double T2 = Theta * Theta, T4 = T2 * T2, T6 = T4 * T2, T8 = T4 * T4;
+				const double F  = Theta * (1.0 + Config.K1 * T2 + Config.K2 * T4 + Config.K3 * T6 + Config.K4 * T8) - R;
+				const double dF = 1.0 + 3.0 * Config.K1 * T2 + 5.0 * Config.K2 * T4 + 7.0 * Config.K3 * T6 + 9.0 * Config.K4 * T8;
+				if (FMath::Abs(dF) < 1.0e-12) return false;
+				Theta -= F / dF;
+				if (!FMath::IsFinite(Theta) || Theta < 0.0) return false;
+			}
+			break;
+		}
+		default:
+			Theta = R;
+			break;
+	}
+
+	if (!(Theta <= HalfFov))
+	{
+		return false;
+	}
+	Phi = FMath::Atan2(V, U);
+	return true;
+}
+
+void UFisheyeCamera::KannalaBrandtCoefficients(const FFisheyeCameraConfig& Config, double& K1, double& K2, double& K3, double& K4)
+{
+	switch (Config.LensModel)
+	{
+		case EFisheyeLensModel::EQUISOLID:  // 2 sin(t/2) = t - t^3/24 + t^5/1920 - t^7/322560 + t^9/92897280
+			K1 = -1.0 / 24.0; K2 = 1.0 / 1920.0; K3 = -1.0 / 322560.0; K4 = 1.0 / 92897280.0;
+			break;
+		case EFisheyeLensModel::STEREOGRAPHIC:  // 2 tan(t/2) = t + t^3/12 + t^5/120 + 17 t^7/20160 + 31 t^9/362880
+			K1 = 1.0 / 12.0; K2 = 1.0 / 120.0; K3 = 17.0 / 20160.0; K4 = 31.0 / 362880.0;
+			break;
+		case EFisheyeLensModel::KANNALA_BRANDT:
+			K1 = Config.K1; K2 = Config.K2; K3 = Config.K3; K4 = Config.K4;
+			break;
+		default:
+			K1 = K2 = K3 = K4 = 0.0;
+			break;
+	}
+}
+
+Serializable::Drone::CameraInfo UFisheyeCamera::FisheyeInfo(const FFisheyeCameraConfig& C)
+{
+	const FCameraIntrinsics K = EffectiveFisheyeIntrinsics(C);
 
 	Serializable::Drone::CameraInfo Info;
-	Info.sensor_id_   = GetSensorID();
-	Info.sensor_type_ = static_cast<int>(GetSensorType());
 	Info.width_       = C.Width;
 	Info.height_      = C.Height;
 	switch (C.LensModel)
 	{
-		case EFisheyeLensModel::EQUISOLID: Info.model_ = "equisolid"; break;
-		case EFisheyeLensModel::STEREOGRAPHIC: Info.model_ = "stereographic"; break;
-		default: Info.model_ = "equidistant"; break;
+		case EFisheyeLensModel::EQUISOLID: Info.projection_ = "fisheye_equisolid"; break;
+		case EFisheyeLensModel::STEREOGRAPHIC: Info.projection_ = "fisheye_stereographic"; break;
+		case EFisheyeLensModel::KANNALA_BRANDT: Info.projection_ = "fisheye_kannala_brandt"; break;
+		default: Info.projection_ = "fisheye_equidistant"; break;
 	}
-	Info.fx_ = Info.fy_ = FocalPx(C.LensModel, C.FOVAngle, C.Width, C.Height, C.FullFrame);
-	Info.cx_             = C.Width * 0.5;
-	Info.cy_             = C.Height * 0.5;
+	Info.distortion_model_ = "equidistant";
+	Info.fx_               = K.Fx;
+	Info.fy_               = K.Fy;
+	Info.cx_               = K.Cx - WirePixelShift;
+	Info.cy_               = K.Cy - WirePixelShift;
+	Info.d_.resize(4);
+	KannalaBrandtCoefficients(C, Info.d_[0], Info.d_[1], Info.d_[2], Info.d_[3]);
 	Info.fov_deg_        = C.FOVAngle;
 	Info.offset_x_       = C.Offset.X;
 	Info.offset_y_       = C.Offset.Y;
@@ -191,6 +272,14 @@ void UFisheyeCamera::DescribeCameras(std::vector<Serializable::Drone::CameraInfo
 	Info.rotation_pitch_ = C.Orientation.Pitch;
 	Info.rotation_yaw_   = C.Orientation.Yaw;
 	Info.rotation_roll_  = C.Orientation.Roll;
+	return Info;
+}
+
+void UFisheyeCamera::DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out)
+{
+	auto Info         = FisheyeInfo(fisheye_camera_config_);
+	Info.sensor_id_   = GetSensorID();
+	Info.sensor_type_ = static_cast<int>(GetSensorType());
 	Out.push_back(Info);
 }
 
@@ -208,12 +297,11 @@ void UFisheyeCamera::RebuildLUT()
 		return;
 	}
 
-	const float HalfFov     = FMath::DegreesToRadians((float)FMath::Clamp(fisheye_camera_config_.FOVAngle, 10.0, 220.0)) * 0.5f;
 	const float TanHalfFace = FMath::Tan(FMath::DegreesToRadians(FaceFovDeg) * 0.5f);
-	const float ImageRadius = fisheye_camera_config_.FullFrame ? 0.5f * FMath::Sqrt((float)(W * W + H * H)) : 0.5f * FMath::Min(W, H);
 	const int32 Size        = FaceSize();
 
-	const EFisheyeLensModel Model = fisheye_camera_config_.LensModel;
+	const FFisheyeCameraConfig Config = fisheye_camera_config_;
+	const FCameraIntrinsics    K      = EffectiveFisheyeIntrinsics(Config);
 
 	TSharedPtr<TArray<FFisheyeLUTEntry>, ESPMode::ThreadSafe> NewLUT = MakeShared<TArray<FFisheyeLUTEntry>, ESPMode::ThreadSafe>();
 	NewLUT->SetNumUninitialized(W * H);
@@ -224,31 +312,11 @@ void UFisheyeCamera::RebuildLUT()
 			FFisheyeLUTEntry& Entry = (*NewLUT)[py * W + px];
 			Entry.Face = -1;
 
-			const float U = (px + 0.5f - 0.5f * W) / ImageRadius;
-			const float V = (py + 0.5f - 0.5f * H) / ImageRadius;
-			const float R = FMath::Sqrt(U * U + V * V);
-
-			if (R > 1.0f)
+			double Theta = 0.0, Phi = 0.0;
+			if (!PixelToAngles(Config, K, px + 0.5, py + 0.5, Theta, Phi))
 			{
 				continue;
 			}
-
-			float Theta = 0.0f;
-			switch (Model)
-			{
-				case EFisheyeLensModel::EQUISOLID:
-					Theta = 2.0f * FMath::Asin(FMath::Clamp(R * FMath::Sin(HalfFov * 0.5f), -1.0f, 1.0f));
-					break;
-				case EFisheyeLensModel::STEREOGRAPHIC:
-					Theta = 2.0f * FMath::Atan(R * FMath::Tan(HalfFov * 0.5f));
-					break;
-				case EFisheyeLensModel::EQUIDISTANT:
-				default:
-					Theta = R * HalfFov;
-					break;
-			}
-
-			const float Phi = FMath::Atan2(V, U);
 
 			// image +u is camera right (+Y), image +v is down (-Z)
 			const FVector Dir(FMath::Cos(Theta), FMath::Sin(Theta) * FMath::Cos(Phi), -FMath::Sin(Theta) * FMath::Sin(Phi));
@@ -295,15 +363,21 @@ void UFisheyeCamera::SetCaptureEveryFrame(bool bEnable)
 	}
 }
 
+void UFisheyeCamera::DrainInstructions()
+{
+	std::shared_ptr<FInstruction<UFisheyeCamera>> Instruction;
+	while (InstructionQueue->Dequeue(Instruction))
+	{
+		Instruction->Function(*this);
+		Instruction->Finished = true;
+	}
+}
+
 void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	auto start = FPlatformTime::Seconds();
 
-	std::shared_ptr<FInstruction<UFisheyeCamera>> Instruction;
-	while (InstructionQueue->Dequeue(Instruction)) {
-		Instruction->Function(*this);
-		Instruction->Finished = true;
-	}
+	DrainInstructions();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
@@ -576,6 +650,17 @@ void UFisheyeCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.lens_model_ = static_cast<int>(fisheye_camera_config_.LensModel);
 	Response.config.full_frame_ = fisheye_camera_config_.FullFrame;
 
+	const FCameraIntrinsics Effective          = EffectiveFisheyeIntrinsics(fisheye_camera_config_);
+	Response.config.intrinsics_.use_custom_ = fisheye_camera_config_.Intrinsics.UseCustom;
+	Response.config.intrinsics_.fx_         = Effective.Fx;
+	Response.config.intrinsics_.fy_         = Effective.Fy;
+	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
+	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
+	Response.config.kb_k1_                  = fisheye_camera_config_.K1;
+	Response.config.kb_k2_                  = fisheye_camera_config_.K2;
+	Response.config.kb_k3_                  = fisheye_camera_config_.K3;
+	Response.config.kb_k4_                  = fisheye_camera_config_.K4;
+
 	Response.config.compression_.format_ =
 	    fisheye_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
 	Response.config.compression_.quality_ = fisheye_camera_config_.Compression.Quality;
@@ -597,8 +682,18 @@ void UFisheyeCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<
 	Config.FOVAngle  = FMath::Clamp(Request.config.fov_, 10.0, 220.0);
 	Config.Width     = Request.config.width_;
 	Config.Height    = Request.config.height_;
-	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 2));
+	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 3));
 	Config.FullFrame = Request.config.full_frame_;
+
+	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
+	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
+	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
+	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
+	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
+	Config.K1                   = Request.config.kb_k1_;
+	Config.K2                   = Request.config.kb_k2_;
+	Config.K3                   = Request.config.kb_k3_;
+	Config.K4                   = Request.config.kb_k4_;
 
 	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
 	Config.Compression.Quality = Request.config.compression_.quality_;

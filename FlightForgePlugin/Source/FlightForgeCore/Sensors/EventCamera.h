@@ -66,6 +66,7 @@ public:
 		Out.push_back(PinholeInfo(GetSensorID(), GetSensorType(), FCameraIntrinsics{}, FCameraDistortion{}, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation));
 	}
 
+	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 

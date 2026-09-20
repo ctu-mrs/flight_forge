@@ -50,14 +50,19 @@ bool TcpServer::SetPort(int _Port)
 	return true;
 }
 
-void TcpServer::Stop()
+void TcpServer::Stop(TFunction<void()> PumpWhileStopping)
 {
 	if(ListenSocket != nullptr)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("Stopping server"));
-		
-		// stop server thread
 		ServerIsRunning = false;
+		if (PumpWhileStopping)
+		{
+			while (!ServerFuture.IsReady())
+			{
+				PumpWhileStopping();
+				FPlatformProcess::Sleep(0.001f);
+			}
+		}
 		ServerFuture.Get();
 		
 		ListenSocket->Close();
