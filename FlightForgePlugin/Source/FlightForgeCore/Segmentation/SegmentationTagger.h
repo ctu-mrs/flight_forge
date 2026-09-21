@@ -87,8 +87,13 @@ public:
 	/** Stable per-actor instance id (starting at 1) shared by the SegId pass and the lidar labels; 0 stays "background". Any thread. */
 	uint32 GetOrAssignInstanceId(const AActor* Actor);
 
-	/** The class the rules give this component, else the stencil it already carries, else 0. */
+	/** The class the rules give this component, else its folder's, else the stencil it already carries, else 0. */
 	int32 ClassOf(const AActor* Actor, const UPrimitiveComponent* Component) const;
+
+	/** Where ClassOf's answer came from: "rule:<match>", "folder", "stencil" or "" for unclassified. For the audit. */
+	FString ClassSourceOf(const AActor* Actor, const UPrimitiveComponent* Component) const;
+
+	static FString MeshAssetPath(const UPrimitiveComponent* Component);
 
 	/** every class the world knows (the yaml tree plus any ini rule id), by id, and a hash over them */
 	const TMap<int32, FSegClass>& Classes() const { return ClassesById; }
@@ -117,7 +122,6 @@ private:
 	FCriticalSection InstanceIdsLock;  // the lidar resolves ids on its server thread
 
 	const FSegmentationTagRule* FindRule(const AActor* Actor, const UPrimitiveComponent* Component) const;
-	static FString              MeshAssetPath(const UPrimitiveComponent* Component);
 };
 
 //}

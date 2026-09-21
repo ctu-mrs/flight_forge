@@ -73,6 +73,12 @@ void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 		}
 	}
 
+	if (bReadbackDue)
+	{
+		bReadbackDue = false;
+		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, FVector::ZeroVector, true));
+	}
+
 	PumpReadback();
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -114,17 +120,29 @@ bool UDepthCamera::SetDepthCameraConfig(const FRgbCameraConfig& Config)
 
 void UDepthCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback)
+	if (HasPendingReadback())
 	{
 		return;
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	if (bReadbackDue)
+	{
+		return;
+	}
+
+	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !bEverRendered)
 	{
 		SceneCaptureComponent2D->CaptureScene();
 	}
+	else if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	{
+		SceneCaptureComponent2D->CaptureSceneDeferred();
+		DeferredStamp = stamp;
+		bReadbackDue  = true;
+		return;
+	}
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, true);
+	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, true));
 }
 
 /* //} */
@@ -139,7 +157,14 @@ bool UDepthCamera::GetDepthCameraDataFromServerThread(TArray<uint16>& OutDepthMm
 	const bool bHaveFrame = CameraRendered;
 	CameraBufferCriticalSection->Unlock();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !bHaveFrame))
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !SceneCaptureComponent2D->bCaptureEveryFrame && CachedTargetResource.load() && bEverRendered)
+	{
+		if (!RequestFrameFromServerThread(RenderTarget2D, FPlatformTime::Seconds(), FVector::ZeroVector, true, false, false, 2.0))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UDepthCamera: timed out waiting for a frame"));
+		}
+	}
+	else if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || !bHaveFrame)
 	{
 		const uint64 Baseline = FrameCounter.load();
 
@@ -147,7 +172,7 @@ bool UDepthCamera::GetDepthCameraDataFromServerThread(TArray<uint16>& OutDepthMm
 		Instruction->Function = [](UDepthCamera& _Camera) { _Camera.UpdateCamera(true, FPlatformTime::Seconds()); };
 		InstructionQueue->Enqueue(Instruction);
 
-		if (!WaitForNewFrame(Baseline, 2.0))
+		if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("UDepthCamera: timed out waiting for a frame"));
 		}

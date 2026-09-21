@@ -92,6 +92,8 @@ public:
 	//FRgbCameraConfig GetRgbCameraConfig();
 	bool SetRgbCameraConfig(const FRgbCameraConfig& Config);
 
+	FVector CaptureOmega(double stamp);
+
 	FRgbCameraConfig GetRgbCameraConfig() const { return rgb_camera_config_; }
 
 	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override

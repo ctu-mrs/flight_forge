@@ -145,6 +145,12 @@ protected:
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadback;
 
+	// on demand the capture renders inside the next engine frame like a continuous one; the copy is enqueued the tick after, once the target holds it
+	bool    bReadbackDue  = false;
+	bool    bEverRendered = false;  // a component's first deferred capture can precede its registration; the first frame is captured immediately
+	double  DeferredStamp = 0.0;
+	FVector DeferredOmega = FVector::ZeroVector;
+
 	std::atomic<uint64> FrameCounter{0};
 	FEvent* FrameReadyEvent = nullptr;
 
@@ -208,11 +214,31 @@ protected:
 	                                                                 bool bFloat16 = false, bool bEncodeSrgb = false, bool bHalfRgba = false, bool bLuma = false);
 	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
-  bool PumpReadback();
+	bool PumpReadback();
+
+	void SetPendingReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+	bool HasPendingReadback();
 
 	void NotifyFrameReady();
 
 	bool WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds);
+
+	// server thread: waits for the capture instruction to run, then for its readback, and publishes it itself
+	bool WaitForRequestedFrame(const bool& InstructionFinished, uint64 BaselineFrame, double TimeoutSeconds);
+
+	// server thread, on demand: registers the copy with the frame that will render the capture and
+	// asks for that capture, with no game tick in the loop; polls the fence and publishes itself
+	bool RequestFrameFromServerThread(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, bool bFloat16, bool bEncodeSrgb, bool bHalfRgba,
+	                                  double TimeoutSeconds);
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> MakeReadbackSlot(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, bool bFloat16,
+	                                                                  bool bEncodeSrgb, bool bHalfRgba, bool bLuma);
+
+	// polls the slot's fence from the calling thread and resolves it there; Copied covers the render-thread race
+	bool WaitForSlot(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot, double Deadline);
+
+	// the target's render resource, refreshed on the game thread for the server thread's use
+	std::atomic<const FRenderTarget*> CachedTargetResource{nullptr};
 
 	void TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TArray<FColor> &SrcData, TArray<uint8> &DstData);
 

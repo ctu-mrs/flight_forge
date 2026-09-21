@@ -11,6 +11,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "LandscapeComponent.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
@@ -286,6 +287,23 @@ int32 USegmentationTagger::ClassOf(const AActor* Actor, const UPrimitiveComponen
 	return Component && Component->bRenderCustomDepth ? Component->CustomDepthStencilValue : 0;
 }
 
+FString USegmentationTagger::ClassSourceOf(const AActor* Actor, const UPrimitiveComponent* Component) const
+{
+	if (const FSegmentationTagRule* Rule = FindRule(Actor, Component))
+	{
+		return TEXT("rule:") + Rule->Match;
+	}
+	if (ClassFromFolder(MeshAssetPath(Component)) > 0)
+	{
+		return TEXT("folder");
+	}
+	if (Component && Component->bRenderCustomDepth && Component->CustomDepthStencilValue > 0)
+	{
+		return TEXT("stencil");
+	}
+	return FString();
+}
+
 void USegmentationTagger::TagActor(AActor* Actor)
 {
 	if (!Actor)
@@ -357,23 +375,30 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 	{
 		const AActor* Actor = *It;
 
-		TInlineComponentArray<UStaticMeshComponent*> Components(Actor);
+		// static meshes (instanced ones included) and landscape components register static mesh batches the
+		// pass can draw; skeletal meshes and foliage with only dynamic elements do not, so they stay unlabelled
+		TInlineComponentArray<UPrimitiveComponent*> Components(Actor);
 
-		bool                        bAnyProxy  = false;
-		const UStaticMeshComponent* FirstDrawn = nullptr;
+		bool                       bAnyProxy  = false;
+		const UPrimitiveComponent* FirstDrawn = nullptr;
 
-		for (UStaticMeshComponent* Component : Components)
+		for (UPrimitiveComponent* Component : Components)
 		{
 			if (!Component || !Component->SceneProxy || !Component->IsVisible())
 			{
 				continue;
 			}
+			UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Component);
+			if (!StaticMesh && !Component->IsA<ULandscapeComponent>())
+			{
+				continue;
+			}
 
 			// the pass is a classic mesh pass; Nanite geometry only gets an id when pushed onto the classic path
-			if (bDisallowNanite && !Component->IsDisallowNanite() && Component->GetStaticMesh() && Component->GetStaticMesh()->IsNaniteEnabled())
+			if (bDisallowNanite && StaticMesh && !StaticMesh->IsDisallowNanite() && StaticMesh->GetStaticMesh() && StaticMesh->GetStaticMesh()->IsNaniteEnabled())
 			{
-				Component->bDisallowNanite = true;
-				Component->MarkRenderStateDirty();
+				StaticMesh->bDisallowNanite = true;
+				StaticMesh->MarkRenderStateDirty();
 			}
 
 			const uint32 Id    = GetOrAssignInstanceId(Actor);

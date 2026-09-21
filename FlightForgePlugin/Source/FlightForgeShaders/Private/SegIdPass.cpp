@@ -14,7 +14,9 @@
 #include "RenderGraphUtils.h"
 #include "SceneInterface.h"
 #include "SceneRendererInterface.h"
+#include "SceneManagement.h"
 #include "SceneView.h"
+#include "HAL/IConsoleManager.h"
 #include "StaticMeshBatch.h"
 
 /* shaders //{ */
@@ -286,8 +288,12 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	FSceneInterface* SceneInterface = InView.Family->Scene;
 	const FScene*    Scene          = SceneInterface ? SceneInterface->GetRenderScene() : nullptr;
 
+	// the same scale the scene's visibility pass used when it picked each primitive's LOD
+	static const auto* CVarLODDistanceScale = IConsoleManager::Get().FindConsoleVariable(TEXT("r.StaticMeshLODDistanceScale"));
+	const float        LODScale             = (CVarLODDistanceScale ? CVarLODDistanceScale->GetFloat() : 1.0f) * InView.LODDistanceFactor;
+
 	AddSimpleMeshPass(GraphBuilder, PassParameters, Scene, InView, nullptr, RDG_EVENT_NAME("FlightForgeSegId"), FIntRect(0, 0, Size.X, Size.Y),
-	                  [ItemsOnPass, Scene, SceneInterface, &InView](FDynamicPassMeshDrawListContext* DrawListContext)
+	                  [ItemsOnPass, Scene, SceneInterface, &InView, LODScale](FDynamicPassMeshDrawListContext* DrawListContext)
 	                  {
 		                  FSegIdMeshProcessor Processor(Scene, &InView, DrawListContext);
 
@@ -304,17 +310,26 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 
 			                  Processor.CurrentId = Item.IdColor;
 
-			                  // the LOD the proxy picks for this view is the one the scene depth was rendered with;
-			                  // drawing LOD0 against it loses the depth test wherever the two surfaces differ
-			                  int32 LOD = SceneInfo->Proxy->GetLOD(&InView);
-			                  if (LOD == INDEX_NONE)
+			                  // the LOD the scene depth was rendered with: the proxy's own choice, else the engine's
+			                  // screen-size selection over its batches (landscape, instanced meshes); drawing LOD0
+			                  // against a different LOD's depth loses the test wherever the two surfaces differ
+			                  FLODMask    LODMask;
+			                  const int32 ProxyLOD = SceneInfo->Proxy->GetLOD(&InView);
+			                  if (ProxyLOD != INDEX_NONE)
 			                  {
-				                  LOD = 0;
+				                  LODMask.SetLOD(ProxyLOD);
+			                  }
+			                  else
+			                  {
+				                  const FBoxSphereBounds& Bounds = SceneInfo->Proxy->GetBounds();
+				                  float                   ScreenRadiusSquared = 0.0f;
+				                  LODMask = ComputeLODForMeshes(SceneInfo->StaticMeshRelevances, InView, Bounds.Origin, Bounds.SphereRadius, -1, ScreenRadiusSquared,
+				                                                SceneInfo->Proxy->GetCurrentFirstLODIdx_RenderThread(), LODScale, false);
 			                  }
 			                  bool bAny = false;
 			                  for (const FStaticMeshBatch& Mesh : SceneInfo->StaticMeshes)
 			                  {
-				                  if (Mesh.LODIndex == LOD)
+				                  if (LODMask.ContainsLOD(Mesh.LODIndex))
 				                  {
 					                  Processor.AddMeshBatch(Mesh, ~0ull, SceneInfo->Proxy);
 					                  bAny = true;
@@ -334,6 +349,9 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	                  });
 
 	AddEnqueueCopyPass(GraphBuilder, Job.Slot->Readback.Get(), IdTexture, FResolveRect());
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = Job.Slot;
+	GraphBuilder.AddPass(RDG_EVENT_NAME("FlightForgeSegIdWatch"), ERDGPassFlags::NeverCull, [Slot](FRHICommandList&) { WatchReadback_RenderThread(Slot); });
 }
 
 /* //} */

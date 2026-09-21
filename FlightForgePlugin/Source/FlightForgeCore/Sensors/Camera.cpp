@@ -1,4 +1,5 @@
-#include "Camera.h"
+﻿#include "Camera.h"
+#include "ReadbackPass.h"
 
 #include "ContentStreaming.h"
 #include "Engine/PostProcessVolume.h"
@@ -35,6 +36,7 @@ void UCamera::BeginPlay()
 
 	PrimaryComponentTick.AddPrerequisite(Owner, Owner->PrimaryActorTick);
 
+	FReadbackViewExtension::Get();  // registered on the game thread once, before any server thread asks for it
 }
 
 void UCamera::Initialize(int InSensorID)
@@ -94,16 +96,9 @@ void UCamera::BeginDestroy()
 
 /* async readback machinery //{ */
 
-TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16,
-                                                                          const bool bEncodeSrgb, const bool bHalfRgba, const bool bLuma)
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::MakeReadbackSlot(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16,
+                                                                           const bool bEncodeSrgb, const bool bHalfRgba, const bool bLuma)
 {
-	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
-
-	if (!Resource)
-	{
-		return nullptr;
-	}
-
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = MakeShared<FCameraReadback, ESPMode::ThreadSafe>();
 	Slot->Size        = FIntPoint(RT->SizeX, RT->SizeY);
 	Slot->Stamp       = Stamp;
@@ -117,6 +112,20 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	Slot->bFloatRgba  = !Slot->bLuma && bHalfRgba && Format == PF_A32B32G32R32F;
 	Slot->bEncodeSrgb = bEncodeSrgb && !Slot->bHalfRgba && !Slot->bFloatRgba && !Slot->bLuma;
 	Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeCameraReadback"));
+	return Slot;
+}
+
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, const bool bFloat16,
+                                                                          const bool bEncodeSrgb, const bool bHalfRgba, const bool bLuma)
+{
+	FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
+
+	if (!Resource)
+	{
+		return nullptr;
+	}
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = MakeReadbackSlot(RT, Stamp, Omega, bFloat16, bEncodeSrgb, bHalfRgba, bLuma);
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeEnqueueReadback)(
 		[Slot, Resource](FRHICommandListImmediate& RHICmdList)
@@ -124,11 +133,13 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 			if (FRHITexture* Texture = Resource->GetRenderTargetTexture())
 			{
 				Slot->Readback->EnqueueCopy(RHICmdList, Texture, FResolveRect());
+				WatchReadback_RenderThread(Slot);
 			}
 			else
 			{
 				// nothing to read; complete with empty pixels so the poller does not hang
 				Slot->bCopied = true;
+				Slot->Copied->Trigger();
 			}
 		});
 
@@ -137,172 +148,157 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 
 void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
 {
-	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)(
-		[Slot](FRHICommandListImmediate& RHICmdList)
-		{
-			int32 RowPitchInPixels = 0;
-			void* Data             = Slot->Readback->Lock(RowPitchInPixels);
-
-			if (Data)
-			{
-				const int32 W = Slot->Size.X;
-				const int32 H = Slot->Size.Y;
-
-				if (Slot->bLuma)
-				{
-					Slot->LumaPixels.SetNumUninitialized(W * H);
-
-					for (int32 Row = 0; Row < H; ++Row)
-					{
-						float* DstRow = Slot->LumaPixels.GetData() + (int64)Row * W;
-
-						if (Slot->bLumaFloat32)
-						{
-							const FLinearColor* SrcRow = static_cast<const FLinearColor*>(Data) + (int64)Row * RowPitchInPixels;
-							for (int32 Col = 0; Col < W; ++Col)
-							{
-								DstRow[Col] = 0.2126f * SrcRow[Col].R + 0.7152f * SrcRow[Col].G + 0.0722f * SrcRow[Col].B;
-							}
-						}
-						else
-						{
-							const FFloat16Color* SrcRow = static_cast<const FFloat16Color*>(Data) + (int64)Row * RowPitchInPixels;
-							for (int32 Col = 0; Col < W; ++Col)
-							{
-								DstRow[Col] = 0.2126f * SrcRow[Col].R.GetFloat() + 0.7152f * SrcRow[Col].G.GetFloat() + 0.0722f * SrcRow[Col].B.GetFloat();
-							}
-						}
-					}
-				}
-				else if (Slot->bHalfRgba || Slot->bFloatRgba)
-				{
-					Slot->Pixels.SetNumUninitialized(W * H);
-
-					const auto Encode = [](const float Linear)
-					{
-						const float Clamped = FMath::Clamp(Linear, 0.0f, 1.0f);
-						const float Srgb    = Clamped <= 0.0031308f ? Clamped * 12.92f : 1.055f * FMath::Pow(Clamped, 1.0f / 2.4f) - 0.055f;
-						return static_cast<uint8>(FMath::RoundToInt(Srgb * 255.0f));
-					};
-
-					for (int32 Row = 0; Row < H; ++Row)
-					{
-						FColor* DstRow = Slot->Pixels.GetData() + (int64)Row * W;
-
-						if (Slot->bFloatRgba)
-						{
-							const FLinearColor* SrcRow = static_cast<const FLinearColor*>(Data) + (int64)Row * RowPitchInPixels;
-
-							for (int32 Col = 0; Col < W; ++Col)
-							{
-								DstRow[Col] = FColor(Encode(SrcRow[Col].R), Encode(SrcRow[Col].G), Encode(SrcRow[Col].B), 255);
-							}
-						}
-						else
-						{
-							const FFloat16Color* SrcRow = static_cast<const FFloat16Color*>(Data) + (int64)Row * RowPitchInPixels;
-
-							for (int32 Col = 0; Col < W; ++Col)
-							{
-								DstRow[Col] = FColor(Encode(SrcRow[Col].R.GetFloat()), Encode(SrcRow[Col].G.GetFloat()), Encode(SrcRow[Col].B.GetFloat()), 255);
-							}
-						}
-					}
-				}
-				else if (Slot->bFloat16)
-				{
-					Slot->Float16Pixels.SetNumUninitialized(W * H);
-
-					const FFloat16* Src = static_cast<const FFloat16*>(Data);
-
-					if (RowPitchInPixels == W)
-					{
-						FMemory::Memcpy(Slot->Float16Pixels.GetData(), Src, (int64)W * H * sizeof(FFloat16));
-					}
-					else
-					{
-						for (int32 Row = 0; Row < H; ++Row)
-						{
-							FMemory::Memcpy(Slot->Float16Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FFloat16));
-						}
-					}
-				}
-				else
-				{
-					Slot->Pixels.SetNumUninitialized(W * H);
-
-					const FColor* Src = static_cast<const FColor*>(Data);
-
-					if (RowPitchInPixels == W)
-					{
-						FMemory::Memcpy(Slot->Pixels.GetData(), Src, (int64)W * H * sizeof(FColor));
-					}
-					else
-					{
-						for (int32 Row = 0; Row < H; ++Row)
-						{
-							FMemory::Memcpy(Slot->Pixels.GetData() + (int64)Row * W, Src + (int64)Row * RowPitchInPixels, W * sizeof(FColor));
-						}
-					}
-
-					if (Slot->bEncodeSrgb)
-					{
-						static const auto Lut = []
-						{
-							TStaticArray<uint8, 256> Table;
-							for (int32 i = 0; i < 256; ++i)
-							{
-								const float Linear = i / 255.0f;
-								const float Srgb   = Linear <= 0.0031308f ? Linear * 12.92f : 1.055f * FMath::Pow(Linear, 1.0f / 2.4f) - 0.055f;
-								Table[i]           = static_cast<uint8>(FMath::RoundToInt(Srgb * 255.0f));
-							}
-							return Table;
-						}();
-
-						for (FColor& Pixel : Slot->Pixels)
-						{
-							Pixel.R = Lut[Pixel.R];
-							Pixel.G = Lut[Pixel.G];
-							Pixel.B = Lut[Pixel.B];
-						}
-					}
-				}
-			}
-
-			Slot->Readback->Unlock();
-			Slot->bCopied = true;
-		});
+	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)([Slot](FRHICommandListImmediate& RHICmdList) { ResolveReadback_RenderThread(*Slot); });
 }
 
 bool UCamera::PumpReadback()
 {
-	if (!PendingReadback)
+	CameraBufferCriticalSection->Lock();
+
+	if (!PendingReadback || !PendingReadback->bCopied)
+	{
+		CameraBufferCriticalSection->Unlock();
+		return false;
+	}
+
+	CameraBuffer     = MoveTemp(PendingReadback->Pixels);
+	CameraBufferF16  = MoveTemp(PendingReadback->Float16Pixels);
+	CameraBufferSize = PendingReadback->Size;
+	stamp_           = PendingReadback->Stamp;
+	capture_omega_   = PendingReadback->Omega;
+	CameraRendered   = CameraBuffer.Num() > 0 || CameraBufferF16.Num() > 0;
+	bEverRendered |= CameraRendered;
+	PendingReadback.Reset();
+
+	CameraBufferCriticalSection->Unlock();
+
+	NotifyFrameReady();
+	return true;
+}
+
+void UCamera::SetPendingReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
+{
+	CameraBufferCriticalSection->Lock();
+	PendingReadback = Slot;
+	CameraBufferCriticalSection->Unlock();
+}
+
+bool UCamera::HasPendingReadback()
+{
+	CameraBufferCriticalSection->Lock();
+	const bool bPending = PendingReadback.IsValid();
+	CameraBufferCriticalSection->Unlock();
+	return bPending;
+}
+
+bool UCamera::WaitForRequestedFrame(const bool& InstructionFinished, const uint64 BaselineFrame, const double TimeoutSeconds)
+{
+	const double Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
+
+	while (!InstructionFinished)
+	{
+		if (FPlatformTime::Seconds() > Deadline)
+		{
+			return false;
+		}
+		FPlatformProcess::SleepNoStats(0.0001f);
+	}
+
+	// the copy is enqueued a tick after the capture, so the slot may not exist yet; an instruction that
+	// produced no capture at all (a warm-up step) shows as no slot after a couple of frames
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
+	const double                                     SlotDeadline = FMath::Min(Deadline, FPlatformTime::Seconds() + 0.1);
+	while (true)
+	{
+		CameraBufferCriticalSection->Lock();
+		Slot = PendingReadback;
+		CameraBufferCriticalSection->Unlock();
+		if (Slot || FrameCounter.load() != BaselineFrame)
+		{
+			break;
+		}
+		if (FPlatformTime::Seconds() > SlotDeadline)
+		{
+			return false;
+		}
+		FPlatformProcess::SleepNoStats(0.0001f);
+	}
+
+	if (!Slot)
+	{
+		return true;
+	}
+
+	if (!WaitForSlot(Slot, Deadline))
 	{
 		return false;
 	}
 
-	if (PendingReadback->bCopied)
-	{
-		CameraBufferCriticalSection->Lock();
-		CameraBuffer     = MoveTemp(PendingReadback->Pixels);
-		CameraBufferF16  = MoveTemp(PendingReadback->Float16Pixels);
-		CameraBufferSize = PendingReadback->Size;
-		stamp_           = PendingReadback->Stamp;
-		capture_omega_   = PendingReadback->Omega;
-		CameraRendered   = CameraBuffer.Num() > 0 || CameraBufferF16.Num() > 0;
-		CameraBufferCriticalSection->Unlock();
+	// whichever thread gets here first publishes; the other finds nothing pending
+	PumpReadback();
+	return true;
+}
 
-		PendingReadback.Reset();
-		NotifyFrameReady();
-		return true;
+bool UCamera::WaitForSlot(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot, const double Deadline)
+{
+	while (!Slot->bCopied)
+	{
+		if (FPlatformTime::Seconds() > Deadline)
+		{
+			return false;
+		}
+		if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
+		{
+			ResolveReadback_RenderThread(*Slot);
+			break;
+		}
+		if (Slot->bResolveIssued)
+		{
+			Slot->Copied->Wait(FTimespan::FromMilliseconds(5));
+		}
+		else
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
+	return true;
+}
+
+bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const double Stamp, const FVector& Omega, const bool bFloat16, const bool bEncodeSrgb,
+                                           const bool bHalfRgba, const double TimeoutSeconds)
+{
+	const double         Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
+	const FRenderTarget* Target   = CachedTargetResource.load();
+	if (!Target || !SceneCaptureComponent2D)
+	{
+		return false;
 	}
 
-	if (PendingReadback->Readback && PendingReadback->Readback->IsReady() && !PendingReadback->bResolveIssued.exchange(true))
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
+	CameraBufferCriticalSection->Lock();
+	if (PendingReadback)
 	{
-		IssueResolve(PendingReadback);
+		Slot = PendingReadback;  // another request is in flight; share its frame
+	}
+	else
+	{
+		Slot            = MakeReadbackSlot(RT, Stamp, Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
+		PendingReadback = Slot;
+	}
+	CameraBufferCriticalSection->Unlock();
+
+	if (Slot->Stamp == Stamp)
+	{
+		FReadbackViewExtension::Get()->SubmitJob(Target, Slot);
+		SceneCaptureComponent2D->CaptureSceneDeferred();
 	}
 
-	return false;
+	if (!WaitForSlot(Slot, Deadline))
+	{
+		return false;
+	}
+	PumpReadback();
+	return true;
 }
 
 void UCamera::DrainReadback()
@@ -354,6 +350,7 @@ bool UCamera::WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds)
 void UCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	PushStreamingViewHint();
+	CachedTargetResource.store(RenderTarget2D ? RenderTarget2D->GameThread_GetRenderTargetResource() : nullptr);
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }

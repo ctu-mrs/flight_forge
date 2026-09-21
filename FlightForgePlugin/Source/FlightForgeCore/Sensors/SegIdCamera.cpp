@@ -1,4 +1,4 @@
-#include "SegIdCamera.h"
+﻿#include "SegIdCamera.h"
 
 #include "TextureResource.h"
 
@@ -120,14 +120,14 @@ bool USegIdCamera::SetSegIdCameraConfig(const FRgbCameraConfig& Config)
 
 void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback)
+	if (HasPendingReadback())
 	{
 		// if the pass never consumed the job (hook did not fire), do not stay stuck
 		if (stamp - LastSubmitTime < 5.0)
 		{
 			return;
 		}
-		PendingReadback.Reset();
+		SetPendingReadback(nullptr);
 	}
 
 	FTextureRenderTargetResource* Resource = RenderTarget2D ? RenderTarget2D->GameThread_GetRenderTargetResource() : nullptr;
@@ -161,9 +161,16 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 
 	FSegIdViewExtension::Get()->SubmitJob_GameThread(Resource, Slot->Size, MoveTemp(Items), Slot);
 
-	SceneCaptureComponent2D->CaptureScene();
+	if (bEverRendered)
+	{
+		SceneCaptureComponent2D->CaptureSceneDeferred();
+	}
+	else
+	{
+		SceneCaptureComponent2D->CaptureScene();
+	}
 
-	PendingReadback = Slot;
+	SetPendingReadback(Slot);
 	LastSubmitTime  = stamp;
 }
 
@@ -187,7 +194,7 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 		Instruction->Function = [](USegIdCamera& _Camera) { _Camera.UpdateCamera(true, FPlatformTime::Seconds()); };
 		InstructionQueue->Enqueue(Instruction);
 
-		if (!WaitForNewFrame(Baseline, 2.0))
+		if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("USegIdCamera: timed out waiting for a frame"));
 		}

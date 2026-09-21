@@ -93,6 +93,9 @@ bool FSegDiffSpawn::Update()
 		return FPlatformTime::Seconds() - Rig->Started > 120.0;  // give up, the compare step reports it
 	}
 
+	// one -ExecCmds command is all a -game launch runs, so the class audit rides along with the test
+	GEngine->Exec(World, TEXT("FlightForge.AuditClasses"));
+
 	Rig->GameMode = GameMode;
 	Rig->Port     = GameMode->SpawnDroneAtLocation(GameMode->GetWorldOrigin() + FVector(0, 0, 150), "x500");
 

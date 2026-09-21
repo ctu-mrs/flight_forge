@@ -116,6 +116,12 @@ void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 		}
 	}
 
+	if (bReadbackDue)
+	{
+		bReadbackDue = false;
+		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp));
+	}
+
 	PumpReadback();
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -165,7 +171,7 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 // readback pipeline instead of stalling on ReadPixels()
 void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback) {
+	if (HasPendingReadback()) {
 		return;  // previous transfer still in flight
 	}
 
@@ -200,12 +206,24 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	if (bReadbackDue)
+	{
+		return;
+	}
+
+	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !bEverRendered)
 	{
 		SceneCaptureComponent2D->CaptureScene();
 	}
+	else if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	{
+		SceneCaptureComponent2D->CaptureSceneDeferred();
+		DeferredStamp = stamp;
+		bReadbackDue  = true;
+		return;
+	}
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp);
+	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp));
 }
 
 bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& stamp) {
@@ -216,14 +234,23 @@ bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, dou
 	const bool bHaveFrame = CameraRendered;
 	CameraBufferCriticalSection->Unlock();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !bHaveFrame)) {
-		const uint64 Baseline = FrameCounter.load();
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !SceneCaptureComponent2D->bCaptureEveryFrame && WarmupCapturesRemaining <= 0 && CachedTargetResource.load() && bEverRendered) {
+		if (!RequestFrameFromServerThread(RenderTarget2D, FPlatformTime::Seconds(), FVector::ZeroVector, false, false, false, 2.0)) {
+			UE_LOG(LogTemp, Warning, TEXT("URgbSegCamera: timed out waiting for a frame"));
+		}
+	} else if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || !bHaveFrame) {
+		// the blendable probe and the warm-up captures each take a request of their own
+		bool bGot = false;
+		for (int32 Attempt = 0; Attempt < 8 && !bGot; ++Attempt) {
+			const uint64 Baseline = FrameCounter.load();
 
-		auto Instruction      = std::make_shared<FInstruction<URgbSegCamera>>();
-		Instruction->Function = [](URgbSegCamera& _URgbSegCamera) { _URgbSegCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
-		InstructionQueue->Enqueue(Instruction);
+			auto Instruction      = std::make_shared<FInstruction<URgbSegCamera>>();
+			Instruction->Function = [](URgbSegCamera& _URgbSegCamera) { _URgbSegCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
+			InstructionQueue->Enqueue(Instruction);
 
-		if (!WaitForNewFrame(Baseline, 2.0)) {
+			bGot = WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0);
+		}
+		if (!bGot) {
 			UE_LOG(LogTemp, Warning, TEXT("URgbSegCamera: timed out waiting for a frame"));
 		}
 	}

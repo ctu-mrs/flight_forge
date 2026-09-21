@@ -7,7 +7,7 @@
 
 /* FCameraReadback //{ */
 
-struct FCameraReadback
+struct FLIGHTFORGESHADERS_API FCameraReadback
 {
 	TUniquePtr<FRHIGPUTextureReadback> Readback;
 	TArray<FColor>    Pixels;
@@ -34,6 +34,18 @@ struct FCameraReadback
 
 	std::atomic<bool> bResolveIssued{false};
 	std::atomic<bool> bCopied{false};
+
+	// manual-reset; triggered once Pixels are host-side, so a waiting server thread wakes without a game tick in between
+	FEvent* Copied = nullptr;
+
+	FCameraReadback();
+	~FCameraReadback();
 };
+
+// copies the staging buffer into the slot's pixel array; render thread, after the fence signalled
+FLIGHTFORGESHADERS_API void ResolveReadback_RenderThread(FCameraReadback& Slot);
+
+// polls the slot every render frame and resolves it as soon as the GPU is done; render thread
+FLIGHTFORGESHADERS_API void WatchReadback_RenderThread(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
 /* //} */

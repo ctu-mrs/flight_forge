@@ -1,0 +1,39 @@
+#pragma once
+
+#include <atomic>
+
+#include "CoreMinimal.h"
+#include "SceneViewExtension.h"
+#include "CameraReadback.h"
+
+class FRenderTarget;
+
+/* FReadbackViewExtension //{ */
+
+/**
+ * Copies a scene capture's target into a readback slot inside the frame that renders it,
+ * so an on-demand request pays the capture's own render and nothing else. Jobs are
+ * submitted from any thread and keyed by the capture's render target.
+ */
+class FLIGHTFORGESHADERS_API FReadbackViewExtension : public FSceneViewExtensionBase
+{
+public:
+	FReadbackViewExtension(const FAutoRegister& AutoRegister);
+
+	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override {}
+	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override {}
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
+	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
+	virtual void PostRenderViewFamily_RenderThread(FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily) override;
+
+	void SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+
+	static TSharedPtr<FReadbackViewExtension, ESPMode::ThreadSafe> Get();
+
+private:
+	FCriticalSection                                                          JobsLock;
+	TMap<const FRenderTarget*, TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> Jobs;
+	std::atomic<int32>                                                        PendingJobs{0};
+};
+
+/* //} */

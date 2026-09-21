@@ -61,6 +61,12 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 
 	DrainInstructions();
 
+	if (bReadbackDue)
+	{
+		bReadbackDue = false;
+		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, DeferredOmega, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
+	}
+
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
 	   if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
@@ -219,17 +225,32 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 // readback pipeline instead of stalling on ReadPixels()
 void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback) {
+	if (HasPendingReadback() || bReadbackDue) {
 		return;  // previous transfer still in flight
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	const FVector OmegaCamera = CaptureOmega(stamp);
+
+	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !bEverRendered)
 	{
 		SceneCaptureComponent2D->CaptureScene();
 	}
+	else if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	{
+		SceneCaptureComponent2D->CaptureSceneDeferred();
+		DeferredStamp = stamp;
+		DeferredOmega = OmegaCamera;
+		bReadbackDue  = true;
+		return;
+	}
 
-	// camera-frame angular velocity between captures, remapped from UE axes
-	// (X fwd, Y right, Z up) to the image convention (x right, y down, z forward)
+	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
+}
+
+// camera-frame angular velocity between captures, remapped from UE axes
+// (X fwd, Y right, Z up) to the image convention (x right, y down, z forward)
+FVector URgbCamera::CaptureOmega(const double stamp)
+{
 	FVector     OmegaCamera = FVector::ZeroVector;
 	const FQuat CurrentQuat = SceneCaptureComponent2D->GetComponentQuat();
 	const double DeltaTime  = stamp - LastCaptureTime;
@@ -247,7 +268,7 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	LastCaptureQuat = CurrentQuat;
 	LastCaptureTime = stamp;
 
-	PendingReadback = EnqueueReadback(RenderTarget2D, stamp, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr);
+	return OmegaCamera;
 }
 
 bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp)
@@ -258,14 +279,19 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(TArray<uint8>& OutArray, doubl
 	const bool bHaveFrame = CameraRendered;
 	CameraBufferCriticalSection->Unlock();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && !bHaveFrame)) {
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !SceneCaptureComponent2D->bCaptureEveryFrame && CachedTargetResource.load() && bEverRendered) {
+		const double Now = FPlatformTime::Seconds();
+		if (!RequestFrameFromServerThread(RenderTarget2D, Now, CaptureOmega(Now), false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr, 2.0)) {
+			UE_LOG(LogTemp, Warning, TEXT("URgbCamera: timed out waiting for a frame"));
+		}
+	} else if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || !bHaveFrame) {
 		const uint64 Baseline = FrameCounter.load();
 
 		auto Instruction      = std::make_shared<FInstruction<URgbCamera>>();
 		Instruction->Function = [](URgbCamera& _URgbCamera) { _URgbCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
 		InstructionQueue->Enqueue(Instruction);
 
-		if (!WaitForNewFrame(Baseline, 2.0)) {
+		if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0)) {
 			UE_LOG(LogTemp, Warning, TEXT("URgbCamera: timed out waiting for a frame"));
 		}
 	}
