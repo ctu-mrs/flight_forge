@@ -15,5 +15,7 @@ public class FlightForgeShaders : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[] { "Renderer" });
 
 		PrivateIncludePaths.Add(Path.Combine(EngineDirectory, "Source", "Runtime", "Renderer", "Internal"));
+		// FViewInfo::DynamicMeshElements: the per-view batches of instanced and skeletal meshes, which register no static ones
+		PrivateIncludePaths.Add(Path.Combine(EngineDirectory, "Source", "Runtime", "Renderer", "Private"));
 	}
 }

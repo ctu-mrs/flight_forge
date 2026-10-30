@@ -1,0 +1,33 @@
+// Nanite geometry never enters the id mesh pass, but it does write custom stencil: each Nanite actor
+// carries a 1..255 slot there, which IdBySlot maps back to its instance id and class.
+
+#include "/Engine/Private/Common.ush"
+
+Texture2D<uint2>    CustomStencil;
+Buffer<float4>      IdBySlot;
+uint4               IdRect;
+RWTexture2D<float4> OutId;
+
+[numthreads(8, 8, 1)]
+void Main(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= IdRect.zw))
+	{
+		return;
+	}
+	const float4 Drawn = OutId[Pixel];
+	if (any(Drawn.rgb > 0.0))
+	{
+		return;
+	}
+	const uint Slot = CustomStencil[Pixel + IdRect.xy].g;
+	if (Slot > 0)
+	{
+		const float4 Id = IdBySlot[Slot];
+		if (any(Id.rgb > 0.0) || Id.a > 0.0)
+		{
+			OutId[Pixel] = Id;
+		}
+	}
+}

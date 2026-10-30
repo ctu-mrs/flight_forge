@@ -13,6 +13,12 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "SceneInterface.h"
+#include "SceneRendering.h"
+#include "ScenePrivate.h"
+#include "SystemTextures.h"
+#include "Nanite/NaniteCullRaster.h"
+#include "Nanite/NaniteShared.h"
+#include "Rendering/NaniteStreamingManager.h"
 #include "SceneRendererInterface.h"
 #include "SceneManagement.h"
 #include "SceneView.h"
@@ -39,7 +45,10 @@ public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
 		// only the default-material substitution path is drawn, and Nanite has its own raster
-		return IsPCPlatform(Parameters.Platform) && Parameters.MaterialParameters.bIsSpecialEngineMaterial &&
+		// the default material stands in for everything opaque and rigid; materials that move vertices (wind) or cut holes
+		// (masked leaves) must run their own code or the pass's depth no longer matches the scene's
+		const FMaterialShaderParameters& M = Parameters.MaterialParameters;
+		return IsPCPlatform(Parameters.Platform) && (M.bIsSpecialEngineMaterial || M.bMaterialMayModifyMeshPosition || !M.bWritesEveryPixel) &&
 		       !Parameters.VertexFactoryType->SupportsNaniteRendering();
 	}
 
@@ -59,7 +68,8 @@ class FSegIdPS : public FMeshMaterialShader
 public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return IsPCPlatform(Parameters.Platform) && Parameters.MaterialParameters.bIsSpecialEngineMaterial &&
+		const FMaterialShaderParameters& M = Parameters.MaterialParameters;
+		return IsPCPlatform(Parameters.Platform) && (M.bIsSpecialEngineMaterial || M.bMaterialMayModifyMeshPosition || !M.bWritesEveryPixel) &&
 		       !Parameters.VertexFactoryType->SupportsNaniteRendering();
 	}
 
@@ -101,6 +111,7 @@ public:
 	}
 
 	FLinearColor CurrentId = FLinearColor::Black;
+	int32        NumOwn = 0, NumDefault = 0, NumTranslucent = 0, NumCompiling = 0;
 
 	virtual void AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
 	                          int32 StaticMeshId = -1) override final
@@ -110,23 +121,38 @@ public:
 			return;
 		}
 
-		// always substitute the default material - the ids do not depend on the
-		// object's material, and the permutation space stays tiny
-		const FMaterialRenderProxy* MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
-		const FMaterial*            Material            = MaterialRenderProxy ? MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel) : nullptr;
+		const FMaterialRenderProxy* DefaultProxy    = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
+		const FMaterial*            DefaultMaterial = DefaultProxy ? DefaultProxy->GetMaterialNoFallback(FeatureLevel) : nullptr;
+		const FMaterialRenderProxy* OwnProxy        = MeshBatch.MaterialRenderProxy;
+		const FMaterial*            OwnMaterial     = OwnProxy ? OwnProxy->GetMaterialNoFallback(FeatureLevel) : nullptr;  // null while its shaders compile
+		if (OwnMaterial && IsTranslucentBlendMode(*OwnMaterial))
+		{
+			++NumTranslucent;
+			return;  // glass, particles: not a surface the id image should claim
+		}
+		if (!OwnMaterial)
+		{
+			++NumCompiling;
+		}
+
+		const bool bNeedsOwn = OwnMaterial && (OwnMaterial->MaterialModifiesMeshPosition_RenderThread() || !OwnMaterial->WritesEveryPixel());
+		if (bNeedsOwn) { ++NumOwn; } else { ++NumDefault; }
+
+		const FMaterialRenderProxy* MaterialRenderProxy = bNeedsOwn ? OwnProxy : DefaultProxy;
+		const FMaterial*            Material            = bNeedsOwn ? OwnMaterial : DefaultMaterial;
 
 		if (!Material || !Material->GetRenderingThreadShaderMap())
 		{
 			return;
 		}
 
-		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material);
+		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, OwnMaterial ? *OwnMaterial : *Material);
 	}
 
 private:
 	bool Process(const FMeshBatch& MeshBatch, const uint64 BatchElementMask, const int32 StaticMeshId,
 	             const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, const FMaterialRenderProxy& RESTRICT MaterialRenderProxy,
-	             const FMaterial& RESTRICT MaterialResource)
+	             const FMaterial& RESTRICT MaterialResource, const FMaterial& RESTRICT OwnMaterial)
 	{
 		FMaterialShaderTypes ShaderTypes;
 		ShaderTypes.AddShaderType<FSegIdVS>();
@@ -147,7 +173,7 @@ private:
 
 		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
 		const ERasterizerFillMode                MeshFillMode     = ComputeMeshFillMode(MaterialResource, OverrideSettings);
-		const ERasterizerCullMode                MeshCullMode     = ComputeMeshCullMode(MaterialResource, OverrideSettings);
+		const ERasterizerCullMode                MeshCullMode     = ComputeMeshCullMode(OwnMaterial, OverrideSettings);  // two-sided cards stay two-sided
 
 		BuildMeshDrawCommands(MeshBatch, BatchElementMask, PrimitiveSceneProxy, MaterialRenderProxy, MaterialResource, RenderState, PassShaders, MeshFillMode,
 		                      MeshCullMode, FMeshDrawCommandSortKey::Default, EMeshPassFeatures::Default, ShaderElementData);
@@ -157,6 +183,195 @@ private:
 
 	FMeshPassProcessorRenderState RenderState;
 };
+
+/* //} */
+
+/* Nanite ids //{ */
+
+// Nanite geometry never enters a mesh pass: it is rasterized again for this view into a visibility
+// buffer of our own, and each pixel's cluster leads back to its primitive and so to its id. The raster
+// entry points are Renderer-private, so this links only against an engine that exports them
+// (RENDERER_API on IRenderer::Create, InitRasterContext, CreatePackedViewFromViewInfo,
+// FPackedViewArray::Create, FConfiguration::SetViewFlags, FViewInfo::GetShaderParameters,
+// FScene::GetPrimitiveSceneInfo); an installed build gets class ids for Nanite from the custom stencil instead.
+#ifndef FLIGHTFORGE_NANITE_IDS
+#define FLIGHTFORGE_NANITE_IDS 0
+#endif
+
+#if FLIGHTFORGE_NANITE_IDS
+class FSegIdNaniteCS : public FNaniteGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FSegIdNaniteCS);
+	SHADER_USE_PARAMETER_STRUCT(FSegIdNaniteCS, FNaniteGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_INCLUDE(FViewShaderParameters, View)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneUniformParameters, Scene)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FPackedView>, InViews)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(ByteAddressBuffer, VisibleClustersSWHW)
+		SHADER_PARAMETER(FIntVector4, PageConstants)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(ByteAddressBuffer, ClusterPageData)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(ByteAddressBuffer, HierarchyBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(ByteAddressBuffer, AssemblyTransforms)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<UlongType>, VisBuffer64)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SceneDepth)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<float4>, IdByPrimitive)
+		SHADER_PARAMETER(uint32, NumPrimitiveIds)
+		SHADER_PARAMETER(FUintVector4, IdRect)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutId)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return DoesPlatformSupportNanite(Parameters.Platform);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FSegIdNaniteCS, "/FlightForgePlugin/SegIdNanite.usf", "Main", SF_Compute);
+
+static void AddNaniteIds(FRDGBuilder& GraphBuilder, const FScene* Scene, const FSceneView& InView, const FPostProcessingInputs& Inputs,
+                         const TArray<FSegIdDrawItem>& Items, FRDGTextureRef IdTexture)
+{
+	if (!Scene || !UseNanite(Scene->GetShaderPlatform()) || !Inputs.SceneTextures)
+	{
+		return;
+	}
+
+	// GPU-scene primitive index -> id colour; zero means "not one of ours"
+	TArray<FVector4f> Lookup;
+	Lookup.SetNumZeroed(Scene->Primitives.Num());
+	bool bAny = false;
+	for (const FSegIdDrawItem& Item : Items)
+	{
+		const FPrimitiveSceneInfo* SceneInfo = Scene->GetPrimitiveSceneInfo(Item.ComponentId);
+		if (SceneInfo && SceneInfo->Proxy && SceneInfo->Proxy->IsNaniteMesh() && Lookup.IsValidIndex(SceneInfo->GetIndex()))
+		{
+			Lookup[SceneInfo->GetIndex()] = FVector4f(Item.IdColor.R, Item.IdColor.G, Item.IdColor.B, Item.IdColor.A);
+			bAny                          = true;
+		}
+	}
+	if (!bAny)
+	{
+		return;
+	}
+
+	FViewInfo&             View       = const_cast<FViewInfo&>(static_cast<const FViewInfo&>(InView));
+	const FViewFamilyInfo& ViewFamily = static_cast<const FViewFamilyInfo&>(*InView.Family);
+	const FIntPoint        Size       = IdTexture->Desc.Extent;
+
+	RDG_EVENT_SCOPE(GraphBuilder, "FlightForgeSegIdNanite");
+
+	Nanite::FSharedContext SharedContext{};
+	SharedContext.FeatureLevel = Scene->GetFeatureLevel();
+	SharedContext.ShaderMap    = GetGlobalShaderMap(SharedContext.FeatureLevel);
+	SharedContext.Pipeline     = Nanite::EPipeline::Primary;
+
+	Nanite::FRasterContext RasterContext = Nanite::InitRasterContext(GraphBuilder, SharedContext, ViewFamily, Size, FIntRect(0, 0, Size.X, Size.Y),
+	                                                                 Nanite::EOutputBufferMode::VisBuffer, true, false);
+
+	Nanite::FConfiguration CullingConfig = {0};
+	CullingConfig.SetViewFlags(View);
+	CullingConfig.bTwoPassOcclusion = false;
+	CullingConfig.bUpdateStreaming  = false;
+
+	Nanite::FPackedViewArray::ArrayType PackedViews;
+	PackedViews.Add(Nanite::CreatePackedViewFromViewInfo(View, Size, NANITE_VIEW_FLAG_NEAR_CLIP));
+	Nanite::FPackedViewArray* ViewArray = Nanite::FPackedViewArray::Create(GraphBuilder, 1, MoveTemp(PackedViews));
+
+	TUniquePtr<Nanite::IRenderer> Renderer =
+	    Nanite::IRenderer::Create(GraphBuilder, *Scene, View, View.GetSceneUniforms(), SharedContext, RasterContext, CullingConfig, View.ViewRect, nullptr);
+	Renderer->DrawGeometry(const_cast<FScene*>(Scene)->NaniteRasterPipelines[ENaniteMeshPass::BasePass], nullptr, *ViewArray);
+
+	Nanite::FRasterResults RasterResults;
+	Renderer->ExtractResults(RasterResults);
+	if (!RasterResults.VisBuffer64 || !RasterResults.VisibleClustersSWHW)
+	{
+		return;
+	}
+
+	FRDGBufferRef LookupBuffer = CreateVertexBuffer(GraphBuilder, TEXT("FlightForge.SegIdByPrimitive"), FRDGBufferDesc::CreateBufferDesc(sizeof(FVector4f), Lookup.Num()),
+	                                                Lookup.GetData(), Lookup.Num() * sizeof(FVector4f));
+
+	FSegIdNaniteCS::FParameters* Parameters = GraphBuilder.AllocParameters<FSegIdNaniteCS::FParameters>();
+	Parameters->View                = View.GetShaderParameters();
+	Parameters->Scene               = View.GetSceneUniforms().GetBuffer(GraphBuilder);
+	Parameters->InViews             = GraphBuilder.CreateSRV(RasterResults.ViewsBuffer);
+	Parameters->VisibleClustersSWHW = GraphBuilder.CreateSRV(RasterResults.VisibleClustersSWHW);
+	Parameters->PageConstants       = RasterResults.PageConstants;
+	Parameters->ClusterPageData     = Nanite::GStreamingManager.GetClusterPageDataSRV(GraphBuilder);
+	Parameters->HierarchyBuffer     = Nanite::GStreamingManager.GetHierarchySRV(GraphBuilder);
+	Parameters->AssemblyTransforms  = GraphBuilder.CreateSRV(RasterResults.AssemblyTransforms ? RasterResults.AssemblyTransforms
+	                                                                                           : GSystemTextures.GetDefaultByteAddressBuffer(GraphBuilder, 48u));
+	Parameters->VisBuffer64         = RasterResults.VisBuffer64;
+	Parameters->SceneDepth          = (*Inputs.SceneTextures)->SceneDepthTexture;
+	Parameters->IdByPrimitive       = GraphBuilder.CreateSRV(LookupBuffer, PF_A32B32G32R32F);
+	Parameters->NumPrimitiveIds     = Lookup.Num();
+	Parameters->IdRect              = FUintVector4(View.ViewRect.Min.X, View.ViewRect.Min.Y, Size.X, Size.Y);
+	Parameters->OutId               = GraphBuilder.CreateUAV(IdTexture);
+
+	TShaderMapRef<FSegIdNaniteCS> Shader(SharedContext.ShaderMap);
+	FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("FlightForgeSegIdNaniteDecode"), Shader, Parameters, FComputeShaderUtils::GetGroupCount(Size, 8));
+}
+#endif
+
+// Nanite never enters a mesh pass but does write custom stencil, so its actors carry a 1..255 slot there
+// and this resolves the slot to the same id colour the mesh pass would have drawn
+class FSegIdStencilFillCS : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FSegIdStencilFillCS);
+	SHADER_USE_PARAMETER_STRUCT(FSegIdStencilFillCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<uint2>, CustomStencil)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<float4>, IdBySlot)
+		SHADER_PARAMETER(FUintVector4, IdRect)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutId)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsPCPlatform(Parameters.Platform);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FSegIdStencilFillCS, "/FlightForgePlugin/SegIdStencilFill.usf", "Main", SF_Compute);
+
+static TAutoConsoleVariable<int32> CVarSegIdStencilFill(TEXT("FlightForge.SegId.StencilFill"), 1,
+                                                        TEXT("resolve Nanite ids from the custom stencil slots; 0 leaves Nanite pixels unlabelled, 2 paints every raw stencil value"));
+
+static void AddStencilClassFill(FRDGBuilder& GraphBuilder, const FSceneView& InView, const FPostProcessingInputs& Inputs,
+                                const TArray<FLinearColor>& StencilSlots, FRDGTextureRef IdTexture)
+{
+	const int32 Mode = CVarSegIdStencilFill.GetValueOnRenderThread();
+	if (Mode == 0 || !Inputs.SceneTextures || !(*Inputs.SceneTextures)->CustomStencilTexture || StencilSlots.Num() != 256)
+	{
+		return;
+	}
+	const FIntPoint Size = IdTexture->Desc.Extent;
+
+	TArray<FLinearColor> RawRamp;
+	if (Mode == 2)
+	{
+		RawRamp.SetNumUninitialized(256);
+		for (int32 Value = 0; Value < 256; ++Value)
+		{
+			RawRamp[Value] = FLinearColor(Value / 255.0f, 1.0f, 0.0f, 0.0f);
+		}
+	}
+	const TArray<FLinearColor>& Table = Mode == 2 ? RawRamp : StencilSlots;
+
+	FRDGBufferRef SlotBuffer = CreateVertexBuffer(GraphBuilder, TEXT("FlightForge.SegIdBySlot"), FRDGBufferDesc::CreateBufferDesc(sizeof(FLinearColor), 256),
+	                                              Table.GetData(), 256 * sizeof(FLinearColor));
+
+	FSegIdStencilFillCS::FParameters* Parameters = GraphBuilder.AllocParameters<FSegIdStencilFillCS::FParameters>();
+	Parameters->CustomStencil = (*Inputs.SceneTextures)->CustomStencilTexture;
+	Parameters->IdBySlot      = GraphBuilder.CreateSRV(SlotBuffer, PF_A32B32G32R32F);
+	Parameters->IdRect        = FUintVector4(InView.UnscaledViewRect.Min.X, InView.UnscaledViewRect.Min.Y, Size.X, Size.Y);
+	Parameters->OutId         = GraphBuilder.CreateUAV(IdTexture);
+
+	TShaderMapRef<FSegIdStencilFillCS> Shader(GetGlobalShaderMap(InView.GetFeatureLevel()));
+	FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("FlightForgeSegIdStencilFill"), Shader, Parameters, FComputeShaderUtils::GetGroupCount(Size, 8));
+}
 
 /* //} */
 
@@ -195,7 +410,8 @@ void FSegIdViewExtension::DropStaleJobs_RenderThread()
 {
 	for (auto It = Jobs.CreateIterator(); It; ++It)
 	{
-		if (It->Value.FrameNumber != GFrameNumberRenderThread)
+		// a deferred capture renders the frame after the submit command ran; older than that the capture never came
+		if (GFrameNumberRenderThread - It->Value.FrameNumber > 2)
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("SegId: dropping a job left from frame %u"), It->Value.FrameNumber);
 			It.RemoveCurrent();
@@ -205,7 +421,7 @@ void FSegIdViewExtension::DropStaleJobs_RenderThread()
 }
 
 void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter, const FIntPoint Size, TArray<FSegIdDrawItem>&& Items,
-                                               const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
+                                               TArray<FLinearColor>&& StencilSlots, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
 {
 	if (!TargetFilter || !Slot.IsValid() || CVarSegIdEnable.GetValueOnGameThread() == 0)
 	{
@@ -217,13 +433,14 @@ void FSegIdViewExtension::SubmitJob_GameThread(const FRenderTarget* TargetFilter
 	FSegIdViewExtension* Extension = this;
 
 	ENQUEUE_RENDER_COMMAND(FlightForgeSubmitSegIdJob)(
-	    [Extension, TargetFilter, Size, MovedItems = MoveTemp(Items), Slot](FRHICommandListImmediate&) mutable
+	    [Extension, TargetFilter, Size, MovedItems = MoveTemp(Items), MovedSlots = MoveTemp(StencilSlots), Slot](FRHICommandListImmediate&) mutable
 	    {
 		    Extension->DropStaleJobs_RenderThread();
 
 		    FSegIdJob& Job   = Extension->Jobs.FindOrAdd(TargetFilter);
 		    Job.Size         = Size;
 		    Job.Items        = MoveTemp(MovedItems);
+		    Job.StencilSlots = MoveTemp(MovedSlots);
 		    Job.Slot         = Slot;
 		    Job.FrameNumber  = GFrameNumberRenderThread;
 	    });
@@ -261,7 +478,7 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	}
 
 	const FRDGTextureDesc Desc =
-	    FRDGTextureDesc::Create2D(Job.Size, PF_B8G8R8A8, FClearValueBinding::Black, TexCreate_RenderTargetable | TexCreate_ShaderResource);
+	    FRDGTextureDesc::Create2D(Job.Size, PF_B8G8R8A8, FClearValueBinding::Black, TexCreate_RenderTargetable | TexCreate_ShaderResource | TexCreate_UAV);
 	FRDGTextureRef IdTexture = GraphBuilder.CreateTexture(Desc, TEXT("FlightForge.SegId"));
 
 	FRDGTextureRef SceneDepth = nullptr;
@@ -296,6 +513,36 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 	                  [ItemsOnPass, Scene, SceneInterface, &InView, LODScale](FDynamicPassMeshDrawListContext* DrawListContext)
 	                  {
 		                  FSegIdMeshProcessor Processor(Scene, &InView, DrawListContext);
+
+		                  // instanced and skeletal meshes have no static batches: their per-view ones (instance runs, LOD) are what the
+		                  // scene renderer already collected for this capture
+		                  TMap<FPrimitiveComponentId, FLinearColor> IdByComponent;
+		                  for (const FSegIdDrawItem& Item : *ItemsOnPass)
+		                  {
+			                  IdByComponent.Add(Item.ComponentId, Item.IdColor);
+		                  }
+		                  const FViewInfo& ViewInfo = static_cast<const FViewInfo&>(InView);
+		                  int32 DynamicDrawn = 0, DynamicSkipped = 0;
+		                  for (const FMeshBatchAndRelevance& Dynamic : ViewInfo.DynamicMeshElements)
+		                  {
+			                  if (!Dynamic.Mesh || !Dynamic.PrimitiveSceneProxy)
+			                  {
+				                  continue;
+			                  }
+			                  if (const FLinearColor* Id = IdByComponent.Find(Dynamic.PrimitiveSceneProxy->GetPrimitiveComponentId()))
+			                  {
+				                  Processor.CurrentId = *Id;
+				                  Processor.AddMeshBatch(*Dynamic.Mesh, ~0ull, Dynamic.PrimitiveSceneProxy);
+				                  ++DynamicDrawn;
+			                  }
+			                  else
+			                  {
+				                  ++DynamicSkipped;
+			                  }
+		                  }
+		                  UE_LOG(LogTemp, Verbose, TEXT("SegIdPass: %d items, %d dynamic elements (%d ours, %d not), own-material %d, default %d, translucent %d, compiling %d"),
+		                         ItemsOnPass->Num(), ViewInfo.DynamicMeshElements.Num(), DynamicDrawn, DynamicSkipped, Processor.NumOwn, Processor.NumDefault,
+		                         Processor.NumTranslucent, Processor.NumCompiling);
 
 		                  for (const FSegIdDrawItem& Item : *ItemsOnPass)
 		                  {
@@ -347,6 +594,12 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 			                  }
 		                  }
 	                  });
+
+#if FLIGHTFORGE_NANITE_IDS
+	AddNaniteIds(GraphBuilder, Scene, InView, Inputs, *ItemsOnPass, IdTexture);
+#else
+	AddStencilClassFill(GraphBuilder, InView, Inputs, Job.StencilSlots, IdTexture);
+#endif
 
 	AddEnqueueCopyPass(GraphBuilder, Job.Slot->Readback.Get(), IdTexture, FResolveRect());
 

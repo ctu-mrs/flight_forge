@@ -59,7 +59,7 @@ public:
 	virtual void PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& InView, const FPostProcessingInputs& Inputs) override;
 
 	/** One-shot: the next render of TargetFilter's view family produces this job's ID image. */
-	void SubmitJob_GameThread(const FRenderTarget* TargetFilter, FIntPoint Size, TArray<FSegIdDrawItem>&& Items,
+	void SubmitJob_GameThread(const FRenderTarget* TargetFilter, FIntPoint Size, TArray<FSegIdDrawItem>&& Items, TArray<FLinearColor>&& StencilSlots,
 	                          const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
 	/** Lazily created and globally registered; gating keeps it inert for foreign view families. */
@@ -70,6 +70,7 @@ private:
 	{
 		FIntPoint                                        Size = FIntPoint::ZeroValue;
 		TArray<FSegIdDrawItem>                           Items;
+		TArray<FLinearColor>                             StencilSlots;  // [1..255] -> id colour, for Nanite
 		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
 
 		uint32 FrameNumber = 0;
