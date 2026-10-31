@@ -87,10 +87,16 @@ public:
 	/** Stable per-actor instance id (starting at 1) shared by the SegId pass and the lidar labels; 0 stays "background". Any thread. */
 	uint32 GetOrAssignInstanceId(const AActor* Actor);
 
-	/** The class the rules give this component, else its folder's, else the stencil it already carries, else 0. */
+	/** An explicit class (scene editor), else the rules', else the folder's, else 0. Any thread. */
 	int32 ClassOf(const AActor* Actor, const UPrimitiveComponent* Component) const;
 
-	/** Where ClassOf's answer came from: "rule:<match>", "folder", "stencil" or "" for unclassified. For the audit. */
+	/** A class the spawn config named for this actor; beats every rule. */
+	void SetExplicitClass(const AActor* Actor, int32 Class);
+
+	/** 1..255 for a Nanite actor, 0 once they run out. */
+	uint8 GetOrAssignStencilSlot(const AActor* Actor);
+
+	/** Where ClassOf's answer came from: "explicit", "rule:<match>", "folder" or "" for unclassified. For the audit. */
 	FString ClassSourceOf(const AActor* Actor, const UPrimitiveComponent* Component) const;
 
 	static FString MeshAssetPath(const UPrimitiveComponent* Component);
@@ -99,11 +105,18 @@ public:
 	const TMap<int32, FSegClass>& Classes() const { return ClassesById; }
 	uint64 ClassMapHash() const;
 
+	/** a tree path ("prop/box", any case) or a bare id ("62"); 0 when neither names a class */
+	int32 ClassIdOf(const FString& PathOrId) const;
+	FString ClassPathOf(int32 Id) const;
+
 	/**
 	 * Snapshot for one ID-pass render: every static mesh component's proxy with its
 	 * owner's id and class packed as a colour, plus the id -> class/actor map that pairs with the image.
+	 * OutStencilSlots is the 1..255 custom-stencil slot of each Nanite actor mapped to the same colour:
+	 * Nanite never enters a mesh pass, but it does write custom depth/stencil, so the slot is the only
+	 * id that survives the render (see docs/asset_classification.md).
 	 */
-	void CollectInstanceItems(TArray<struct FSegIdDrawItem>& OutItems, TArray<FSegInstanceEntry>& OutMap);
+	void CollectInstanceItems(TArray<struct FSegIdDrawItem>& OutItems, TArray<FSegInstanceEntry>& OutMap, TArray<FLinearColor>& OutStencilSlots);
 
 private:
 	FDelegateHandle ActorSpawnedHandle;
@@ -119,6 +132,14 @@ private:
 
 	TMap<TWeakObjectPtr<const AActor>, uint32> InstanceIds;
 	uint32 NextInstanceId = 1;
+
+	// 1..255, handed out once per Nanite actor and written to its components' custom stencil
+	TMap<TWeakObjectPtr<const AActor>, uint8> StencilSlots;
+	uint8 NextStencilSlot = 1;
+
+	TMap<TWeakObjectPtr<const AActor>, int32> ExplicitClasses;
+	mutable FRWLock                           ExplicitClassesLock;  // the lidar reads classes on its server thread
+
 	FCriticalSection InstanceIdsLock;  // the lidar resolves ids on its server thread
 
 	const FSegmentationTagRule* FindRule(const AActor* Actor, const UPrimitiveComponent* Component) const;

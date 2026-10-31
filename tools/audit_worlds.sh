@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the segmentation audit and the TraceDiff test on every world of a host project, headless,
+# Runs the ClassCoverage (class audit) and TraceDiff tests on every world of a host project, headless,
 # one engine launch per world, and prints one summary line each. Usage:
 #   tools/audit_worlds.sh <project dir with run-editor.sh> [map ...]
 # With no maps every .umap under Content is run. Per-world CSVs land in Saved/FlightForge/.
@@ -30,14 +30,13 @@ SUMMARY=$LOG_DIR/summary.txt
 for MAP in "${MAPS[@]}"; do
   NAME=$(basename "$MAP")
   LOG=$LOG_DIR/$NAME.log
-  # a -game launch runs a single -ExecCmds command; the TraceDiff test runs the class audit itself
   UE_EDITOR_BIN=UnrealEditor-Cmd timeout "$BUDGET" ./run-editor.sh "$MAP" -game -RenderOffScreen -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity \
     -FlightForgeGameModePort=${FF_GAMEMODE_PORT:-8551} -FlightForgeDroneStartPort=${FF_DRONE_PORT:-4000} \
     -ExecCmds="Automation RunTests FlightForge.Segmentation" > "$LOG" 2>&1 &
   PID=$!
-  # the test does not quit the engine; leave once its verdict is logged (or the run dies)
+  # the tests do not quit the engine; leave once the queue has drained (or the run dies)
   for _ in $(seq 1 "$BUDGET"); do
-    if grep -aq "Test Completed.*TraceDiff\|Signal 11\|Fatal error\|Failed to enter" "$LOG"; then break; fi
+    if grep -aq "Automation Test Queue Empty\|Signal 11\|Fatal error\|Failed to enter" "$LOG"; then break; fi
     kill -0 $PID 2>/dev/null || break
     sleep 1
   done
@@ -47,7 +46,8 @@ for MAP in "${MAPS[@]}"; do
 
   AUDIT=$(grep -a -o "\[AuditClasses\] [^:]*: .*bounds area" "$LOG" | tail -1 | sed 's/\[AuditClasses\] //')
   DIFF=$(grep -a -o "SegDiff: [0-9]* comparable px: agree [0-9]* ([0-9.]*%" "$LOG" | tail -1 | sed 's/SegDiff: //')
+  COVERAGE=$(grep -a -o "Test Completed. Result={[A-Za-z]*} Name={ClassCoverage}" "$LOG" | tail -1 | grep -o "{[A-Za-z]*}" | head -1)
   VERDICT=$(grep -a -o "Test Completed. Result={[A-Za-z]*} Name={TraceDiff}" "$LOG" | tail -1 | grep -o "{[A-Za-z]*}" | head -1)
-  LINE="$NAME | audit: ${AUDIT:-no result} | tracediff: ${DIFF:-no result} ${VERDICT:-}"
+  LINE="$NAME | audit: ${AUDIT:-no result} ${COVERAGE:-} | tracediff: ${DIFF:-no result} ${VERDICT:-}"
   echo "$LINE" | tee -a "$SUMMARY"
 done

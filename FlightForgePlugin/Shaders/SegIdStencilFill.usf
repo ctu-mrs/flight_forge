@@ -6,6 +6,7 @@
 Texture2D<uint2>    CustomStencil;
 Buffer<float4>      IdBySlot;
 uint4               IdRect;
+uint                bOverwrite;
 RWTexture2D<float4> OutId;
 
 [numthreads(8, 8, 1)]
@@ -17,7 +18,7 @@ void Main(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 	const float4 Drawn = OutId[Pixel];
-	if (any(Drawn.rgb > 0.0))
+	if (any(Drawn.rgb > 0.0) && bOverwrite == 0)
 	{
 		return;
 	}

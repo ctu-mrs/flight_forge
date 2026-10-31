@@ -146,7 +146,8 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 
 	TArray<FSegIdDrawItem>    Items;
 	TArray<FSegInstanceEntry> Map;
-	Tagger->CollectInstanceItems(Items, Map);
+	TArray<FLinearColor>      StencilSlots;
+	Tagger->CollectInstanceItems(Items, Map, StencilSlots);
 
 	CameraBufferCriticalSection->Lock();
 	InstanceMap = MoveTemp(Map);
@@ -159,7 +160,7 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	Slot->Stamp                                           = stamp;
 	Slot->Readback                                        = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeSegIdReadback"));
 
-	FSegIdViewExtension::Get()->SubmitJob_GameThread(Resource, Slot->Size, MoveTemp(Items), Slot);
+	FSegIdViewExtension::Get()->SubmitJob_GameThread(Resource, Slot->Size, MoveTemp(Items), MoveTemp(StencilSlots), Slot);
 
 	if (bEverRendered)
 	{

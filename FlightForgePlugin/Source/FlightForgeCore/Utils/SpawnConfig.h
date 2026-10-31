@@ -34,6 +34,10 @@ struct FLIGHTFORGECORE_API FSpawnObjectEntry
   /** Custom depth stencil used for the segmentation output; negative means auto-assign. */
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   int32 Stencil = -1;
+
+  /** Class tree path ("prop/box"); stands in for the stencil when that is absent. */
+  UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
+  FString Class;
 };
 
 /* //} */

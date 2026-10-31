@@ -68,6 +68,7 @@ bool FFlightForgeSpawnYamlRoundTripTest::RunTest(const FString& Parameters)
 	Entry.Orientation = FVector(10.0, 0.0, 45.0);
 	Entry.Scale       = FVector(2.0, 2.0, 0.5);
 	Entry.Stencil     = 203;
+	Entry.Class       = TEXT("prop/box");
 	Config.Objects.Add(Entry);
 
 	const FString Yaml = USpawnConfigUtils::WriteSpawnConfig(Config);
@@ -85,6 +86,7 @@ bool FFlightForgeSpawnYamlRoundTripTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("orientation"), Out.Orientation.Equals(Entry.Orientation, 1.0e-6));
 		TestTrue(TEXT("scale"), Out.Scale.Equals(Entry.Scale, 1.0e-6));
 		TestEqual(TEXT("stencil"), Out.Stencil, Entry.Stencil);
+		TestEqual(TEXT("class"), Out.Class, Entry.Class);
 	}
 	else
 	{

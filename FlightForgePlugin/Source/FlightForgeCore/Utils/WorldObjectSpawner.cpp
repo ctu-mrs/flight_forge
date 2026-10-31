@@ -93,12 +93,28 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
       continue;
     }
 
+    USegmentationTagger* Tagger = World->GetSubsystem<USegmentationTagger>();
+
     int32 Stencil = Entry.Stencil;
+    if (Stencil < 0 && Tagger && !Entry.Class.IsEmpty())
+    {
+      Stencil = Tagger->ClassIdOf(Entry.Class);
+      if (Stencil <= 0 || Stencil > 255)
+      {
+        UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] '%s': class '%s' is not in the class tree"), *Entry.Asset, *Entry.Class);
+        Stencil = -1;
+      }
+    }
+
     if (Stencil >= 0)
     {
       ApplyStencil(Actor, Stencil);
+      if (Tagger)
+      {
+        Tagger->SetExplicitClass(Actor, Stencil);
+      }
     }
-    else if (const USegmentationTagger* Tagger = World->GetSubsystem<USegmentationTagger>())
+    else if (Tagger)
     {
       // the tagger already classified the actor when it spawned; record what it decided
       TInlineComponentArray<UPrimitiveComponent*> Primitives(Actor);
@@ -224,6 +240,16 @@ FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
 {
   FSpawnConfig Config;
 
+  const USegmentationTagger* Tagger = nullptr;
+  for (const auto& [ObjectId, Record] : SpawnedObjects)
+  {
+    if (IsValid(Record.Actor) && Record.Actor->GetWorld())
+    {
+      Tagger = Record.Actor->GetWorld()->GetSubsystem<USegmentationTagger>();
+      break;
+    }
+  }
+
   for (const FSpawnedObjectState& State : ListObjects(WorldOrigin))
   {
     FSpawnObjectEntry Entry;
@@ -232,6 +258,7 @@ FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
     Entry.Orientation = State.Orientation;
     Entry.Scale       = State.Scale;
     Entry.Stencil     = State.Stencil;
+    Entry.Class       = Tagger && State.Stencil > 0 ? Tagger->ClassPathOf(State.Stencil) : FString();
 
     Config.Objects.Add(Entry);
   }

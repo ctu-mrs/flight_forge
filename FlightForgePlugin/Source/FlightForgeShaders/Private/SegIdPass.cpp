@@ -325,6 +325,7 @@ class FSegIdStencilFillCS : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<uint2>, CustomStencil)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<float4>, IdBySlot)
 		SHADER_PARAMETER(FUintVector4, IdRect)
+		SHADER_PARAMETER(uint32, bOverwrite)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutId)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -337,7 +338,7 @@ class FSegIdStencilFillCS : public FGlobalShader
 IMPLEMENT_GLOBAL_SHADER(FSegIdStencilFillCS, "/FlightForgePlugin/SegIdStencilFill.usf", "Main", SF_Compute);
 
 static TAutoConsoleVariable<int32> CVarSegIdStencilFill(TEXT("FlightForge.SegId.StencilFill"), 1,
-                                                        TEXT("resolve Nanite ids from the custom stencil slots; 0 leaves Nanite pixels unlabelled, 2 paints every raw stencil value"));
+                                                        TEXT("resolve Nanite ids from the custom stencil slots; 0 leaves Nanite pixels unlabelled, 2 paints every raw stencil value over everything"));
 
 static void AddStencilClassFill(FRDGBuilder& GraphBuilder, const FSceneView& InView, const FPostProcessingInputs& Inputs,
                                 const TArray<FLinearColor>& StencilSlots, FRDGTextureRef IdTexture)
@@ -367,6 +368,7 @@ static void AddStencilClassFill(FRDGBuilder& GraphBuilder, const FSceneView& InV
 	Parameters->CustomStencil = (*Inputs.SceneTextures)->CustomStencilTexture;
 	Parameters->IdBySlot      = GraphBuilder.CreateSRV(SlotBuffer, PF_A32B32G32R32F);
 	Parameters->IdRect        = FUintVector4(InView.UnscaledViewRect.Min.X, InView.UnscaledViewRect.Min.Y, Size.X, Size.Y);
+	Parameters->bOverwrite    = Mode == 2 ? 1 : 0;
 	Parameters->OutId         = GraphBuilder.CreateUAV(IdTexture);
 
 	TShaderMapRef<FSegIdStencilFillCS> Shader(GetGlobalShaderMap(InView.GetFeatureLevel()));

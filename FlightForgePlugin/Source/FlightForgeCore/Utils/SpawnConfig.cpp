@@ -113,6 +113,7 @@ bool USpawnConfigUtils::ParseSpawnConfig(const FString& YamlText, FSpawnConfig& 
       Entry.Orientation = ReadVector(Node["orientation"], "roll", "pitch", "yaw", FVector::ZeroVector);
       Entry.Scale       = ReadVector(Node["scale"], "x", "y", "z", FVector::OneVector);
       Entry.Stencil     = Node["stencil"] ? Node["stencil"].as<int32>(-1) : -1;
+      Entry.Class       = ToFString(Node["class"] ? Node["class"].as<std::string>("") : "");
 
       OutConfig.Objects.Add(Entry);
       ++EntryIndex;
@@ -273,6 +274,11 @@ FString USpawnConfigUtils::WriteSpawnConfig(const FSpawnConfig& Config)
     if (Entry.Stencil >= 0)
     {
       Out << YAML::EmitterManip::Key << "stencil" << YAML::EmitterManip::Value << Entry.Stencil;
+    }
+
+    if (!Entry.Class.IsEmpty())
+    {
+      Out << YAML::EmitterManip::Key << "class" << YAML::EmitterManip::Value << std::string(TCHAR_TO_UTF8(*Entry.Class));
     }
 
     Out << YAML::EmitterManip::EndMap;

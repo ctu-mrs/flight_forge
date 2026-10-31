@@ -1,9 +1,10 @@
-#include "SegmentationTagger.h"
+﻿#include "SegmentationTagger.h"
 
 #include "HAL/IConsoleManager.h"
 
 #include "SegIdPass.h"
 
+#include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -157,13 +158,7 @@ void USegmentationTagger::LoadClassMap()
 				continue;
 			}
 
-			int32 Id = -1;
-			if (Node["class"] && Node["class"].IsScalar())
-			{
-				const FString Class = ToFString(Node["class"].as<std::string>()).ToLower();
-				const int32*  Known = IdByPath.Find(Class);
-				Id                  = Known ? *Known : FCString::Atoi(*Class);
-			}
+			const int32 Id = Node["class"] && Node["class"].IsScalar() ? ClassIdOf(ToFString(Node["class"].as<std::string>())) : -1;
 			if (Id <= 0 || Id > 255)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("SegmentationTagger: rule '%s' has no usable class (ids are 1..255 while the stencil carries them)"), *Rule.Match);
@@ -223,6 +218,21 @@ uint64 USegmentationTagger::ClassMapHash() const
 	return Hash;
 }
 
+int32 USegmentationTagger::ClassIdOf(const FString& PathOrId) const
+{
+	if (const int32* Known = IdByPath.Find(PathOrId.ToLower()))
+	{
+		return *Known;
+	}
+	return PathOrId.IsNumeric() ? FCString::Atoi(*PathOrId) : 0;
+}
+
+FString USegmentationTagger::ClassPathOf(const int32 Id) const
+{
+	const FSegClass* Class = ClassesById.Find(Id);
+	return Class ? Class->Path : FString();
+}
+
 //}
 
 /* FindRule() / ClassOf() / TagActor() //{ */
@@ -273,22 +283,53 @@ const FSegmentationTagRule* USegmentationTagger::FindRule(const AActor* Actor, c
 	return nullptr;
 }
 
+// a stencil a level already carries is NOT a class: hand-tagged values predate the tree and mean something else there
 int32 USegmentationTagger::ClassOf(const AActor* Actor, const UPrimitiveComponent* Component) const
 {
+	{
+		FReadScopeLock Lock(ExplicitClassesLock);
+		if (const int32* Explicit = ExplicitClasses.Find(Actor))
+		{
+			return *Explicit;
+		}
+	}
 	if (const FSegmentationTagRule* Rule = FindRule(Actor, Component))
 	{
 		return Rule->Stencil;
 	}
-	if (const int32 FromFolder = ClassFromFolder(MeshAssetPath(Component)))
+	return ClassFromFolder(MeshAssetPath(Component));
+}
+
+void USegmentationTagger::SetExplicitClass(const AActor* Actor, const int32 Class)
+{
+	FWriteScopeLock Lock(ExplicitClassesLock);
+	ExplicitClasses.Add(Actor, Class);
+}
+
+uint8 USegmentationTagger::GetOrAssignStencilSlot(const AActor* Actor)
+{
+	if (const uint8* Existing = StencilSlots.Find(Actor))
 	{
-		return FromFolder;
+		return *Existing;
 	}
-	// hand-tagged levels and the scene editor's stencils keep meaning what they did
-	return Component && Component->bRenderCustomDepth ? Component->CustomDepthStencilValue : 0;
+	if (NextStencilSlot == 0)
+	{
+		return 0;  // 255 Nanite actors already named; the rest stay unlabelled rather than claim another's id
+	}
+	const uint8 Slot = NextStencilSlot++;
+	StencilSlots.Add(Actor, Slot);
+	return Slot;
 }
 
 FString USegmentationTagger::ClassSourceOf(const AActor* Actor, const UPrimitiveComponent* Component) const
 {
+	{
+		FReadScopeLock Lock(ExplicitClassesLock);
+		if (ExplicitClasses.Contains(Actor))
+		{
+			return TEXT("explicit");
+		}
+	}
 	if (const FSegmentationTagRule* Rule = FindRule(Actor, Component))
 	{
 		return TEXT("rule:") + Rule->Match;
@@ -296,10 +337,6 @@ FString USegmentationTagger::ClassSourceOf(const AActor* Actor, const UPrimitive
 	if (ClassFromFolder(MeshAssetPath(Component)) > 0)
 	{
 		return TEXT("folder");
-	}
-	if (Component && Component->bRenderCustomDepth && Component->CustomDepthStencilValue > 0)
-	{
-		return TEXT("stencil");
 	}
 	return FString();
 }
@@ -356,10 +393,12 @@ uint32 USegmentationTagger::GetOrAssignInstanceId(const AActor* Actor)
 static TAutoConsoleVariable<int32> CVarSegIdDisallowNanite(TEXT("FlightForge.SegId.DisallowNanite"), 0,
                                                             TEXT("render Nanite meshes through the classic path so the instance segmentation can draw them"));
 
-void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems, TArray<FSegInstanceEntry>& OutMap)
+void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems, TArray<FSegInstanceEntry>& OutMap, TArray<FLinearColor>& OutStencilSlots)
 {
 	OutItems.Reset();
 	OutMap.Reset();
+	OutStencilSlots.Reset();
+	OutStencilSlots.SetNumZeroed(256);
 
 	const bool bDisallowNanite = CVarSegIdDisallowNanite.GetValueOnGameThread() != 0;
 
@@ -375,8 +414,6 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 	{
 		const AActor* Actor = *It;
 
-		// static meshes (instanced ones included) and landscape components register static mesh batches the
-		// pass can draw; skeletal meshes and foliage with only dynamic elements do not, so they stay unlabelled
 		TInlineComponentArray<UPrimitiveComponent*> Components(Actor);
 
 		bool                       bAnyProxy  = false;
@@ -389,24 +426,39 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 				continue;
 			}
 			UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Component);
-			if (!StaticMesh && !Component->IsA<ULandscapeComponent>())
+			if (!Component->IsA<UMeshComponent>() && !Component->IsA<ULandscapeComponent>())
 			{
 				continue;
 			}
 
 			// the pass is a classic mesh pass; Nanite geometry only gets an id when pushed onto the classic path
-			if (bDisallowNanite && StaticMesh && !StaticMesh->IsDisallowNanite() && StaticMesh->GetStaticMesh() && StaticMesh->GetStaticMesh()->IsNaniteEnabled())
+			const bool bNanite = StaticMesh && StaticMesh->GetStaticMesh() && StaticMesh->GetStaticMesh()->IsNaniteEnabled() && !StaticMesh->IsDisallowNanite();
+			if (bDisallowNanite && bNanite)
 			{
 				StaticMesh->bDisallowNanite = true;
 				StaticMesh->MarkRenderStateDirty();
 			}
 
-			const uint32 Id    = GetOrAssignInstanceId(Actor);
-			const int32  Class = FMath::Clamp(ClassOf(Actor, Component), 0, 255);
+			const uint32       Id    = GetOrAssignInstanceId(Actor);
+			const int32        Class = FMath::Clamp(ClassOf(Actor, Component), 0, 255);
+			const FLinearColor IdColor((Id & 0xFF) / 255.0f, ((Id >> 8) & 0xFF) / 255.0f, ((Id >> 16) & 0xFF) / 255.0f, Class / 255.0f);
+
+			if (bNanite && !bDisallowNanite)
+			{
+				if (const uint8 Slot = GetOrAssignStencilSlot(Actor))
+				{
+					OutStencilSlots[Slot] = IdColor;
+					if (!Component->bRenderCustomDepth || Component->CustomDepthStencilValue != Slot)
+					{
+						Component->SetRenderCustomDepth(true);
+						Component->SetCustomDepthStencilValue(Slot);
+					}
+				}
+			}
 
 			FSegIdDrawItem Item;
 			Item.ComponentId = Component->GetPrimitiveSceneId();
-			Item.IdColor     = FLinearColor((Id & 0xFF) / 255.0f, ((Id >> 8) & 0xFF) / 255.0f, ((Id >> 16) & 0xFF) / 255.0f, Class / 255.0f);
+			Item.IdColor     = IdColor;
 
 			OutItems.Add(Item);
 			bAnyProxy  = true;

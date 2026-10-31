@@ -3,8 +3,10 @@
 //   UnrealEditor-Cmd <project> <map> -game -RenderOffScreen -ExecCmds="FlightForge.AuditClasses"
 // Writes Saved/FlightForge/classes_<map>.csv and logs the summary. See docs/asset_classification.md.
 
+#include "SegmentationAudit.h"
 #include "SegmentationTagger.h"
 
+#include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -18,13 +20,14 @@
 namespace
 {
 
-/* audit //{ */
+/* helpers //{ */
 
 struct FAuditRow
 {
 	FString Asset;   // mesh asset path, or the component class for landscape and the like
 	int32   ClassId = 0;
 	FString Source;  // rule:<match> | folder | stencil | (empty)
+	TSet<FString> ActorClasses;
 	int32   Components = 0;
 	double  AreaM2     = 0.0;  // bounding-box surface, a stand-in for how much of a view it can cover
 	TSet<FString> Actors;
@@ -39,7 +42,7 @@ const TPair<const TCHAR*, const TCHAR*> KeywordHints[] = {
     {TEXT("*Pylon*"), TEXT("structure/tower")},    {TEXT("*Sign*"), TEXT("structure/sign")},      {TEXT("*Door*"), TEXT("structure/door")},
     {TEXT("*Window*"), TEXT("structure/window")},  {TEXT("*Stair*"), TEXT("structure/stairs")},   {TEXT("*Pipe*"), TEXT("structure/pipe")},
     {TEXT("*Cable*"), TEXT("structure/power_line")}, {TEXT("*Wire*"), TEXT("structure/power_line")}, {TEXT("*Car*"), TEXT("vehicle/car")},
-    {TEXT("*Truck*"), TEXT("vehicle/truck")},      {TEXT("*Bus*"), TEXT("vehicle/truck")},        {TEXT("*Plane*"), TEXT("vehicle/aircraft")},
+    {TEXT("*Truck*"), TEXT("vehicle/truck")},      {TEXT("*Bus*"), TEXT("vehicle/truck")},        {TEXT("*Airplane*"), TEXT("vehicle/aircraft")},
     {TEXT("*Heli*"), TEXT("vehicle/aircraft")},    {TEXT("*Container*"), TEXT("prop/container")}, {TEXT("*Barrel*"), TEXT("prop/container")},
     {TEXT("*Tank*"), TEXT("prop/container")},      {TEXT("*Crate*"), TEXT("prop/box")},           {TEXT("*Box*"), TEXT("prop/box")},
     {TEXT("*Pallet*"), TEXT("prop/box")},          {TEXT("*Table*"), TEXT("prop/furniture")},     {TEXT("*Chair*"), TEXT("prop/furniture")},
@@ -66,22 +69,36 @@ FString Csv(const FString& S)
 	return TEXT("\"") + S.Replace(TEXT("\""), TEXT("\"\"")) + TEXT("\"");
 }
 
-void AuditClasses(const TArray<FString>& Args, UWorld* World)
+//}
+
+}  // namespace
+
+/* AuditWorldClasses() //{ */
+
+double FClassAuditSummary::ClassifiedShare() const
 {
+	if (AreaM2 > 0.0)
+	{
+		return ClassifiedAreaM2 / AreaM2;
+	}
+	return Components > 0 ? static_cast<double>(Classified) / Components : 1.0;
+}
+
+FClassAuditSummary AuditWorldClasses(UWorld* World)
+{
+	FClassAuditSummary Summary;
 	if (!World)
 	{
-		return;
+		return Summary;
 	}
 	USegmentationTagger* Tagger = World->GetSubsystem<USegmentationTagger>();
 	if (!Tagger)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[AuditClasses] no segmentation tagger in this world"));
-		return;
+		return Summary;
 	}
 
 	TMap<FString, FAuditRow> Rows;
-	int32                    Components = 0, Classified = 0;
-	double                   Area = 0.0, ClassifiedArea = 0.0;
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -91,7 +108,7 @@ void AuditClasses(const TArray<FString>& Args, UWorld* World)
 
 		for (const UPrimitiveComponent* Component : Primitives)
 		{
-			const bool bMesh = Component->IsA<UStaticMeshComponent>() || Component->IsA<USkeletalMeshComponent>() || Component->IsA<ULandscapeComponent>();
+			const bool bMesh = Component->IsA<UMeshComponent>() || Component->IsA<ULandscapeComponent>();
 			if (!bMesh || !Component->IsVisible() || Component->bHiddenInGame)
 			{
 				continue;
@@ -115,13 +132,14 @@ void AuditClasses(const TArray<FString>& Args, UWorld* World)
 			Row.Components += 1;
 			Row.AreaM2 += A;
 			Row.Actors.Add(Actor->GetName());
+			Row.ActorClasses.Add(Actor->GetClass()->GetName());
 
-			Components += 1;
-			Area += A;
+			Summary.Components += 1;
+			Summary.AreaM2 += A;
 			if (Cls > 0)
 			{
-				Classified += 1;
-				ClassifiedArea += A;
+				Summary.Classified += 1;
+				Summary.ClassifiedAreaM2 += A;
 			}
 		}
 	}
@@ -133,21 +151,22 @@ void AuditClasses(const TArray<FString>& Args, UWorld* World)
 	const TMap<int32, FSegClass>& Classes = Tagger->Classes();
 	auto                          ClassPath = [&Classes](int32 Id) { return Classes.Contains(Id) ? Classes[Id].Path : (Id > 0 ? FString::Printf(TEXT("class_%d"), Id) : FString()); };
 
-	FString Out = TEXT("asset,class_id,class_path,source,components,actors,bounds_area_m2,suggested_rule\n");
+	FString Out = TEXT("asset,class_id,class_path,source,components,actors,actor_class,bounds_area_m2,suggested_rule\n");
 	for (const FAuditRow& Row : Sorted)
 	{
-		Out += FString::Printf(TEXT("%s,%d,%s,%s,%d,%d,%.1f,%s\n"), *Csv(Row.Asset), Row.ClassId, *Csv(ClassPath(Row.ClassId)), *Csv(Row.Source), Row.Components,
-		                       Row.Actors.Num(), Row.AreaM2, *Csv(Row.ClassId > 0 ? FString() : SuggestRule(Row.Asset)));
+		Out += FString::Printf(TEXT("%s,%d,%s,%s,%d,%d,%s,%.1f,%s\n"), *Csv(Row.Asset), Row.ClassId, *Csv(ClassPath(Row.ClassId)), *Csv(Row.Source), Row.Components,
+		                       Row.Actors.Num(), *Csv(FString::Join(Row.ActorClasses.Array(), TEXT(" "))), Row.AreaM2,
+		                       *Csv(Row.ClassId > 0 ? FString() : SuggestRule(Row.Asset)));
 	}
 
 	const FString MapName = World->GetMapName().Replace(TEXT("UEDPIE_0_"), TEXT(""));
 	const FString Path    = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("FlightForge"), FString::Printf(TEXT("classes_%s.csv"), *MapName));
 	FFileHelper::SaveStringToFile(Out, *Path);
 
-	const double PctComponents = Components ? 100.0 * Classified / Components : 0.0;
-	const double PctArea       = Area > 0.0 ? 100.0 * ClassifiedArea / Area : 0.0;
+	const double PctComponents = Summary.Components ? 100.0 * Summary.Classified / Summary.Components : 0.0;
+	const double PctArea       = Summary.AreaM2 > 0.0 ? 100.0 * Summary.ClassifiedAreaM2 / Summary.AreaM2 : 0.0;
 	UE_LOG(LogTemp, Warning, TEXT("[AuditClasses] %s: %d mesh components in %d assets; classified %.1f%% of components, %.1f%% of bounds area; %s"), *MapName,
-	       Components, Rows.Num(), PctComponents, PctArea, *Path);
+	       Summary.Components, Rows.Num(), PctComponents, PctArea, *Path);
 
 	int32 Shown = 0;
 	for (const FAuditRow& Row : Sorted)
@@ -159,12 +178,11 @@ void AuditClasses(const TArray<FString>& Args, UWorld* World)
 		++Shown;
 		UE_LOG(LogTemp, Warning, TEXT("[AuditClasses]   unclassified %8.0f m2 x%-4d %s  %s"), Row.AreaM2, Row.Components, *Row.Asset, *SuggestRule(Row.Asset));
 	}
+	return Summary;
 }
 
-FAutoConsoleCommandWithWorldAndArgs GAuditClassesCommand(TEXT("FlightForge.AuditClasses"),
-                                                         TEXT("Reports how much of this world the segmentation class tree covers and writes Saved/FlightForge/classes_<map>.csv"),
-                                                         FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&AuditClasses));
+static FAutoConsoleCommandWithWorldAndArgs GAuditClassesCommand(TEXT("FlightForge.AuditClasses"),
+                                                                TEXT("Reports how much of this world the segmentation class tree covers and writes Saved/FlightForge/classes_<map>.csv"),
+                                                                FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World) { AuditWorldClasses(World); }));
 
 //}
-
-}  // namespace
