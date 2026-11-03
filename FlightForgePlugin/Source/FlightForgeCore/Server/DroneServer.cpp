@@ -639,14 +639,10 @@ bool DroneServer::SetLocationAndRotationAsync(const FTCPClient& Client, Serializ
 		return false;
 	}
 
-    double start = FPlatformTime::Seconds();
-
 	auto Location = FVector(Request.x, Request.y, Request.z);
 	FHitResult HitResult;
 	auto Rotation = FRotator(Request.pitch, Request.yaw, Request.roll);
 	bool should_collide = Request.should_collide;
-
-	// UE_LOG(LogTemp, Warning, TEXT("DroneServer::SetLocationAndRotation %d"), should_collide);
 
 	auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
 	Instruction->Function = [Location, Rotation, should_collide, HitResult](ADronePawn& _DronePawn){
@@ -654,14 +650,11 @@ bool DroneServer::SetLocationAndRotationAsync(const FTCPClient& Client, Serializ
 	};
 
 	DronePawn->InstructionQueue->Enqueue(Instruction);
-	// FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
 
-	Serializable::Drone::SetLocationAndRotation::Response Response(true);
+	Serializable::Drone::SetLocationAndRotationAsync::Response Response(true);
 
 	std::stringstream OutputStream;
 	Serialization::DeserializeResponse(Response, OutputStream);
-
-    double end = FPlatformTime::Seconds();
 
 	return Respond(Client, OutputStream);
 }

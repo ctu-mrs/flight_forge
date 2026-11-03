@@ -213,6 +213,9 @@ const FLivoxPattern* ULidar::GetLivoxPattern() const {
 // a normal message rather than a lump. Two leaves room for one late poll.
 #define LIVOX_MAX_INTEGRATION_FRAMES 2.0
 
+// floor for fast polls, which a slow render rate bunches
+#define LIVOX_MIN_INTEGRATION_TIME 0.1
+
 // Rays are traced in chunks this long, each from the drone pose interpolated to
 // the middle of the chunk. 1 ms is ~240 rays on Avia, fine enough that the
 // residual within a chunk is far below the range noise of the real sensor.
@@ -256,7 +259,8 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
     // Real hardware drops what nobody reads rather than banking it: a lump that large
     // smears the scan and takes longer to serve than the span it covers.
-    const double MaxIntegration = FMath::Min(LIVOX_MAX_INTEGRATION_TIME, LIVOX_MAX_INTEGRATION_FRAMES / FMath::Max(LidarConfig.Frequency, 1.0));
+    const double MaxIntegration =
+        FMath::Min(LIVOX_MAX_INTEGRATION_TIME, FMath::Max(LIVOX_MIN_INTEGRATION_TIME, LIVOX_MAX_INTEGRATION_FRAMES / FMath::Max(LidarConfig.Frequency, 1.0)));
 
     if (Elapsed > MaxIntegration) {
         UE_LOG(LogTemp, Warning, TEXT("Livox: %.2f s since the last request, integrating the most recent %.2f s and dropping %.2f s of scan"), Elapsed,
