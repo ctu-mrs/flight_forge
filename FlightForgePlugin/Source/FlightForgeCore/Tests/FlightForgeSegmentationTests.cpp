@@ -318,15 +318,8 @@ bool FSegDiffCompare::Update()
 				}
 			}
 
-			// Nanite geometry is outside the classic mesh pass unless FlightForge.SegId.DisallowNanite pushes it there
 			const UStaticMeshComponent* HitMesh = Cast<UStaticMeshComponent>(Hit.GetComponent());
-			if (bComparable && HitMesh && HitMesh->GetStaticMesh() && HitMesh->GetStaticMesh()->IsNaniteEnabled() && !HitMesh->IsDisallowNanite())
-			{
-				Nanite++;
-				NaniteDrawn += Actual == Expected ? 1 : 0;
-				bComparable = false;
-			}
-			else if (Actual == SelfId && SelfId != 0)
+			if (Actual == SelfId && SelfId != 0)
 			{
 				Self++;
 				bComparable = false;
@@ -337,13 +330,18 @@ bool FSegDiffCompare::Update()
 				NoCollision++;
 				bComparable = false;
 			}
+			else if (bComparable && HitMesh && HitMesh->GetStaticMesh() && HitMesh->GetStaticMesh()->IsNaniteEnabled() && !HitMesh->IsDisallowNanite())
+			{
+				Nanite++;
+				NaniteDrawn += Actual == Expected ? 1 : 0;
+			}
 
 			TraceImage[Index] = Palette(Expected);
 			Mismatch[Index]   = FColor::Black;
 
 			if (!bComparable)
 			{
-				Mismatch[Index] = HitMesh && HitMesh->GetStaticMesh() && HitMesh->GetStaticMesh()->IsNaniteEnabled() ? FColor(0, 96, 96) : FColor(0, 0, 96);
+				Mismatch[Index] = FColor(0, 0, 96);
 				continue;
 			}
 			if (Expected == Actual)
@@ -398,8 +396,8 @@ bool FSegDiffCompare::Update()
 	const double Agreement  = Comparable > 0 ? (double)Agree / Comparable : 0.0;
 
 	UE_LOG(LogTemp, Log,
-	       TEXT("SegDiff: %d comparable px: agree %d (%.2f%%, sky %d), missing %d, extra %d, wrong actor %d; skipped: coincident %d, depth-mismatch %d, nanite %d (%d correct), self %d, no-collision %d, landscape %d (%d drawn), unmapped %d (%d drawn); %d mapped actors"),
-	       Comparable, Agree, 100.0 * Agreement, Sky, Missing, Extra, Wrong, CoincidentPx, DepthMismatch, Nanite, NaniteDrawn, Self, NoCollision, Landscape, LandscapeDrawn, Unmapped, UnmappedDrawn, Rig->Map.Num());
+	       TEXT("SegDiff: %d comparable px: agree %d (%.2f%%, sky %d), missing %d, extra %d, wrong actor %d, nanite %d (%d correct); skipped: coincident %d, depth-mismatch %d, self %d, no-collision %d, landscape %d (%d drawn), unmapped %d (%d drawn); %d mapped actors"),
+	       Comparable, Agree, 100.0 * Agreement, Sky, Missing, Extra, Wrong, Nanite, NaniteDrawn, CoincidentPx, DepthMismatch, Self, NoCollision, Landscape, LandscapeDrawn, Unmapped, UnmappedDrawn, Rig->Map.Num());
 	for (const TPair<FString, int32>& Pair : WrongByActor)
 	{
 		UE_LOG(LogTemp, Log, TEXT("SegDiff:   wrong at %s: %d px"), *Pair.Key, Pair.Value);

@@ -22,7 +22,8 @@ void Main(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		return;
 	}
-	const uint Slot = CustomStencil[Pixel + IdRect.xy].g;
+	// .x on Vulkan, .g on D3D; Nanite's separate R16G16 stencil uses the same swizzle
+	const uint Slot = CustomStencil[Pixel + IdRect.xy] STENCIL_COMPONENT_SWIZZLE;
 	if (Slot > 0)
 	{
 		const float4 Id = IdBySlot[Slot];

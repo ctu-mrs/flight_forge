@@ -136,6 +136,7 @@ private:
 	// 1..255, handed out once per Nanite actor and written to its components' custom stencil
 	TMap<TWeakObjectPtr<const AActor>, uint8> StencilSlots;
 	uint8 NextStencilSlot = 1;
+	bool  bWarnedSlotsOut = false;
 
 	TMap<TWeakObjectPtr<const AActor>, int32> ExplicitClasses;
 	mutable FRWLock                           ExplicitClassesLock;  // the lidar reads classes on its server thread

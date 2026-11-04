@@ -409,6 +409,7 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 	}
 
 	TSet<uint32> MappedIds;
+	int32        SlotlessNanite = 0;
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -445,14 +446,20 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 
 			if (bNanite && !bDisallowNanite)
 			{
-				if (const uint8 Slot = GetOrAssignStencilSlot(Actor))
+				const uint8 Slot = GetOrAssignStencilSlot(Actor);
+				if (Slot)
 				{
 					OutStencilSlots[Slot] = IdColor;
-					if (!Component->bRenderCustomDepth || Component->CustomDepthStencilValue != Slot)
-					{
-						Component->SetRenderCustomDepth(true);
-						Component->SetCustomDepthStencilValue(Slot);
-					}
+				}
+				else
+				{
+					SlotlessNanite++;
+				}
+				// a slotless component keeping its class stencil would read back as whichever actor owns that slot
+				if (!Component->bRenderCustomDepth || Component->CustomDepthStencilValue != Slot)
+				{
+					Component->SetRenderCustomDepth(Slot != 0);
+					Component->SetCustomDepthStencilValue(Slot);
 				}
 			}
 
@@ -479,6 +486,12 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 				OutMap.Add(MoveTemp(Entry));
 			}
 		}
+	}
+
+	if (SlotlessNanite > 0 && !bWarnedSlotsOut)
+	{
+		bWarnedSlotsOut = true;
+		UE_LOG(LogTemp, Warning, TEXT("SegId: the 255 Nanite stencil slots ran out, %d Nanite components stay unlabelled"), SlotlessNanite);
 	}
 }
 
