@@ -95,24 +95,26 @@ void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
-		  if (SceneCaptureComponent2D->bCaptureEveryFrame) {
-		    SceneCaptureComponent2D->bCaptureEveryFrame = false;
-		    CameraBufferCriticalSection->Lock();
-		    CameraRendered = false;
-		    CameraBufferCriticalSection->Unlock();
-		    UE_LOG(LogTemp, Warning, TEXT("Turning off RGB segmented capture"));
-		  }
-		} else {
-		  if (!SceneCaptureComponent2D->bCaptureEveryFrame) {
-		    SceneCaptureComponent2D->bCaptureEveryFrame = true;
-		    UE_LOG(LogTemp, Warning, TEXT("Turning on RGB segmented capture"));
-		  } else {
-		    if (ShouldCapture())
-		    {
-		    	UpdateCamera(true, start);
-		    }
-		  }
+		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+
+		if (bWanted && !bStreamOn)
+		{
+			bStreamOn = true;
+			SceneCaptureComponent2D->bCaptureEveryFrame = CaptureRate <= 0.0;
+			UE_LOG(LogTemp, Warning, TEXT("Turning on RGB segmented capture"));
+		}
+		else if (!bWanted && bStreamOn)
+		{
+			bStreamOn = false;
+			SceneCaptureComponent2D->bCaptureEveryFrame = false;
+			CameraBufferCriticalSection->Lock();
+			CameraRendered = false;
+			CameraBufferCriticalSection->Unlock();
+			UE_LOG(LogTemp, Warning, TEXT("Turning off RGB segmented capture, %u frames folded"), FramesFolded);
+		}
+		else if (bWanted && ShouldCapture() && CaptureDue())
+		{
+			UpdateCamera(true, start);
 		}
 	}
 
@@ -137,6 +139,11 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 	}
 
 	rgb_camera_config_ = Config;
+	CaptureRate    = Config.CaptureRate;
+	NextCaptureDue = -1.0;
+	if (bStreamOn) {
+		SceneCaptureComponent2D->bCaptureEveryFrame = CaptureRate <= 0.0;
+	}
 
 	CameraBufferCriticalSection->Lock();
 
@@ -301,6 +308,7 @@ void URgbSegCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseRGB.config.fov_ = rgb_camera_config_.FOVAngle;
 
 	ResponseRGB.config.width_ = rgb_camera_config_.Width;
+	ResponseRGB.config.capture_rate_ = rgb_camera_config_.CaptureRate;
 	ResponseRGB.config.height_ = rgb_camera_config_.Height;
 
 	ResponseRGB.config.enable_temporal_aa_ = rgb_camera_config_.enable_temporal_aa;
@@ -344,6 +352,7 @@ void URgbSegCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width = Request.config.width_;
+	Config.CaptureRate = Request.config.capture_rate_;
 	Config.Height = Request.config.height_;
 
 	Config.enable_hdr = Request.config.enable_hdr_;

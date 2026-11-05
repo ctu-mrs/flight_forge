@@ -74,7 +74,7 @@ void USegIdCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 	// camera - keep capturing while requests are fresh
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && (Start - camera_last_request_time_) < 1.0)
 	{
-		if (ShouldCapture())
+		if (ShouldCapture() && CaptureDue())
 		{
 			UpdateCamera(true, Start);
 		}
@@ -97,6 +97,8 @@ bool USegIdCamera::SetSegIdCameraConfig(const FRgbCameraConfig& Config)
 	}
 
 	seg_camera_config_ = Config;
+	CaptureRate    = Config.CaptureRate;
+	NextCaptureDue = -1.0;
 
 	CameraBufferCriticalSection->Lock();
 
@@ -335,6 +337,7 @@ void USegIdCamera::GetConfig(std::stringstream& OutputStream)
 	Response.config.fov_ = seg_camera_config_.FOVAngle;
 
 	Response.config.width_  = seg_camera_config_.Width;
+	Response.config.capture_rate_ = seg_camera_config_.CaptureRate;
 	Response.config.height_ = seg_camera_config_.Height;
 
 	const FCameraIntrinsics Effective =
@@ -369,6 +372,7 @@ void USegIdCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<st
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width  = Request.config.width_;
+	Config.CaptureRate = Request.config.capture_rate_;
 	Config.Height = Request.config.height_;
 
 	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;

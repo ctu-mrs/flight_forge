@@ -382,24 +382,26 @@ void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
-			if (SceneCaptureComponent2D->bCaptureEveryFrame) {
-				SetCaptureEveryFrame(false);
-				CameraBufferCriticalSection->Lock();
-				CameraRendered = false;
-				CameraBufferCriticalSection->Unlock();
-				UE_LOG(LogTemp, Warning, TEXT("Turning off fisheye capture"));
-			}
-		} else {
-			if (!SceneCaptureComponent2D->bCaptureEveryFrame) {
-				SetCaptureEveryFrame(true);
-				UE_LOG(LogTemp, Warning, TEXT("Turning on fisheye capture"));
-			} else {
-				if (ShouldCapture())
-				{
-					UpdateCamera(true, start);
-				}
-			}
+		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+
+		if (bWanted && !bStreamOn)
+		{
+			bStreamOn = true;
+			SetCaptureEveryFrame(CaptureRate <= 0.0);
+			UE_LOG(LogTemp, Warning, TEXT("Turning on fisheye capture"));
+		}
+		else if (!bWanted && bStreamOn)
+		{
+			bStreamOn = false;
+			SetCaptureEveryFrame(false);
+			CameraBufferCriticalSection->Lock();
+			CameraRendered = false;
+			CameraBufferCriticalSection->Unlock();
+			UE_LOG(LogTemp, Warning, TEXT("Turning off fisheye capture, %u frames folded"), FramesFolded);
+		}
+		else if (bWanted && ShouldCapture() && CaptureDue())
+		{
+			UpdateCamera(true, start);
 		}
 	}
 
@@ -637,6 +639,11 @@ bool UFisheyeCamera::SetFisheyeCameraConfig(const FFisheyeCameraConfig& Config)
 	}
 
 	fisheye_camera_config_ = Config;
+	CaptureRate    = Config.CaptureRate;
+	NextCaptureDue = -1.0;
+	if (bStreamOn) {
+		SetCaptureEveryFrame(CaptureRate <= 0.0);
+	}
 
 	CameraBufferCriticalSection->Lock();
 
@@ -685,6 +692,7 @@ void UFisheyeCamera::GetConfig(std::stringstream& OutputStream)
 
 	Response.config.fov_        = fisheye_camera_config_.FOVAngle;
 	Response.config.width_      = fisheye_camera_config_.Width;
+	Response.config.capture_rate_ = fisheye_camera_config_.CaptureRate;
 	Response.config.height_     = fisheye_camera_config_.Height;
 	Response.config.lens_model_ = static_cast<int>(fisheye_camera_config_.LensModel);
 	Response.config.full_frame_ = fisheye_camera_config_.FullFrame;
@@ -720,6 +728,7 @@ void UFisheyeCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<
 
 	Config.FOVAngle  = FMath::Clamp(Request.config.fov_, 10.0, 220.0);
 	Config.Width     = Request.config.width_;
+	Config.CaptureRate = Request.config.capture_rate_;
 	Config.Height    = Request.config.height_;
 	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 3));
 	Config.FullFrame = Request.config.full_frame_;

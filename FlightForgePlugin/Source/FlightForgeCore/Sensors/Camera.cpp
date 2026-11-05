@@ -383,6 +383,32 @@ void UCamera::DrainReadback()
 	}
 }
 
+bool UCamera::CaptureDue()
+{
+	if (CaptureRate <= 0.0)
+	{
+		return true;
+	}
+
+	const UWorld* World  = GetWorld();
+	const double  Now    = World ? World->GetTimeSeconds() : 0.0;
+	const double  Period = 1.0 / CaptureRate;
+
+	// a stall produces one frame, not a burst
+	if (NextCaptureDue < 0.0 || Now - NextCaptureDue > Period)
+	{
+		NextCaptureDue = Now;
+	}
+
+	if (Now + 1.0e-6 < NextCaptureDue)
+	{
+		return false;
+	}
+
+	NextCaptureDue += Period;
+	return true;
+}
+
 void UCamera::NotifyFrameReady()
 {
 	FrameCounter++;

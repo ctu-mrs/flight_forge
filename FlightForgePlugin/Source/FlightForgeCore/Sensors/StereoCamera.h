@@ -21,6 +21,7 @@ struct FStereoCameraConfig
 	bool     enable_temporal_aa;
 	bool     enable_hdr;
 	bool     enable_raytracing;
+	double   CaptureRate = 0.0;  // Hz in simulated time, 0 = every tick
 
 	// shared by both eyes
 	FCameraIntrinsics  Intrinsics;

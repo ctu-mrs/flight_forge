@@ -174,6 +174,13 @@ protected:
 
 	double LastCaptureSimTime = -1.0;
 
+	// captures only on the first tick that reaches the next due time; 0 = every tick
+	double CaptureRate    = 0.0;
+	double NextCaptureDue = -1.0;
+	bool   CaptureDue();
+
+	bool bStreamOn = false;
+
 	void ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture);
 
 public:

@@ -101,27 +101,27 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-	  if ((FPlatformTime::Seconds() - camera_last_request_time_) > 1.0) {
-	    if (SceneCaptureComponent2D->bCaptureEveryFrame) {
-	      SceneCaptureComponent2D->bCaptureEveryFrame  = false;
-	      SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = false;
-	      CameraBufferCriticalSection->Lock();
-	      CameraRendered = false;
-	      CameraBufferCriticalSection->Unlock();
-	      UE_LOG(LogTemp, Warning, TEXT("Turning off Stereo capture"));
-	    }
-	  } else {
-	    if (!SceneCaptureComponent2D->bCaptureEveryFrame) {
-	      UE_LOG(LogTemp, Warning, TEXT("Turning on Stereo capture"));
-	      SceneCaptureComponent2D->bCaptureEveryFrame  = true;
-	      SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = true;
-	    } else {
-	      if (ShouldCapture())
-	      {
-	      	UpdateCamera(true, start);
-	      }
-	    }
-	  }
+		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+
+		if (bWanted && !bStreamOn)
+		{
+			bStreamOn = true;
+			SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = CaptureRate <= 0.0;
+			UE_LOG(LogTemp, Warning, TEXT("Turning on Stereo capture"));
+		}
+		else if (!bWanted && bStreamOn)
+		{
+			bStreamOn = false;
+			SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = false;
+			CameraBufferCriticalSection->Lock();
+			CameraRendered = false;
+			CameraBufferCriticalSection->Unlock();
+			UE_LOG(LogTemp, Warning, TEXT("Turning off Stereo capture, %u frames folded"), FramesFolded);
+		}
+		else if (bWanted && ShouldCapture() && CaptureDue())
+		{
+			UpdateCamera(true, start);
+		}
 	}
 
 	PumpStereoReadback();
@@ -144,6 +144,11 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   }
 
   stereo_camera_config_ = Config;
+  CaptureRate    = Config.CaptureRate;
+  NextCaptureDue = -1.0;
+  if (bStreamOn) {
+    SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = CaptureRate <= 0.0;
+  }
 
   CameraBufferCriticalSection->Lock();
 
@@ -359,6 +364,7 @@ void UStereoCamera::GetConfig(std::stringstream& OutputStream)
 	ResponseStereo.config.fov_ = stereo_camera_config_.FOVAngle;
 
 	ResponseStereo.config.width_ = stereo_camera_config_.Width;
+	ResponseStereo.config.capture_rate_ = stereo_camera_config_.CaptureRate;
 	ResponseStereo.config.height_ = stereo_camera_config_.Height;
 
 	ResponseStereo.config.enable_temporal_aa_ = stereo_camera_config_.enable_temporal_aa;
@@ -404,6 +410,7 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 	Config.FOVAngle = Request.config.fov_;
 
 	Config.Width = Request.config.width_;
+	Config.CaptureRate = Request.config.capture_rate_;
 	Config.Height = Request.config.height_;
 
 	Config.enable_hdr = Request.config.enable_hdr_;

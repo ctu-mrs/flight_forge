@@ -13,7 +13,7 @@ namespace Serializable
 {
 // bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
 constexpr int api_version_major = 0;
-constexpr int api_version_minor = 23;
+constexpr int api_version_minor = 24;
 
 namespace Common
 {
@@ -431,13 +431,15 @@ struct RgbCameraConfig
   CameraRollingShutter rolling_shutter_;
   CameraCompression   compression_;
 
+  double capture_rate_ = 0.0;  // Hz in simulated time, 0 = every tick
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
             CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_),
             CEREAL_NVP(enable_temporal_aa_), CEREAL_NVP(enable_raytracing_), CEREAL_NVP(enable_hdr_), CEREAL_NVP(enable_motion_blur_),
             CEREAL_NVP(motion_blur_amount_), CEREAL_NVP(motion_blur_distortion_), CEREAL_NVP(exposure_), CEREAL_NVP(lens_), CEREAL_NVP(intrinsics_),
-            CEREAL_NVP(distortion_), CEREAL_NVP(noise_), CEREAL_NVP(rolling_shutter_), CEREAL_NVP(compression_));
+            CEREAL_NVP(distortion_), CEREAL_NVP(noise_), CEREAL_NVP(rolling_shutter_), CEREAL_NVP(compression_), CEREAL_NVP(capture_rate_));
   }
 };
 
@@ -479,13 +481,15 @@ struct StereoCameraConfig
   CameraDistortion  distortion_;
   CameraCompression compression_;
 
+  double capture_rate_ = 0.0;  // Hz in simulated time, 0 = every tick
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_left_), CEREAL_NVP(offset_y_left_), CEREAL_NVP(offset_z_left_),
             CEREAL_NVP(offset_x_right_), CEREAL_NVP(offset_y_right_), CEREAL_NVP(offset_z_right_), CEREAL_NVP(rotation_pitch_left_),
             CEREAL_NVP(rotation_yaw_left_), CEREAL_NVP(rotation_roll_left_), CEREAL_NVP(rotation_pitch_right_), CEREAL_NVP(rotation_yaw_right_),
             CEREAL_NVP(rotation_roll_right_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(enable_temporal_aa_),
-            CEREAL_NVP(enable_raytracing_), CEREAL_NVP(enable_hdr_), CEREAL_NVP(intrinsics_), CEREAL_NVP(distortion_), CEREAL_NVP(compression_));
+            CEREAL_NVP(enable_raytracing_), CEREAL_NVP(enable_hdr_), CEREAL_NVP(intrinsics_), CEREAL_NVP(distortion_), CEREAL_NVP(compression_), CEREAL_NVP(capture_rate_));
   }
 };
 
@@ -1588,12 +1592,14 @@ struct FisheyeCameraConfig
   double kb_k3_ = 0.0;
   double kb_k4_ = 0.0;
 
+  double capture_rate_ = 0.0;  // Hz in simulated time, 0 = every tick
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(CEREAL_NVP(show_debug_camera_), CEREAL_NVP(offset_x_), CEREAL_NVP(offset_y_), CEREAL_NVP(offset_z_), CEREAL_NVP(rotation_pitch_),
             CEREAL_NVP(rotation_yaw_), CEREAL_NVP(rotation_roll_), CEREAL_NVP(fov_), CEREAL_NVP(width_), CEREAL_NVP(height_), CEREAL_NVP(lens_model_),
             CEREAL_NVP(compression_), CEREAL_NVP(full_frame_), CEREAL_NVP(intrinsics_), CEREAL_NVP(kb_k1_), CEREAL_NVP(kb_k2_), CEREAL_NVP(kb_k3_),
-            CEREAL_NVP(kb_k4_));
+            CEREAL_NVP(kb_k4_), CEREAL_NVP(capture_rate_));
   }
 };
 

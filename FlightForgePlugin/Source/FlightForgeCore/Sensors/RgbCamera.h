@@ -52,6 +52,7 @@ struct FRgbCameraConfig
 	bool     enable_motion_blur     = true;
 	double   motion_blur_amount     = 1.0;
 	double   motion_blur_distortion = 50.0;
+	double   CaptureRate            = 0.0;  // Hz in simulated time, 0 = every tick
 
 	FCameraExposure       Exposure;
 	FCameraLensEffects    Lens;
