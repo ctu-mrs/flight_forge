@@ -143,7 +143,7 @@ protected:
 
 	bool CameraRendered                  = false;
 
-	// in-order ring of copies on the GPU; three deep covers the copy latency without stalling the game thread
+	// in-order copies on the GPU
 	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> InflightReadbacks;
 	int32  MaxInflight  = 3;
 	uint32 FramesFolded = 0;
@@ -231,8 +231,10 @@ protected:
 	void ClearRing();
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> NewestReadback();
 
-	// free-running folds a frame when the ring is full; lockstep must keep every tick, so it waits for a slot
+	// lockstep waits for a slot, free-running folds the frame
 	bool TakeRingSlot();
+
+	virtual bool PumpFrames() { return PumpReadback(); }
 
 	void NotifyFrameReady();
 

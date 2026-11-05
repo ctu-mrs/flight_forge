@@ -152,7 +152,7 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)([Slot](FRHICommandListImmediate& RHICmdList) { ResolveReadback_RenderThread(*Slot); });
 }
 
-// copies land in order, so only the head can publish; a head that is ready but unresolved is resolved here in case the watcher missed it
+// copies land in order, so only the head can publish
 bool UCamera::PumpReadback()
 {
 	bool bPublished = false;
@@ -249,7 +249,7 @@ bool UCamera::TakeRingSlot()
 	while (RingFull() && FPlatformTime::Seconds() < Deadline)
 	{
 		FlushRenderingCommands();
-		if (!PumpReadback() && RingFull())
+		if (!PumpFrames() && RingFull())
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);
 		}

@@ -72,6 +72,8 @@ protected:
 
 	virtual void DrainReadback() override;
 
+	virtual bool PumpFrames() override { return PumpStereoReadback(); }
+
 public:
 	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
