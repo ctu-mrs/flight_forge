@@ -143,7 +143,10 @@ protected:
 
 	bool CameraRendered                  = false;
 
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadback;
+	// in-order ring of copies on the GPU; three deep covers the copy latency without stalling the game thread
+	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> InflightReadbacks;
+	int32  MaxInflight  = 3;
+	uint32 FramesFolded = 0;
 
 	// on demand the capture renders inside the next engine frame like a continuous one; the copy is enqueued the tick after, once the target holds it
 	bool    bReadbackDue  = false;
@@ -216,8 +219,13 @@ protected:
 
 	bool PumpReadback();
 
-	void SetPendingReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
-	bool HasPendingReadback();
+	void PushReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+	bool RingFull();
+	void ClearRing();
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> NewestReadback();
+
+	// free-running folds a frame when the ring is full; lockstep must keep every tick, so it waits for a slot
+	bool TakeRingSlot();
 
 	void NotifyFrameReady();
 

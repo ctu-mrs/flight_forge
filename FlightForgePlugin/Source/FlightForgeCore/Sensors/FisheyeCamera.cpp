@@ -5,6 +5,8 @@
 
 #include "Serialize.h"
 #include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/SimClock.h"
+#include "RenderingThread.h"
 
 /* face basis //{ */
 
@@ -51,7 +53,6 @@ UFisheyeCamera::UFisheyeCamera() : UCamera()
 	}
 
 	FaceBuffers.SetNum(NumFaces);
-	PendingFaces.SetNum(NumFaces);
 }
 
 int32 UFisheyeCamera::FaceSize() const
@@ -411,10 +412,26 @@ void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 // readback pipeline
 void UFisheyeCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	for (int32 Face = 0; Face < NumFaces; ++Face)
+	if (InflightFaceSets.Num() >= MaxInflight)
 	{
-		if (PendingFaces[Face]) {
-			return;  // previous transfer still in flight
+		if (!FFlightForgeSimClock::bLockstep.load())
+		{
+			FramesFolded++;
+			return;
+		}
+
+		const double Deadline = FPlatformTime::Seconds() + 5.0;
+		while (InflightFaceSets.Num() >= MaxInflight && FPlatformTime::Seconds() < Deadline)
+		{
+			FlushRenderingCommands();
+			if (!PumpFisheyeReadback() && InflightFaceSets.Num() >= MaxInflight)
+			{
+				FPlatformProcess::SleepNoStats(0.0002f);
+			}
+		}
+		if (InflightFaceSets.Num() >= MaxInflight)
+		{
+			return;
 		}
 	}
 
@@ -426,70 +443,92 @@ void UFisheyeCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		}
 	}
 
+	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> Set;
 	for (int32 Face = 0; Face < NumFaces; ++Face)
 	{
-		PendingFaces[Face] = EnqueueReadback(FaceRenderTargets[Face], stamp);
+		Set.Add(EnqueueReadback(FaceRenderTargets[Face], stamp));
 	}
+	InflightFaceSets.Add(MoveTemp(Set));
 }
 
 // publishes only when all five faces have landed, so a frame is seam-consistent
 bool UFisheyeCamera::PumpFisheyeReadback()
 {
-	bool bAnyPending = false;
-	bool bAllCopied  = true;
+	bool bPublished = false;
 
-	for (int32 Face = 0; Face < NumFaces; ++Face)
+	while (InflightFaceSets.Num() > 0)
 	{
-		if (!PendingFaces[Face])
+		TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>>& Faces = InflightFaceSets[0];
+
+		bool bAllCopied = Faces.Num() == NumFaces;
+
+		for (const auto& Face : Faces)
 		{
+			if (!Face)
+			{
+				bAllCopied = false;
+				continue;
+			}
+			if (Face->bCopied)
+			{
+				continue;
+			}
 			bAllCopied = false;
-			continue;
+			if (Face->Readback && Face->Readback->IsReady() && !Face->bResolveIssued.exchange(true))
+			{
+				IssueResolve(Face);
+			}
 		}
 
-		bAnyPending = true;
-
-		if (PendingFaces[Face]->bCopied)
+		if (!bAllCopied)
 		{
-			continue;
+			// a set with a missing face can never complete
+			if (Faces.Num() != NumFaces || Faces.Contains(nullptr))
+			{
+				InflightFaceSets.RemoveAt(0);
+				continue;
+			}
+			break;
 		}
 
-		bAllCopied = false;
+		CameraBufferCriticalSection->Lock();
 
-		if (PendingFaces[Face]->Readback && PendingFaces[Face]->Readback->IsReady() && !PendingFaces[Face]->bResolveIssued.exchange(true))
+		bool bComplete = true;
+		for (int32 Face = 0; Face < NumFaces; ++Face)
 		{
-			IssueResolve(PendingFaces[Face]);
+			FaceBuffers[Face] = MoveTemp(Faces[Face]->Pixels);
+			bComplete &= FaceBuffers[Face].Num() > 0;
 		}
+		PublishedFaceSize = Faces[0]->Size.X;
+		stamp_            = Faces[0]->Stamp;
+		CameraRendered    = bComplete;
+
+		CameraBufferCriticalSection->Unlock();
+
+		InflightFaceSets.RemoveAt(0);
+
+		NotifyFrameReady();
+		bPublished = true;
 	}
 
-	if (!bAnyPending || !bAllCopied)
-	{
-		return false;
-	}
-
-	CameraBufferCriticalSection->Lock();
-
-	bool bComplete = true;
-	for (int32 Face = 0; Face < NumFaces; ++Face)
-	{
-		FaceBuffers[Face] = MoveTemp(PendingFaces[Face]->Pixels);
-		bComplete &= FaceBuffers[Face].Num() > 0;
-	}
-	PublishedFaceSize = PendingFaces[0]->Size.X;
-	stamp_            = PendingFaces[0]->Stamp;
-	CameraRendered    = bComplete;
-
-	CameraBufferCriticalSection->Unlock();
-
-	for (int32 Face = 0; Face < NumFaces; ++Face)
-	{
-		PendingFaces[Face].Reset();
-	}
-
-	NotifyFrameReady();
-	return true;
+	return bPublished;
 }
 
 //}
+
+void UFisheyeCamera::DrainReadback()
+{
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+
+	while (InflightFaceSets.Num() > 0 && FPlatformTime::Seconds() < Deadline)
+	{
+		FlushRenderingCommands();
+		if (!PumpFisheyeReadback() && InflightFaceSets.Num() > 0)
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
+}
 
 /* GetFisheyeCameraDataFromServerThread() //{ */
 

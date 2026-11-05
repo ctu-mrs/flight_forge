@@ -119,7 +119,7 @@ void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 	if (bReadbackDue)
 	{
 		bReadbackDue = false;
-		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp));
+		PushReadback(EnqueueReadback(RenderTarget2D, DeferredStamp));
 	}
 
 	PumpReadback();
@@ -171,8 +171,8 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 // readback pipeline instead of stalling on ReadPixels()
 void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (HasPendingReadback()) {
-		return;  // previous transfer still in flight
+	if (bReadbackDue || !TakeRingSlot()) {
+		return;
 	}
 
 	// While the blendable's shaders are still compiling a capture renders without it,
@@ -206,11 +206,6 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	if (bReadbackDue)
-	{
-		return;
-	}
-
 	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !bEverRendered)
 	{
 		SceneCaptureComponent2D->CaptureScene();
@@ -223,7 +218,7 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp));
+	PushReadback(EnqueueReadback(RenderTarget2D, stamp));
 }
 
 bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& stamp) {

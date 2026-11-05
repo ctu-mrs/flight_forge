@@ -64,10 +64,12 @@ protected:
 
 	bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
 
-	// base PendingReadback carries the left eye; right eye rides here and both publish together
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> PendingReadbackRight;
+	// the base ring carries the left eye; the right eye rides here in step and both publish together
+	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> InflightRight;
 
 	bool PumpStereoReadback();
+
+	virtual void DrainReadback() override;
 
 public:
 	virtual void DrainInstructions() override;

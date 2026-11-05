@@ -4,6 +4,7 @@
 
 #include "Serialize.h"
 #include "FlightForgeCore/DronePawn.h"
+#include "RenderingThread.h"
 
 UStereoCamera::UStereoCamera() : UCamera()
 {
@@ -183,8 +184,8 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
 // readback pipeline instead of stalling on ReadPixels()
 void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (PendingReadback || PendingReadbackRight) {
-		return;  // previous transfer still in flight
+	if (!TakeRingSlot()) {
+		return;
 	}
 
 	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
@@ -193,48 +194,83 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		SceneCaptureComponent2DStereoRight->CaptureScene();
 	}
 
-	PendingReadback      = EnqueueReadback(RenderTarget2D, stamp);
-	PendingReadbackRight = EnqueueReadback(RenderTarget2DStereoRight, stamp);
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left  = EnqueueReadback(RenderTarget2D, stamp);
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right = EnqueueReadback(RenderTarget2DStereoRight, stamp);
+
+	if (!Left || !Right) {
+		return;
+	}
+
+	PushReadback(Left);
+	CameraBufferCriticalSection->Lock();
+	InflightRight.Add(Right);
+	CameraBufferCriticalSection->Unlock();
 }
 
 // game thread: publishes only when both eyes have landed, so left/right in a
 // response always come from the same capture
 bool UStereoCamera::PumpStereoReadback()
 {
-	if (!PendingReadback || !PendingReadbackRight)
-	{
-		PendingReadback.Reset();
-		PendingReadbackRight.Reset();
-		return false;
-	}
+	bool bPublished = false;
 
-	if (PendingReadback->bCopied && PendingReadbackRight->bCopied)
+	while (true)
 	{
 		CameraBufferCriticalSection->Lock();
-		CameraBuffer            = MoveTemp(PendingReadback->Pixels);
-		StereoRightCameraBuffer = MoveTemp(PendingReadbackRight->Pixels);
-		CameraBufferSize        = PendingReadback->Size;
-		stamp_                  = PendingReadback->Stamp;
+
+		if (InflightReadbacks.Num() == 0 || InflightRight.Num() == 0)
+		{
+			InflightReadbacks.Reset();
+			InflightRight.Reset();
+			CameraBufferCriticalSection->Unlock();
+			break;
+		}
+
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left  = InflightReadbacks[0];
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right = InflightRight[0];
+
+		if (!Left->bCopied || !Right->bCopied)
+		{
+			CameraBufferCriticalSection->Unlock();
+
+			for (const auto& Slot : {Left, Right})
+			{
+				if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
+				{
+					IssueResolve(Slot);
+				}
+			}
+			break;
+		}
+
+		CameraBuffer            = MoveTemp(Left->Pixels);
+		StereoRightCameraBuffer = MoveTemp(Right->Pixels);
+		CameraBufferSize        = Left->Size;
+		stamp_                  = Left->Stamp;
 		CameraRendered          = CameraBuffer.Num() > 0 && StereoRightCameraBuffer.Num() > 0;
+		InflightReadbacks.RemoveAt(0);
+		InflightRight.RemoveAt(0);
+
 		CameraBufferCriticalSection->Unlock();
 
-		PendingReadback.Reset();
-		PendingReadbackRight.Reset();
 		NotifyFrameReady();
-		return true;
+		bPublished = true;
 	}
 
-	if (PendingReadback->Readback && PendingReadback->Readback->IsReady() && !PendingReadback->bResolveIssued.exchange(true))
+	return bPublished;
+}
+
+void UStereoCamera::DrainReadback()
+{
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+
+	while (InflightReadbacks.Num() > 0 && FPlatformTime::Seconds() < Deadline)
 	{
-		IssueResolve(PendingReadback);
+		FlushRenderingCommands();
+		if (!PumpStereoReadback() && InflightReadbacks.Num() > 0)
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
 	}
-
-	if (PendingReadbackRight->Readback && PendingReadbackRight->Readback->IsReady() && !PendingReadbackRight->bResolveIssued.exchange(true))
-	{
-		IssueResolve(PendingReadbackRight);
-	}
-
-	return false;
 }
 
 bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double& stamp)

@@ -64,7 +64,7 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 	if (bReadbackDue)
 	{
 		bReadbackDue = false;
-		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, DeferredOmega, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
+		PushReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, DeferredOmega, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
 	}
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
@@ -225,8 +225,8 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 // readback pipeline instead of stalling on ReadPixels()
 void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (HasPendingReadback() || bReadbackDue) {
-		return;  // previous transfer still in flight
+	if (bReadbackDue || !TakeRingSlot()) {
+		return;
 	}
 
 	const FVector OmegaCamera = CaptureOmega(stamp);
@@ -244,7 +244,7 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
+	PushReadback(EnqueueReadback(RenderTarget2D, stamp, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
 }
 
 // camera-frame angular velocity between captures, remapped from UE axes

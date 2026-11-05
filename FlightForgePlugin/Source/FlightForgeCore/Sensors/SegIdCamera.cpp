@@ -120,14 +120,20 @@ bool USegIdCamera::SetSegIdCameraConfig(const FRgbCameraConfig& Config)
 
 void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (HasPendingReadback())
+	if (RingFull())
 	{
-		// if the pass never consumed the job (hook did not fire), do not stay stuck
+		// if the pass never consumed the jobs (hook did not fire), do not stay stuck
 		if (stamp - LastSubmitTime < 5.0)
 		{
-			return;
+			if (!TakeRingSlot())
+			{
+				return;
+			}
 		}
-		SetPendingReadback(nullptr);
+		else
+		{
+			ClearRing();
+		}
 	}
 
 	FTextureRenderTargetResource* Resource = RenderTarget2D ? RenderTarget2D->GameThread_GetRenderTargetResource() : nullptr;
@@ -171,8 +177,8 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		SceneCaptureComponent2D->CaptureScene();
 	}
 
-	SetPendingReadback(Slot);
-	LastSubmitTime  = stamp;
+	PushReadback(Slot);
+	LastSubmitTime = stamp;
 }
 
 /* //} */

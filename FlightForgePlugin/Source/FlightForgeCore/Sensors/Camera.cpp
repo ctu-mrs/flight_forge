@@ -9,6 +9,7 @@
 #include "RenderingThread.h"
 #include "TextureResource.h"
 #include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/SimClock.h"
 
 #include "Serialize.h"
 
@@ -151,44 +152,110 @@ void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe
 	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)([Slot](FRHICommandListImmediate& RHICmdList) { ResolveReadback_RenderThread(*Slot); });
 }
 
+// copies land in order, so only the head can publish; a head that is ready but unresolved is resolved here in case the watcher missed it
 bool UCamera::PumpReadback()
 {
-	CameraBufferCriticalSection->Lock();
+	bool bPublished = false;
 
-	if (!PendingReadback || !PendingReadback->bCopied)
+	while (true)
 	{
+		CameraBufferCriticalSection->Lock();
+
+		if (InflightReadbacks.Num() == 0)
+		{
+			CameraBufferCriticalSection->Unlock();
+			break;
+		}
+
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Head = InflightReadbacks[0];
+
+		if (!Head->bCopied)
+		{
+			CameraBufferCriticalSection->Unlock();
+			if (Head->Readback && Head->Readback->IsReady() && !Head->bResolveIssued.exchange(true))
+			{
+				IssueResolve(Head);
+			}
+			break;
+		}
+
+		CameraBuffer     = MoveTemp(Head->Pixels);
+		CameraBufferF16  = MoveTemp(Head->Float16Pixels);
+		CameraBufferSize = Head->Size;
+		stamp_           = Head->Stamp;
+		capture_omega_   = Head->Omega;
+		CameraRendered   = CameraBuffer.Num() > 0 || CameraBufferF16.Num() > 0;
+		bEverRendered |= CameraRendered;
+		InflightReadbacks.RemoveAt(0);
+
 		CameraBufferCriticalSection->Unlock();
+
+		NotifyFrameReady();
+		bPublished = true;
+	}
+
+	return bPublished;
+}
+
+void UCamera::PushReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
+{
+	if (!Slot)
+	{
+		return;
+	}
+	CameraBufferCriticalSection->Lock();
+	InflightReadbacks.Add(Slot);
+	CameraBufferCriticalSection->Unlock();
+}
+
+bool UCamera::RingFull()
+{
+	CameraBufferCriticalSection->Lock();
+	const bool bFull = InflightReadbacks.Num() >= MaxInflight;
+	CameraBufferCriticalSection->Unlock();
+	return bFull;
+}
+
+void UCamera::ClearRing()
+{
+	CameraBufferCriticalSection->Lock();
+	InflightReadbacks.Reset();
+	CameraBufferCriticalSection->Unlock();
+}
+
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::NewestReadback()
+{
+	CameraBufferCriticalSection->Lock();
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = InflightReadbacks.Num() > 0 ? InflightReadbacks.Last() : nullptr;
+	CameraBufferCriticalSection->Unlock();
+	return Slot;
+}
+
+bool UCamera::TakeRingSlot()
+{
+	if (!RingFull())
+	{
+		return true;
+	}
+
+	if (!FFlightForgeSimClock::bLockstep.load())
+	{
+		FramesFolded++;
 		return false;
 	}
 
-	CameraBuffer     = MoveTemp(PendingReadback->Pixels);
-	CameraBufferF16  = MoveTemp(PendingReadback->Float16Pixels);
-	CameraBufferSize = PendingReadback->Size;
-	stamp_           = PendingReadback->Stamp;
-	capture_omega_   = PendingReadback->Omega;
-	CameraRendered   = CameraBuffer.Num() > 0 || CameraBufferF16.Num() > 0;
-	bEverRendered |= CameraRendered;
-	PendingReadback.Reset();
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
 
-	CameraBufferCriticalSection->Unlock();
+	while (RingFull() && FPlatformTime::Seconds() < Deadline)
+	{
+		FlushRenderingCommands();
+		if (!PumpReadback() && RingFull())
+		{
+			FPlatformProcess::SleepNoStats(0.0002f);
+		}
+	}
 
-	NotifyFrameReady();
-	return true;
-}
-
-void UCamera::SetPendingReadback(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
-{
-	CameraBufferCriticalSection->Lock();
-	PendingReadback = Slot;
-	CameraBufferCriticalSection->Unlock();
-}
-
-bool UCamera::HasPendingReadback()
-{
-	CameraBufferCriticalSection->Lock();
-	const bool bPending = PendingReadback.IsValid();
-	CameraBufferCriticalSection->Unlock();
-	return bPending;
+	return !RingFull();
 }
 
 bool UCamera::WaitForRequestedFrame(const bool& InstructionFinished, const uint64 BaselineFrame, const double TimeoutSeconds)
@@ -210,9 +277,7 @@ bool UCamera::WaitForRequestedFrame(const bool& InstructionFinished, const uint6
 	const double                                     SlotDeadline = FMath::Min(Deadline, FPlatformTime::Seconds() + 0.1);
 	while (true)
 	{
-		CameraBufferCriticalSection->Lock();
-		Slot = PendingReadback;
-		CameraBufferCriticalSection->Unlock();
+		Slot = NewestReadback();
 		if (Slot || FrameCounter.load() != BaselineFrame)
 		{
 			break;
@@ -274,18 +339,13 @@ bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const dou
 		return false;
 	}
 
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
-	CameraBufferCriticalSection->Lock();
-	if (PendingReadback)
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = NewestReadback();  // another request in flight shares its frame
+
+	if (!Slot)
 	{
-		Slot = PendingReadback;  // another request is in flight; share its frame
+		Slot = MakeReadbackSlot(RT, Stamp, Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
+		PushReadback(Slot);
 	}
-	else
-	{
-		Slot            = MakeReadbackSlot(RT, Stamp, Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
-		PendingReadback = Slot;
-	}
-	CameraBufferCriticalSection->Unlock();
 
 	if (Slot->Stamp == Stamp)
 	{
@@ -306,10 +366,17 @@ void UCamera::DrainReadback()
 	// flushing only drains the render thread; the GPU fence still has to be polled
 	const double Deadline = FPlatformTime::Seconds() + 5.0;
 
-	while (PendingReadback && FPlatformTime::Seconds() < Deadline)
+	const auto Pending = [this]() {
+		CameraBufferCriticalSection->Lock();
+		const bool bAny = InflightReadbacks.Num() > 0;
+		CameraBufferCriticalSection->Unlock();
+		return bAny;
+	};
+
+	while (Pending() && FPlatformTime::Seconds() < Deadline)
 	{
 		FlushRenderingCommands();
-		if (!PumpReadback() && PendingReadback)
+		if (!PumpReadback() && Pending())
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);
 		}

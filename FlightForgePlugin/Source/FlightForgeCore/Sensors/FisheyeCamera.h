@@ -120,13 +120,16 @@ protected:
 	TSharedPtr<const TArray<FFisheyeLUTEntry>, ESPMode::ThreadSafe> LUT;
 	FIntPoint LUTSize = FIntPoint::ZeroValue;
 
-	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> PendingFaces;
+	// one face set per frame in flight, published only when every face of the head set has landed
+	TArray<TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>>> InflightFaceSets;
 
 	int32 FaceSize() const;
 
 	void RebuildLUT();
 
 	bool PumpFisheyeReadback();
+
+	virtual void DrainReadback() override;
 
 	void SetCaptureEveryFrame(bool bEnable);
 };

@@ -76,7 +76,7 @@ void UDepthCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 	if (bReadbackDue)
 	{
 		bReadbackDue = false;
-		SetPendingReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, FVector::ZeroVector, true));
+		PushReadback(EnqueueReadback(RenderTarget2D, DeferredStamp, FVector::ZeroVector, true));
 	}
 
 	PumpReadback();
@@ -120,12 +120,7 @@ bool UDepthCamera::SetDepthCameraConfig(const FRgbCameraConfig& Config)
 
 void UDepthCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (HasPendingReadback())
-	{
-		return;
-	}
-
-	if (bReadbackDue)
+	if (bReadbackDue || !TakeRingSlot())
 	{
 		return;
 	}
@@ -142,7 +137,7 @@ void UDepthCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	SetPendingReadback(EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, true));
+	PushReadback(EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, true));
 }
 
 /* //} */
