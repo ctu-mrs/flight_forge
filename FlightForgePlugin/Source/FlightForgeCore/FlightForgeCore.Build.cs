@@ -39,6 +39,15 @@ public class FlightForgeCore : ModuleRules
 			RuntimeDependencies.Add("$(PluginDir)/Content/Meshes/Sensors/" + Housing + ".glb", StagedFileType.NonUFS);
 		}
 		RuntimeDependencies.Add("$(PluginDir)/Content/ExternalModels/...", StagedFileType.NonUFS);
+		string ProjectFiles = Target.ProjectFile == null ? "" : Path.Combine(Target.ProjectFile.Directory.FullName, "FlightForge");
+		if (Directory.Exists(ProjectFiles))
+		{
+			// listed one by one: the ... wildcard drops symlinked models
+			foreach (string ProjectFile in Directory.GetFiles(ProjectFiles, "*", SearchOption.AllDirectories))
+			{
+				RuntimeDependencies.Add(ProjectFile, StagedFileType.NonUFS);
+			}
+		}
 
 		string thirdPartyIncludePath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/include"));
 		PublicIncludePaths.AddRange(new string[] {thirdPartyIncludePath});

@@ -163,15 +163,24 @@ bool UDepthCamera::GetDepthCameraDataFromServerThread(TArray<uint16>& OutDepthMm
 	}
 	else if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || !bHaveFrame)
 	{
-		const uint64 Baseline = FrameCounter.load();
-
-		auto Instruction      = std::make_shared<FInstruction<UDepthCamera>>();
-		Instruction->Function = [](UDepthCamera& _Camera) { _Camera.UpdateCamera(true, FPlatformTime::Seconds()); };
-		InstructionQueue->Enqueue(Instruction);
-
-		if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0))
+		// a new camera's first capture is a warm-up that publishes nothing
+		bool bRendered = false;
+		for (int32 Attempt = 0; Attempt < 3 && !bRendered; ++Attempt)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("UDepthCamera: timed out waiting for a frame"));
+			const uint64 Baseline = FrameCounter.load();
+
+			auto Instruction      = std::make_shared<FInstruction<UDepthCamera>>();
+			Instruction->Function = [](UDepthCamera& _Camera) { _Camera.UpdateCamera(true, FPlatformTime::Seconds()); };
+			InstructionQueue->Enqueue(Instruction);
+
+			if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("UDepthCamera: timed out waiting for a frame"));
+			}
+
+			CameraBufferCriticalSection->Lock();
+			bRendered = CameraRendered;
+			CameraBufferCriticalSection->Unlock();
 		}
 	}
 

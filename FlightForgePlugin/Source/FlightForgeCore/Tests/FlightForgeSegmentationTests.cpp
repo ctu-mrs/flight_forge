@@ -330,7 +330,7 @@ bool FSegDiffCompare::Update()
 				NoCollision++;
 				bComparable = false;
 			}
-			else if (bComparable && HitMesh && HitMesh->GetStaticMesh() && HitMesh->GetStaticMesh()->IsNaniteEnabled() && !HitMesh->IsDisallowNanite())
+			else if (bComparable && HitMesh && HitMesh->GetStaticMesh() && HitMesh->GetStaticMesh()->HasValidNaniteData() && !HitMesh->IsDisallowNanite())
 			{
 				Nanite++;
 				NaniteDrawn += Actual == Expected ? 1 : 0;
@@ -359,7 +359,7 @@ bool FSegDiffCompare::Update()
 				MissingByActor.FindOrAdd(FString::Printf(TEXT("%s [%s%s%s]"), HitActor ? *HitActor->GetName() : TEXT("?"),
 				                                         Hit.GetComponent() ? *Hit.GetComponent()->GetClass()->GetName() : TEXT("?"),
 				                                         Asset ? *FString::Printf(TEXT(", %s"), *Asset->GetName()) : TEXT(""),
-				                                         Asset && Asset->IsNaniteEnabled() ? TEXT(", nanite") : TEXT("")))++;
+				                                         Asset && Asset->HasValidNaniteData() ? TEXT(", nanite") : TEXT("")))++;
 			}
 			else if (Expected == 0)
 			{

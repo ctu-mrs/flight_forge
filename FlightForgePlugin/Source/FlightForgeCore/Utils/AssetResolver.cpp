@@ -251,7 +251,8 @@ TArray<FString> UAssetResolver::ListSpawnableAssets(const FString& PathPrefix, c
 
   for (const FAssetData& Asset : Assets)
   {
-    if (!Matches(Asset.AssetName.ToString()))
+    // a cooked level script is a BlueprintGeneratedClass too
+    if (!Matches(Asset.AssetName.ToString()) || Asset.HasAnyPackageFlags(PKG_ContainsMap))
     {
       continue;
     }
