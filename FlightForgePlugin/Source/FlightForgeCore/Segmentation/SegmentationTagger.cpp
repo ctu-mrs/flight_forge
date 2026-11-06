@@ -433,7 +433,7 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 			}
 
 			// the pass is a classic mesh pass; Nanite geometry only gets an id when pushed onto the classic path
-			const bool bNanite = StaticMesh && StaticMesh->GetStaticMesh() && StaticMesh->GetStaticMesh()->IsNaniteEnabled() && !StaticMesh->IsDisallowNanite();
+			const bool bNanite = StaticMesh && StaticMesh->GetStaticMesh() && StaticMesh->GetStaticMesh()->HasValidNaniteData() && !StaticMesh->IsDisallowNanite();
 			if (bDisallowNanite && bNanite)
 			{
 				StaticMesh->bDisallowNanite = true;

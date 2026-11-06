@@ -23,14 +23,22 @@ public class FlightForgeCore : ModuleRules
     //bUseRTTI = true;
 		// FlightForgeShaders carries the SegId mesh pass and its shader types; it loads at
 		// PostConfigInit so this module can stay on the normal Default phase.
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime", "FlightForgeShaders"});
-		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "UnrealYAML", "AssetRegistry", "Renderer", "Landscape", "Chaos" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Landscape", "Networking", "Sockets", "Projects", "RHI", "RenderCore", "DeveloperSettings", "glTFRuntime", "FlightForgeShaders"});
+		PrivateDependencyModuleNames.AddRange(new string[] { "MessageSerialization", "UnrealYAML", "AssetRegistry", "Renderer", "Chaos" });
 
 		if (Target.bBuildEditor)
 		{
 			// the hit-proxy segmentation ground truth (SegmentationGroundTruth.cpp) reads editor viewports
 			PrivateDependencyModuleNames.Add("UnrealEd");
 		}
+
+		// read from disk at runtime, so the cooker would leave them out of a package
+		RuntimeDependencies.Add("$(PluginDir)/Content/Lidar/*.ffpat", StagedFileType.NonUFS);
+		foreach (string Housing in new string[] { "Mid360", "OUSTER_Rev7_OS0", "Garmin", "Odin1" })
+		{
+			RuntimeDependencies.Add("$(PluginDir)/Content/Meshes/Sensors/" + Housing + ".glb", StagedFileType.NonUFS);
+		}
+		RuntimeDependencies.Add("$(PluginDir)/Content/ExternalModels/...", StagedFileType.NonUFS);
 
 		string thirdPartyIncludePath = Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/include"));
 		PublicIncludePaths.AddRange(new string[] {thirdPartyIncludePath});

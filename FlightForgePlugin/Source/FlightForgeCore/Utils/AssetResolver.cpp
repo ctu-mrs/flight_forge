@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
@@ -243,6 +244,7 @@ TArray<FString> UAssetResolver::ListSpawnableAssets(const FString& PathPrefix, c
   Filter.bRecursivePaths = true;
   Filter.ClassPaths.Add(UStaticMesh::StaticClass()->GetClassPathName());
   Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
+  Filter.ClassPaths.Add(UBlueprintGeneratedClass::StaticClass()->GetClassPathName());  // a cooked Blueprint has only this
 
   TArray<FAssetData> Assets;
   Registry.GetAssets(Filter, Assets);
@@ -254,7 +256,11 @@ TArray<FString> UAssetResolver::ListSpawnableAssets(const FString& PathPrefix, c
       continue;
     }
 
-    if (!Add(Asset.GetSoftObjectPath().ToString()))
+    // Resolve appends the _C itself
+    FString Path = Asset.GetSoftObjectPath().ToString();
+    Path.RemoveFromEnd(TEXT("_C"), ESearchCase::CaseSensitive);
+
+    if (!Add(Path))
     {
       return Names;
     }
