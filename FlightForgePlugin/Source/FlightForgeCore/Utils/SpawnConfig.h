@@ -65,6 +65,10 @@ struct FLIGHTFORGECORE_API FSpawnConfig
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   bool bRelativeToWorldOrigin = true;
 
+  /** With a relative frame, z = 0 is the floor under the PlayerStart, as in the ROS node. */
+  UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
+  bool bGroundFrame = false;
+
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   TArray<FSpawnObjectEntry> Objects;
 };
@@ -72,6 +76,9 @@ struct FLIGHTFORGECORE_API FSpawnConfig
 /* //} */
 
 /* USpawnConfigUtils //{ */
+
+// the ROS node's offset between the "UAV" PlayerStart and the floor
+inline constexpr double PlayerStartHeightCm = 92.12;
 
 UCLASS()
 class FLIGHTFORGECORE_API USpawnConfigUtils : public UBlueprintFunctionLibrary

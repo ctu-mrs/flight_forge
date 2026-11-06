@@ -94,7 +94,10 @@ bool USpawnConfigUtils::ParseSpawnConfig(const FString& YamlText, FSpawnConfig& 
 
     if (Root["frame"])
     {
-      OutConfig.bRelativeToWorldOrigin = !ToFString(Root["frame"].as<std::string>("origin")).Equals(TEXT("world"), ESearchCase::IgnoreCase);
+      const FString Frame = ToFString(Root["frame"].as<std::string>("origin"));
+
+      OutConfig.bRelativeToWorldOrigin = !Frame.Equals(TEXT("world"), ESearchCase::IgnoreCase);
+      OutConfig.bGroundFrame           = Frame.Equals(TEXT("ground"), ESearchCase::IgnoreCase);
     }
 
     int32 EntryIndex = 0;
@@ -254,6 +257,10 @@ FString USpawnConfigUtils::WriteSpawnConfig(const FSpawnConfig& Config)
   if (!Config.bRelativeToWorldOrigin)
   {
     Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << "world";
+  }
+  else if (Config.bGroundFrame)
+  {
+    Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << "ground";
   }
 
   Out << YAML::EmitterManip::Key << "objects" << YAML::EmitterManip::Value << YAML::EmitterManip::BeginSeq;

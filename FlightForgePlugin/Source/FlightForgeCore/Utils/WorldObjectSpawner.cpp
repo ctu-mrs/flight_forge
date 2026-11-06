@@ -80,7 +80,12 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     Resolver = NewObject<UAssetResolver>(this);
   }
 
-  const FVector Origin = Config.bRelativeToWorldOrigin ? WorldOrigin : FVector::ZeroVector;
+  FVector Origin = Config.bRelativeToWorldOrigin ? WorldOrigin : FVector::ZeroVector;
+
+  if (Config.bRelativeToWorldOrigin && Config.bGroundFrame)
+  {
+    Origin.Z -= PlayerStartHeightCm;
+  }
 
   for (const FSpawnObjectEntry& Entry : Config.Objects)
   {
@@ -240,6 +245,8 @@ FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
 {
   FSpawnConfig Config;
 
+  Config.bGroundFrame = true;
+
   const USegmentationTagger* Tagger = nullptr;
   for (const auto& [ObjectId, Record] : SpawnedObjects)
   {
@@ -250,7 +257,7 @@ FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
     }
   }
 
-  for (const FSpawnedObjectState& State : ListObjects(WorldOrigin))
+  for (const FSpawnedObjectState& State : ListObjects(WorldOrigin - FVector(0, 0, PlayerStartHeightCm)))
   {
     FSpawnObjectEntry Entry;
     Entry.Asset       = State.Asset;
