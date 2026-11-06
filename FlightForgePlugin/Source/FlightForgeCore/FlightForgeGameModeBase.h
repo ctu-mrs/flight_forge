@@ -17,6 +17,8 @@
 #include "DronePawn.h"
 #include "SimClock.h"
 #include "Server/FlightForgeGameModeServer.h"
+#include "HAL/FileManager.h"
+#include "Utils/ObjectLibrary.h"
 #include "Utils/SpawnConfig.h"
 #include "Utils/WorldObjectSpawner.h"
 #include "Misc/CommandLine.h"
@@ -117,6 +119,8 @@ private:
 	virtual void BeginPlay() override
 	{
 		Super::BeginPlay();
+
+		LoadStartupLibraries();
 
 		// scene captures keep their history between grabs, so temporal AA costs nothing; without any AA method every sensor image aliases
 		if (IConsoleVariable* AntiAliasing = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod")))
@@ -765,6 +769,7 @@ public:
 		if(!ObjectSpawner)
 		{
 			ObjectSpawner = NewObject<UWorldObjectSpawner>(this);
+			ObjectSpawner->SetLibrary(&ObjectLibrary);
 		}
 
 		return ObjectSpawner;
@@ -834,6 +839,60 @@ public:
 		ModelPaths.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge")));
 
 		return UAssetResolver::ListSpawnableAssets(PathPrefix, NameFilter, ModelPaths, MaxResults, bOutTruncated);
+	}
+
+	/* //} */
+
+	/* object library //{ */
+
+	FObjectLibrary ObjectLibrary;
+
+	bool bProjectAssetsListed = false;
+
+	void LoadStartupLibraries()
+	{
+		TArray<FString> Paths;
+		IFileManager::Get().FindFiles(Paths, *FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge"), TEXT("Libraries"), TEXT("*.yaml")), true, false);
+
+		for (FString& Path : Paths)
+		{
+			Path = FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge"), TEXT("Libraries"), Path);
+		}
+
+		FString FromCommandLine;
+		if (FParse::Value(FCommandLine::Get(), TEXT("FlightForgeLibrary="), FromCommandLine, false))
+		{
+			TArray<FString> Listed;
+			FromCommandLine.ParseIntoArray(Listed, TEXT(","));
+			Paths.Append(Listed);
+		}
+
+		for (const FString& Path : Paths)
+		{
+			int32   Count = 0;
+			FString Error;
+			if (!ObjectLibrary.Load(Path, Count, Error))
+			{
+				UE_LOG(LogTemp, Error, TEXT("FlightForge: library %s: %s"), *Path, *Error);
+			}
+		}
+	}
+
+	bool LoadLibrary(const FString& Path, int32& OutCount, FString& OutError)
+	{
+		return ObjectLibrary.Load(Path, OutCount, OutError);
+	}
+
+	TArray<FLibraryObject> SearchLibrary(const FString& Library, const FString& Class, const FString& Filter, const int32 Offset, const int32 Limit, int32& OutTotal)
+	{
+		if (!bProjectAssetsListed)
+		{
+			bool bTruncated = false;
+			ObjectLibrary.SetProjectAssets(UAssetResolver::ListSpawnableAssets(FString(), FString(), {}, MAX_int32, bTruncated));
+			bProjectAssetsListed = true;
+		}
+
+		return ObjectLibrary.Search(Library, Class, Filter, Offset, Limit, OutTotal);
 	}
 
 	/* //} */

@@ -7,6 +7,8 @@
 
 #include "WorldObjectSpawner.generated.h"
 
+class FObjectLibrary;
+
 /* FSpawnedObjectRecord //{ */
 
 USTRUCT()
@@ -24,6 +26,10 @@ struct FSpawnedObjectRecord
   /** The class id the object carries (from the tagger, or the config's explicit stencil). */
   UPROPERTY()
   int32 Stencil = -1;
+
+  /** [m] at scale 1, from a library; poses of such an object name its base, not its origin. */
+  UPROPERTY()
+  double BaseZ = 0.0;
 };
 
 /* //} */
@@ -60,6 +66,8 @@ class FLIGHTFORGECORE_API UWorldObjectSpawner : public UObject
 
 public:
 
+  void SetLibrary(const FObjectLibrary* InLibrary) { Library = InLibrary; }
+
   /** Spawns every entry, returning the handles of those that were placed. */
   TArray<int32> SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin);
 
@@ -87,6 +95,8 @@ private:
   TMap<int32, FSpawnedObjectRecord> SpawnedObjects;
 
   int32 NextObjectId = 0;
+
+  const FObjectLibrary* Library = nullptr;
 };
 
 /* //} */

@@ -115,6 +115,7 @@ bool USpawnConfigUtils::ParseSpawnConfig(const FString& YamlText, FSpawnConfig& 
       Entry.Position    = ReadVector(Node["position"], "x", "y", "z", FVector::ZeroVector);
       Entry.Orientation = ReadVector(Node["orientation"], "roll", "pitch", "yaw", FVector::ZeroVector);
       Entry.Scale       = ReadVector(Node["scale"], "x", "y", "z", FVector::OneVector);
+      Entry.bHasScale   = bool(Node["scale"]);
       Entry.Stencil     = Node["stencil"] ? Node["stencil"].as<int32>(-1) : -1;
       Entry.Class       = ToFString(Node["class"] ? Node["class"].as<std::string>("") : "");
 

@@ -68,6 +68,8 @@ private:
 	bool ExportScene(const FTCPClient& Client, Serializable::GameMode::ExportScene::Request& Request);
 
 	bool ListAssets(const FTCPClient& Client, Serializable::GameMode::ListAssets::Request& Request);
+	bool LoadLibrary(const FTCPClient& Client, Serializable::GameMode::LoadLibrary::Request& Request);
+	bool ListLibrary(const FTCPClient& Client, Serializable::GameMode::ListLibrary::Request& Request);
 	bool GetWorldMesh(const FTCPClient& Client, Serializable::GameMode::GetWorldMesh::Request& Request);
 	bool GetDistanceBatch(const FTCPClient& Client, Serializable::GameMode::GetDistanceBatch::Request& Request);
 	bool SetTimeDilation(const FTCPClient& Client, Serializable::GameMode::SetTimeDilation::Request& Request);

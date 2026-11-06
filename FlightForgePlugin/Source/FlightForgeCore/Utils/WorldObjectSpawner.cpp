@@ -1,5 +1,7 @@
 #include "WorldObjectSpawner.h"
 
+#include "ObjectLibrary.h"
+
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
@@ -87,8 +89,29 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     Origin.Z -= PlayerStartHeightCm;
   }
 
-  for (const FSpawnObjectEntry& Entry : Config.Objects)
+  for (const FSpawnObjectEntry& Requested : Config.Objects)
   {
+    FSpawnObjectEntry Entry = Requested;
+    double            BaseZ = 0.0;
+
+    if (const FLibraryObject* Object = Library ? Library->Find(Requested.Asset) : nullptr)
+    {
+      Entry.Asset = Object->Asset;
+      BaseZ       = Object->BaseZ;
+
+      if (!Requested.bHasScale)
+      {
+        Entry.Scale = FVector(Object->Scale);
+      }
+
+      Entry.Position.Z += BaseZ * Entry.Scale.Z;
+    }
+    else if (Requested.Asset.StartsWith(FObjectLibrary::Prefix))
+    {
+      UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] no library object '%s'"), *Requested.Asset);
+      continue;
+    }
+
     const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, Config.OriginOffset, Origin);
 
     AActor* Actor = SpawnEntry(World, Entry, Config, Transform);
@@ -127,7 +150,7 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     }
 
     const int32 ObjectId = NextObjectId++;
-    SpawnedObjects.Add(ObjectId, FSpawnedObjectRecord{Actor, Entry.Asset, Stencil});
+    SpawnedObjects.Add(ObjectId, FSpawnedObjectRecord{Actor, Requested.Asset, Stencil, BaseZ});
     SpawnedIds.Add(ObjectId);
   }
 
@@ -198,6 +221,8 @@ bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FVector& Positi
   Entry.Orientation = Orientation;
   Entry.Scale       = Scale;
 
+  Entry.Position.Z += Record->BaseZ * Scale.Z;
+
   const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, WorldOrigin);
 
   return Record->Actor->SetActorTransform(Transform, false, nullptr, ETeleportType::TeleportPhysics);
@@ -225,7 +250,7 @@ TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects(const FVector& Worl
     State.Id          = ObjectId;
     State.Asset       = Record.Asset;
     State.Stencil     = Record.Stencil;
-    State.Position    = Entry.Position;
+    State.Position    = Entry.Position - FVector(0, 0, Record.BaseZ * Entry.Scale.Z);
     State.Orientation = Entry.Orientation;
     State.Scale       = Entry.Scale;
 

@@ -13,7 +13,7 @@ namespace Serializable
 {
 // bump minor for any wire change; get_meta carries per-op schema hashes so clients can also check op by op
 constexpr int api_version_major = 0;
-constexpr int api_version_minor = 24;
+constexpr int api_version_minor = 25;
 
 namespace Common
 {
@@ -2143,12 +2143,35 @@ enum MessageType : unsigned short
   set_fixed_timestep      = 28,
   set_lockstep            = 29,
   step                    = 30,
-  get_class_map           = 31
+  get_class_map           = 31,
+  load_library            = 32,
+  list_library            = 33
 };
 
 // Scene-editor poses travel in the same frame as the spawn YAML itself: a right-handed
 // (ROS) frame relative to the world origin, metres and degrees. Orientation is roll,
 // pitch, yaw.
+struct LibraryObject
+{
+  std::string library;
+  std::string id;
+  std::string spawn_name;  // what a spawn config's 'asset' field takes
+  std::string cls;
+  std::string description;
+  std::string license;
+  std::string thumbnail;  // a path on the simulator's machine
+
+  double scale    = 1.0;
+  double height_m = 0.0;
+  bool   runtime  = true;
+
+  template <class Archive>
+  void serialize(Archive& archive) {
+    archive(CEREAL_NVP(library), CEREAL_NVP(id), CEREAL_NVP(spawn_name), CEREAL_NVP(cls), CEREAL_NVP(description), CEREAL_NVP(license), CEREAL_NVP(thumbnail),
+            CEREAL_NVP(scale), CEREAL_NVP(height_m), CEREAL_NVP(runtime));
+  }
+};
+
 struct SpawnedObjectInfo
 {
   int         id;
@@ -2896,6 +2919,76 @@ namespace ListAssets
 }
 /*//}*/
 
+/*LoadLibrary//{*/
+namespace LoadLibrary
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::load_library){};
+
+    // A manifest file or a directory of glTF models, on the simulator's machine.
+    std::string path;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(path));
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::load_library)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::load_library, _status){};
+
+    int         count = 0;
+    std::string error;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(count), CEREAL_NVP(error));
+    }
+  };
+}
+/*//}*/
+
+/*ListLibrary//{*/
+namespace ListLibrary
+{
+  struct Request : public Common::NetworkRequest
+  {
+    Request() : Common::NetworkRequest(MessageType::list_library){};
+
+    // Empty strings match everything; filter is a case-insensitive substring of id, class or description.
+    std::string library;
+    std::string cls;
+    std::string filter;
+
+    int offset = 0;
+    int limit  = 200;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkRequest>(this), CEREAL_NVP(library), CEREAL_NVP(cls), CEREAL_NVP(filter), CEREAL_NVP(offset), CEREAL_NVP(limit));
+    }
+  };
+
+  struct Response : public Common::NetworkResponse
+  {
+    Response() : Common::NetworkResponse(static_cast<unsigned short>(MessageType::list_library)){};
+    explicit Response(bool _status) : Common::NetworkResponse(MessageType::list_library, _status){};
+
+    // One page; total counts every match.
+    std::vector<LibraryObject> objects;
+    int                        total = 0;
+
+    template <class Archive>
+    void serialize(Archive& archive) {
+      archive(cereal::base_class<Common::NetworkResponse>(this), CEREAL_NVP(objects), CEREAL_NVP(total));
+    }
+  };
+}
+/*//}*/
+
 /*GetWorldMesh//{*/
 namespace GetWorldMesh
 {
@@ -3138,6 +3231,8 @@ void ForEachOp(F&& f) {
   FF_OP(GameMode, SetLockstep, set_lockstep);
   FF_OP(GameMode, Step, step);
   FF_OP(GameMode, GetClassMap, get_class_map);
+  FF_OP(GameMode, LoadLibrary, load_library);
+  FF_OP(GameMode, ListLibrary, list_library);
 }
 
 #undef FF_OP

@@ -166,6 +166,20 @@ bool FlightForgeGameModeServer::Route(const FTCPClient& Client, std::shared_ptr<
     return ExportScene(Client, CustomRequest);
   }
 
+  if (Request.type == Serializable::GameMode::MessageType::load_library)
+  {
+    Serializable::GameMode::LoadLibrary::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return LoadLibrary(Client, CustomRequest);
+  }
+
+  if (Request.type == Serializable::GameMode::MessageType::list_library)
+  {
+    Serializable::GameMode::ListLibrary::Request CustomRequest;
+    Serialization::SerializeRequest(CustomRequest, *InputStream);
+    return ListLibrary(Client, CustomRequest);
+  }
+
   if(Request.type == Serializable::GameMode::MessageType::list_assets)
   {
     Serializable::GameMode::ListAssets::Request CustomRequest;
@@ -913,6 +927,86 @@ bool FlightForgeGameModeServer::GetDistanceBatch(const FTCPClient& Client, Seria
 
   if (bOk) {
     Response.distances_.assign(Distances.GetData(), Distances.GetData() + Distances.Num());
+  }
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* loadLibrary() //{ */
+
+bool FlightForgeGameModeServer::LoadLibrary(const FTCPClient& Client, Serializable::GameMode::LoadLibrary::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  bool    bLoaded = false;
+  int32   Count   = 0;
+  FString Error;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &bLoaded, &Count, &Error](AFlightForgeGameModeBase& _GameMode) {
+    bLoaded = _GameMode.LoadLibrary(FString(UTF8_TO_TCHAR(Request.path.c_str())), Count, Error);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response  = Serializable::GameMode::LoadLibrary::Response(bLoaded);
+  Response.count = Count;
+  Response.error = TCHAR_TO_UTF8(*Error);
+
+  std::stringstream OutputStream;
+  Serialization::DeserializeResponse(Response, OutputStream);
+
+  return Respond(Client, OutputStream);
+}
+
+//}
+
+/* listLibrary() //{ */
+
+bool FlightForgeGameModeServer::ListLibrary(const FTCPClient& Client, Serializable::GameMode::ListLibrary::Request& Request)
+{
+  if (!GameMode) {
+    return false;
+  }
+
+  constexpr int32 MaxResults = 2000;
+
+  TArray<FLibraryObject> Found;
+  int32                  Total = 0;
+
+  auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+  Instruction->Function = [&Request, &Found, &Total](AFlightForgeGameModeBase& _GameMode) {
+    Found = _GameMode.SearchLibrary(FString(UTF8_TO_TCHAR(Request.library.c_str())), FString(UTF8_TO_TCHAR(Request.cls.c_str())),
+                                    FString(UTF8_TO_TCHAR(Request.filter.c_str())), Request.offset, FMath::Clamp(Request.limit, 0, MaxResults), Total);
+  };
+  GameMode->InstructionQueue->Enqueue(Instruction);
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  auto Response  = Serializable::GameMode::ListLibrary::Response(true);
+  Response.total = Total;
+
+  for (const FLibraryObject& Object : Found) {
+    Serializable::GameMode::LibraryObject Out;
+    Out.library     = TCHAR_TO_UTF8(*Object.Library);
+    Out.id          = TCHAR_TO_UTF8(*Object.Id);
+    Out.spawn_name  = TCHAR_TO_UTF8(*Object.SpawnName);
+    Out.cls         = TCHAR_TO_UTF8(*Object.Class);
+    Out.description = TCHAR_TO_UTF8(*Object.Description);
+    Out.license     = TCHAR_TO_UTF8(*Object.License);
+    Out.thumbnail   = TCHAR_TO_UTF8(*Object.Thumbnail);
+    Out.scale       = Object.Scale;
+    Out.height_m    = Object.HeightM;
+    Out.runtime     = Object.bRuntime;
+    Response.objects.push_back(std::move(Out));
   }
 
   std::stringstream OutputStream;

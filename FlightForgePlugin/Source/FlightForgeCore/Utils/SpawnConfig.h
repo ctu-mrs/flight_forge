@@ -31,6 +31,10 @@ struct FLIGHTFORGECORE_API FSpawnObjectEntry
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   FVector Scale = FVector::OneVector;
 
+  /** Whether the config set a scale; a library object keeps its own otherwise. */
+  UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
+  bool bHasScale = false;
+
   /** Custom depth stencil used for the segmentation output; negative means auto-assign. */
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   int32 Stencil = -1;
