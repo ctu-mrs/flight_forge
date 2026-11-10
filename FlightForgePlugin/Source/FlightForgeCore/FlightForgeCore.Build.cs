@@ -39,6 +39,15 @@ public class FlightForgeCore : ModuleRules
 			RuntimeDependencies.Add("$(PluginDir)/Content/Meshes/Sensors/" + Housing + ".glb", StagedFileType.NonUFS);
 		}
 		RuntimeDependencies.Add("$(PluginDir)/Content/ExternalModels/...", StagedFileType.NonUFS);
+		// the segmentation class tree is read from Config/ at runtime, and only .ini files stage there by default
+		string ProjectConfig = Target.ProjectFile == null ? "" : Path.Combine(Target.ProjectFile.Directory.FullName, "Config");
+		if (Directory.Exists(ProjectConfig))
+		{
+			foreach (string ConfigFile in Directory.GetFiles(ProjectConfig, "*.yaml"))
+			{
+				RuntimeDependencies.Add(ConfigFile, StagedFileType.NonUFS);
+			}
+		}
 		string ProjectFiles = Target.ProjectFile == null ? "" : Path.Combine(Target.ProjectFile.Directory.FullName, "FlightForge");
 		if (Directory.Exists(ProjectFiles))
 		{
