@@ -1,10 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 
 #include "AssetResolver.generated.h"
 
+class FglTFRuntimeParser;
 class UStaticMesh;
+
+DECLARE_DELEGATE_OneParam(FOnGltfImported, UStaticMesh*);
 
 /* EResolvedAssetKind //{ */
 
@@ -14,8 +18,10 @@ enum class EResolvedAssetKind : uint8
   None,
   /** A cooked Blueprint actor class, spawned as-is. */
   ActorClass,
-  /** A static mesh, either cooked or imported from disk, spawned on a plain mesh actor. */
+  /** A cooked static mesh, spawned on a plain mesh actor. */
   StaticMesh,
+  /** An on-disk glTF, imported with ImportGltfAsync. */
+  ModelFile,
 };
 
 /* //} */
@@ -28,11 +34,54 @@ struct FResolvedAsset
 
   UClass*      ActorClass = nullptr;
   UStaticMesh* Mesh       = nullptr;
+  FString      FilePath;
 
   bool IsValid() const
   {
     return Kind != EResolvedAssetKind::None;
   }
+};
+
+/* //} */
+
+/* UGltfImport //{ */
+
+// one on-disk model on its way in: parsed, built and collision-cooked off the game thread
+UCLASS()
+class UGltfImport : public UObject
+{
+  GENERATED_BODY()
+
+public:
+  virtual void BeginDestroy() override;
+
+  void Begin(UObject* MeshOuter);
+  void Add(FOnGltfImported Done);
+  void Fail(const TCHAR* Reason);
+
+  bool IsRunning() const { return Start > 0.0 && !bDone; }
+  bool IsDone() const { return bDone; }
+
+  FString Path;
+  double  Start = 0.0;
+
+  TFunction<void(UGltfImport&)> OnFinished;
+
+  UPROPERTY()
+  TObjectPtr<UStaticMesh> Mesh;
+
+private:
+  UFUNCTION()
+  void OnMesh(UStaticMesh* StaticMesh);
+
+  void OnCooked(bool bSuccess);
+  void Finish(UStaticMesh* Result);
+
+  bool bDone = false;
+
+  TSharedPtr<FglTFRuntimeParser> Parser;
+
+  TArray<FOnGltfImported> Waiters;
 };
 
 /* //} */
@@ -54,11 +103,15 @@ class FLIGHTFORGECORE_API UAssetResolver : public UObject
   GENERATED_BODY()
 
 public:
-  bool Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths, FResolvedAsset& OutResolved,
-               UObject* MeshOuter = nullptr);
+  virtual void BeginDestroy() override;
+
+  bool Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths, FResolvedAsset& OutResolved);
 
   /** Imports a whole glTF scene as a single static mesh. Results are cached by file path. */
   UStaticMesh* ImportGltf(const FString& FilePath, UObject* MeshOuter);
+
+  /** ImportGltf without stalling the game thread; Done runs on the game thread, with nullptr on failure. */
+  void ImportGltfAsync(const FString& FilePath, UObject* MeshOuter, FOnGltfImported Done);
 
   /** Locates a .glb/.gltf for an asset name, accepting both <dir>/<name>.glb and <dir>/<name>/<name>.glb. */
   static bool FindModelFile(const FString& AssetName, const TArray<FString>& ModelPaths, FString& OutFilePath);
@@ -73,8 +126,20 @@ public:
                                              bool& bOutTruncated);
 
 private:
+  void StartQueued();
+  bool ExpireStalled(float DeltaTime);
+
   UPROPERTY()
   TMap<FString, TObjectPtr<UStaticMesh>> ImportedMeshes;
+
+  UPROPERTY()
+  TMap<FString, TObjectPtr<UGltfImport>> Imports;
+
+  TArray<TPair<TWeakObjectPtr<UGltfImport>, TWeakObjectPtr<UObject>>> Queued;
+
+  int32 Running = 0;
+
+  FTSTicker::FDelegateHandle StallTicker;
 };
 
 /* //} */

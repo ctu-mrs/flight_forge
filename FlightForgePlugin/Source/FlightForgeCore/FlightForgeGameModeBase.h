@@ -775,14 +775,14 @@ public:
 		return ObjectSpawner;
 	}
 
-	TArray<int32> SpawnObjectsFromConfig(const FSpawnConfig& Config)
+	TArray<int32> SpawnObjectsFromConfig(const FSpawnConfig& Config, const FSpawnBatchPtr& Batch = nullptr)
 	{
-		return GetObjectSpawner()->SpawnFromConfig(GetWorld(), Config, GetWorldOrigin());
+		return GetObjectSpawner()->SpawnFromConfig(GetWorld(), Config, GetWorldOrigin(), Batch);
 	}
 
 	// Used by the spawn_objects_from_yaml command, where the document arrives over the
 	// socket and so has no directory of its own to resolve relative model paths against.
-	TArray<int32> SpawnObjectsFromYaml(const std::string& Yaml, FString& OutError)
+	TArray<int32> SpawnObjectsFromYaml(const std::string& Yaml, FString& OutError, const FSpawnBatchPtr& Batch)
 	{
 		FSpawnConfig Config;
 		if(!USpawnConfigUtils::ParseSpawnConfig(FString(UTF8_TO_TCHAR(Yaml.c_str())), Config, OutError))
@@ -803,7 +803,7 @@ public:
 			Config.ModelPaths.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("FlightForge")));
 		}
 
-		return SpawnObjectsFromConfig(Config);
+		return SpawnObjectsFromConfig(Config, Batch);
 	}
 
 	bool RemoveSpawnedObject(const int32 ObjectId)

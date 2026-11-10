@@ -9,9 +9,12 @@
 #include "Misc/PackageName.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/Paths.h"
+#include "Async/Async.h"
+#include "PhysicsEngine/BodySetup.h"
 
 #include "glTFRuntimeAsset.h"
 #include "glTFRuntimeFunctionLibrary.h"
+#include "glTFRuntimeParser.h"
 
 namespace
 {
@@ -21,6 +24,9 @@ namespace
 // Probing deliberately loads quietly: most candidates are expected to miss, and the
 // engine would otherwise log an error for every search path that does not hold the asset.
 constexpr uint32 ProbeLoadFlags = LOAD_NoWarn | LOAD_Quiet;
+
+// a safety net: a hung import would otherwise hold its spawn reply
+constexpr double ImportTimeoutS = 120.0;
 
 FString ToObjectPath(const FString& PackagePath)
 {
@@ -65,6 +71,62 @@ bool IsGltfPath(const FString& Path)
 {
   const FString Extension = FPaths::GetExtension(Path, false);
   return Extension.Equals(TEXT("glb"), ESearchCase::IgnoreCase) || Extension.Equals(TEXT("gltf"), ESearchCase::IgnoreCase);
+}
+
+/* //} */
+
+/* CombineSceneMeshes() //{ */
+
+// LoadStaticMeshRecursiveAsync, but reporting failure: glTFRuntime's own returns without calling back
+const TCHAR* CombineSceneMeshes(FglTFRuntimeParser& Parser, FglTFRuntimeMeshLOD& OutCombined)
+{
+  FglTFRuntimeScene Scene;
+  if (!Parser.LoadScene(0, Scene))
+  {
+    return TEXT("has no scene");
+  }
+
+  TArray<FglTFRuntimeNode> Nodes;
+  for (const int32 NodeIndex : Scene.RootNodesIndices)
+  {
+    if (!Parser.LoadNodesRecursive(NodeIndex, Nodes))
+    {
+      return TEXT("has a broken node tree");
+    }
+  }
+
+  for (const FglTFRuntimeNode& Node : Nodes)
+  {
+    if (Node.MeshIndex == INDEX_NONE)
+    {
+      continue;
+    }
+
+    FglTFRuntimeMeshLOD LOD;
+    if (!Parser.LoadMeshAsRuntimeLOD(Node.MeshIndex, LOD, FglTFRuntimeMaterialsConfig()))
+    {
+      return TEXT("has a mesh that does not load");
+    }
+
+    FTransform       Transform = Node.Transform;
+    FglTFRuntimeNode Parent    = Node;
+    while (Parent.ParentIndex != INDEX_NONE)
+    {
+      if (!Parser.LoadNode(Parent.ParentIndex, Parent))
+      {
+        return TEXT("has a broken node tree");
+      }
+      Transform *= Parent.Transform;
+    }
+
+    for (FglTFRuntimePrimitive& Primitive : LOD.Primitives)
+    {
+      OutCombined.Primitives.Add(MoveTemp(Primitive));
+      OutCombined.AdditionalTransforms.Add(Transform);
+    }
+  }
+
+  return OutCombined.Primitives.IsEmpty() ? TEXT("has no meshes") : nullptr;
 }
 
 /* //} */
@@ -159,10 +221,254 @@ UStaticMesh* UAssetResolver::ImportGltf(const FString& FilePath, UObject* MeshOu
 
 /* //} */
 
+/* ImportGltfAsync() //{ */
+
+void UAssetResolver::ImportGltfAsync(const FString& FilePath, UObject* MeshOuter, FOnGltfImported Done)
+{
+  if (const TObjectPtr<UStaticMesh>* Cached = ImportedMeshes.Find(FilePath))
+  {
+    Done.ExecuteIfBound(*Cached);
+    return;
+  }
+
+  TObjectPtr<UGltfImport>& Import = Imports.FindOrAdd(FilePath);
+  if (!Import)
+  {
+    Import       = NewObject<UGltfImport>(this);
+    Import->Path = FilePath;
+
+    TWeakObjectPtr<UAssetResolver> WeakThis(this);
+    Import->OnFinished = [WeakThis](UGltfImport& Finished) {
+      UAssetResolver* Self = WeakThis.Get();
+      if (!Self)
+      {
+        return;
+      }
+
+      --Self->Running;
+      if (Finished.Mesh)
+      {
+        Self->ImportedMeshes.Add(Finished.Path, Finished.Mesh);
+      }
+      Self->StartQueued();
+    };
+
+    Queued.Emplace(Import, MeshOuter);
+  }
+
+  Import->Add(MoveTemp(Done));
+
+  StartQueued();
+}
+
+/* //} */
+
+/* StartQueued() / ExpireStalled() //{ */
+
+void UAssetResolver::StartQueued()
+{
+  const int32 MaxRunning = FMath::Clamp(FPlatformMisc::NumberOfCores() / 2, 2, 8);
+
+  while (Running < MaxRunning && !Queued.IsEmpty())
+  {
+    const auto [Import, Outer] = Queued[0];
+    Queued.RemoveAt(0);
+
+    if (Import.IsValid())
+    {
+      ++Running;
+      Import->Begin(Outer.Get());
+    }
+  }
+
+  if (Running > 0 && !StallTicker.IsValid())
+  {
+    StallTicker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAssetResolver::ExpireStalled), 1.0f);
+  }
+}
+
+bool UAssetResolver::ExpireStalled(float)
+{
+  const double Now = FPlatformTime::Seconds();
+
+  TArray<UGltfImport*> Stalled;
+  for (const auto& [Path, Import] : Imports)
+  {
+    if (Import && Import->IsRunning() && Now - Import->Start > ImportTimeoutS)
+    {
+      Stalled.Add(Import);
+    }
+  }
+
+  for (UGltfImport* Import : Stalled)
+  {
+    Import->Fail(TEXT("timed out"));
+  }
+
+  if (Running > 0)
+  {
+    return true;
+  }
+
+  StallTicker.Reset();
+  return false;
+}
+
+void UAssetResolver::BeginDestroy()
+{
+  if (StallTicker.IsValid())
+  {
+    FTSTicker::GetCoreTicker().RemoveTicker(StallTicker);
+    StallTicker.Reset();
+  }
+
+  Super::BeginDestroy();
+}
+
+/* //} */
+
+/* UGltfImport //{ */
+
+void UGltfImport::BeginDestroy()
+{
+  Finish(nullptr);
+
+  Super::BeginDestroy();
+}
+
+void UGltfImport::Begin(UObject* MeshOuter)
+{
+  Start = FPlatformTime::Seconds();
+
+  TWeakObjectPtr<UGltfImport> WeakThis(this);
+  TWeakObjectPtr<UObject>     WeakOuter(MeshOuter);
+  const FglTFRuntimeConfig    LoaderConfig;
+
+  Async(EAsyncExecution::Thread, [WeakThis, WeakOuter, FilePath = Path, LoaderConfig]() {
+    TSharedPtr<FglTFRuntimeParser> Parser = FglTFRuntimeParser::FromFilename(FilePath, LoaderConfig);
+    FglTFRuntimeMeshLOD            Combined;
+    const TCHAR*                   Error = Parser.IsValid() ? CombineSceneMeshes(*Parser, Combined) : TEXT("could not be parsed as glTF");
+
+    AsyncTask(ENamedThreads::GameThread, [WeakThis, WeakOuter, Parser, Combined = MoveTemp(Combined), Error]() {
+      UGltfImport* Self = WeakThis.Get();
+      if (!Self || Self->bDone)
+      {
+        return;
+      }
+
+      if (Error)
+      {
+        Self->Fail(Error);
+        return;
+      }
+
+      Self->Parser = Parser;
+
+      // collision is cooked in OnMesh, off the game thread; glTFRuntime would cook it synchronously
+      FglTFRuntimeStaticMeshConfig StaticMeshConfig;
+      StaticMeshConfig.bAllowCPUAccess = true;
+      StaticMeshConfig.Outer           = WeakOuter.Get();
+
+      FglTFRuntimeStaticMeshAsync Done;
+      Done.BindDynamic(Self, &UGltfImport::OnMesh);
+      Parser->LoadStaticMeshFromRuntimeLODsAsync({Combined}, Done, StaticMeshConfig);
+    });
+  });
+}
+
+void UGltfImport::Add(FOnGltfImported Done)
+{
+  if (bDone)
+  {
+    Done.ExecuteIfBound(Mesh);
+    return;
+  }
+
+  Waiters.Add(MoveTemp(Done));
+}
+
+void UGltfImport::OnMesh(UStaticMesh* StaticMesh)
+{
+  if (bDone)
+  {
+    return;
+  }
+
+  if (!StaticMesh)
+  {
+    Fail(TEXT("built no static mesh"));
+    return;
+  }
+
+  Mesh = StaticMesh;
+
+  UBodySetup* BodySetup = Mesh->GetBodySetup();
+  if (!BodySetup)
+  {
+    Finish(Mesh);
+    return;
+  }
+
+  BodySetup->CollisionTraceFlag             = ECollisionTraceFlag::CTF_UseComplexAsSimple;
+  BodySetup->bNeverNeedsCookedCollisionData = false;
+  BodySetup->InvalidatePhysicsData();
+  BodySetup->CreatePhysicsMeshesAsync(FOnAsyncPhysicsCookFinished::CreateUObject(this, &UGltfImport::OnCooked));
+}
+
+void UGltfImport::OnCooked(const bool bSuccess)
+{
+  if (bDone)
+  {
+    return;
+  }
+
+  if (!bSuccess)
+  {
+    UE_LOG(LogTemp, Warning, TEXT("[AssetResolver] '%s' has no collision: cooking failed"), *Path);
+  }
+
+  Finish(Mesh);
+}
+
+void UGltfImport::Fail(const TCHAR* Reason)
+{
+  UE_LOG(LogTemp, Error, TEXT("[AssetResolver] '%s' %s"), *Path, Reason);
+  Mesh = nullptr;
+  Finish(nullptr);
+}
+
+void UGltfImport::Finish(UStaticMesh* Result)
+{
+  if (bDone)
+  {
+    return;
+  }
+
+  bDone = true;
+
+  if (Result)
+  {
+    UE_LOG(LogTemp, Log, TEXT("[AssetResolver] %s imported in %.2f s"), *FPaths::GetCleanFilename(Path), FPlatformTime::Seconds() - Start);
+  }
+
+  for (FOnGltfImported& Done : Waiters)
+  {
+    Done.ExecuteIfBound(Result);
+  }
+  Waiters.Empty();
+
+  if (OnFinished)
+  {
+    OnFinished(*this);
+  }
+}
+
+/* //} */
+
 /* Resolve() //{ */
 
 bool UAssetResolver::Resolve(const FString& AssetName, const TArray<FString>& SearchPaths, const TArray<FString>& ModelPaths,
-                             FResolvedAsset& OutResolved, UObject* MeshOuter)
+                             FResolvedAsset& OutResolved)
 {
   OutResolved = FResolvedAsset();
 
@@ -198,15 +504,10 @@ bool UAssetResolver::Resolve(const FString& AssetName, const TArray<FString>& Se
     }
   }
 
-  FString ModelFilePath;
-  if (FindModelFile(AssetName, ModelPaths, ModelFilePath))
+  if (FindModelFile(AssetName, ModelPaths, OutResolved.FilePath))
   {
-    if (UStaticMesh* Mesh = ImportGltf(ModelFilePath, MeshOuter))
-    {
-      OutResolved.Kind = EResolvedAssetKind::StaticMesh;
-      OutResolved.Mesh = Mesh;
-      return true;
-    }
+    OutResolved.Kind = EResolvedAssetKind::ModelFile;
+    return true;
   }
 
   UE_LOG(LogTemp, Error, TEXT("[AssetResolver] could not resolve '%s'; tried packages [%s] and model dirs [%s]"), *AssetName,

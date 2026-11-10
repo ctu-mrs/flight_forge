@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "CoreMinimal.h"
 
 #include "AssetResolver.h"
@@ -50,6 +52,18 @@ struct FSpawnedObjectState
 
 /* //} */
 
+/* FSpawnBatch //{ */
+
+/** Counts one spawn request's on-disk models still importing; the server waits on it off the game thread. */
+struct FSpawnBatch
+{
+  std::atomic<int32> Pending{0};
+};
+
+using FSpawnBatchPtr = TSharedPtr<FSpawnBatch, ESPMode::ThreadSafe>;
+
+/* //} */
+
 /* UWorldObjectSpawner //{ */
 
 /**
@@ -68,8 +82,10 @@ public:
 
   void SetLibrary(const FObjectLibrary* InLibrary) { Library = InLibrary; }
 
-  /** Spawns every entry, returning the handles of those that were placed. */
-  TArray<int32> SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin);
+  /** Spawns every entry, returning the handles of those that were placed; an on-disk model gets its mesh once Batch drains. */
+  TArray<int32> SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin, const FSpawnBatchPtr& Batch = nullptr);
+
+  bool HasObject(int32 ObjectId) const;
 
   bool RemoveObject(int32 ObjectId);
 
@@ -84,7 +100,11 @@ public:
   FString ExportScene(const FVector& WorldOrigin) const;
 
 private:
-  AActor* SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform);
+  AActor* SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform, FString& OutModelFile);
+
+  void OnModelImported(int32 ObjectId, UStaticMesh* Mesh, bool bExplicitStencil);
+
+  static int32 TaggedStencil(const AActor* Actor);
 
   static void ApplyStencil(AActor* Actor, int32 StencilValue);
 

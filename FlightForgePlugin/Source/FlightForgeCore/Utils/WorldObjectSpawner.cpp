@@ -29,11 +29,12 @@ void UWorldObjectSpawner::ApplyStencil(AActor* Actor, const int32 StencilValue)
 
 /* SpawnEntry() //{ */
 
-AActor* UWorldObjectSpawner::SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform)
+AActor* UWorldObjectSpawner::SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform,
+                                        FString& OutModelFile)
 {
   FResolvedAsset Resolved;
 
-  if (!Resolver->Resolve(Entry.Asset, Config.SearchPaths, Config.ModelPaths, Resolved, World))
+  if (!Resolver->Resolve(Entry.Asset, Config.SearchPaths, Config.ModelPaths, Resolved))
   {
     return nullptr;
   }
@@ -60,14 +61,62 @@ AActor* UWorldObjectSpawner::SpawnEntry(UWorld* World, const FSpawnObjectEntry& 
 
   MeshActor->FinishSpawning(Transform);
 
+  OutModelFile = Resolved.FilePath;
+
   return MeshActor;
+}
+
+/* //} */
+
+/* OnModelImported() / TaggedStencil() //{ */
+
+void UWorldObjectSpawner::OnModelImported(const int32 ObjectId, UStaticMesh* Mesh, const bool bExplicitStencil)
+{
+  FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
+  if (!Record || !IsValid(Record->Actor))
+  {
+    return;
+  }
+
+  AStaticMeshActor* MeshActor = Cast<AStaticMeshActor>(Record->Actor);
+
+  if (!Mesh || !MeshActor)
+  {
+    UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] removed '%s': its model did not import"), *Record->Asset);
+    Record->Actor->Destroy();
+    SpawnedObjects.Remove(ObjectId);
+    return;
+  }
+
+  MeshActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+
+  if (!bExplicitStencil)
+  {
+    if (USegmentationTagger* Tagger = MeshActor->GetWorld()->GetSubsystem<USegmentationTagger>())
+    {
+      Tagger->TagActor(MeshActor);
+    }
+    Record->Stencil = TaggedStencil(MeshActor);
+  }
+}
+
+int32 UWorldObjectSpawner::TaggedStencil(const AActor* Actor)
+{
+  const USegmentationTagger* Tagger = Actor->GetWorld()->GetSubsystem<USegmentationTagger>();
+  if (!Tagger)
+  {
+    return -1;
+  }
+
+  TInlineComponentArray<UPrimitiveComponent*> Primitives(Actor);
+  return Primitives.Num() ? Tagger->ClassOf(Actor, Primitives[0]) : 0;
 }
 
 /* //} */
 
 /* SpawnFromConfig() //{ */
 
-TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin)
+TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin, const FSpawnBatchPtr& Batch)
 {
   TArray<int32> SpawnedIds;
 
@@ -114,7 +163,8 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
 
     const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, Config.OriginOffset, Origin);
 
-    AActor* Actor = SpawnEntry(World, Entry, Config, Transform);
+    FString ModelFile;
+    AActor* Actor = SpawnEntry(World, Entry, Config, Transform, ModelFile);
     if (!Actor)
     {
       UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] skipped '%s'"), *Entry.Asset);
@@ -134,7 +184,8 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
       }
     }
 
-    if (Stencil >= 0)
+    const bool bExplicitStencil = Stencil >= 0;
+    if (bExplicitStencil)
     {
       ApplyStencil(Actor, Stencil);
       if (Tagger)
@@ -142,21 +193,53 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
         Tagger->SetExplicitClass(Actor, Stencil);
       }
     }
-    else if (Tagger)
+    else
     {
-      // the tagger already classified the actor when it spawned; record what it decided
-      TInlineComponentArray<UPrimitiveComponent*> Primitives(Actor);
-      Stencil = Primitives.Num() ? Tagger->ClassOf(Actor, Primitives[0]) : 0;
+      Stencil = TaggedStencil(Actor);
     }
 
     const int32 ObjectId = NextObjectId++;
     SpawnedObjects.Add(ObjectId, FSpawnedObjectRecord{Actor, Requested.Asset, Stencil, BaseZ});
     SpawnedIds.Add(ObjectId);
+
+    if (!ModelFile.IsEmpty())
+    {
+      if (Batch)
+      {
+        ++Batch->Pending;
+      }
+
+      TWeakObjectPtr<UWorldObjectSpawner> WeakThis(this);
+
+      Resolver->ImportGltfAsync(ModelFile, World, FOnGltfImported::CreateLambda([WeakThis, ObjectId, Batch, bExplicitStencil](UStaticMesh* Mesh) {
+                                  if (UWorldObjectSpawner* Self = WeakThis.Get())
+                                  {
+                                    Self->OnModelImported(ObjectId, Mesh, bExplicitStencil);
+                                  }
+                                  if (Batch)
+                                  {
+                                    --Batch->Pending;
+                                  }
+                                }));
+    }
   }
+
+  // a model already known to be broken fails inside ImportGltfAsync
+  SpawnedIds.RemoveAll([this](const int32 Id) { return !HasObject(Id); });
 
   UE_LOG(LogTemp, Log, TEXT("[WorldObjectSpawner] spawned %d of %d objects"), SpawnedIds.Num(), Config.Objects.Num());
 
   return SpawnedIds;
+}
+
+/* //} */
+
+/* HasObject() //{ */
+
+bool UWorldObjectSpawner::HasObject(const int32 ObjectId) const
+{
+  const FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
+  return Record && IsValid(Record->Actor);
 }
 
 /* //} */

@@ -693,16 +693,31 @@ bool FlightForgeGameModeServer::SpawnObjectsFromYaml(const FTCPClient& Client, S
     return false;
   }
 
-  TArray<int32> SpawnedIds;
-  FString       Error;
+  TArray<int32>        SpawnedIds;
+  FString              Error;
+  const FSpawnBatchPtr Batch = MakeShared<FSpawnBatch, ESPMode::ThreadSafe>();
 
   auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
 
-  Instruction->Function = [&Request, &SpawnedIds, &Error](AFlightForgeGameModeBase& _GameMode) {
-    SpawnedIds = _GameMode.SpawnObjectsFromYaml(Request.yaml, Error);
+  Instruction->Function = [&Request, &SpawnedIds, &Error, &Batch](AFlightForgeGameModeBase& _GameMode) {
+    SpawnedIds = _GameMode.SpawnObjectsFromYaml(Request.yaml, Error, Batch);
   };
   GameMode->InstructionQueue->Enqueue(Instruction);
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+
+  // models import off the game thread, so the reply waits here and the sim keeps ticking
+  if (Batch->Pending.load() > 0) {
+    const double Deadline = FPlatformTime::Seconds() + 300.0;
+    FGenericPlatformProcess::ConditionalSleep([&Batch, Deadline]() { return Batch->Pending.load() <= 0 || FPlatformTime::Seconds() > Deadline; }, 0.01f);
+
+    auto Settle = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+
+    Settle->Function = [&SpawnedIds](AFlightForgeGameModeBase& _GameMode) {
+      SpawnedIds.RemoveAll([&_GameMode](const int32 Id) { return !_GameMode.GetObjectSpawner()->HasObject(Id); });
+    };
+    GameMode->InstructionQueue->Enqueue(Settle);
+    FGenericPlatformProcess::ConditionalSleep([Settle]() { return Settle->Finished; });
+  }
 
   // An empty result is only a failure when the configuration itself could not be read;
   // a config that placed nothing still succeeded.
