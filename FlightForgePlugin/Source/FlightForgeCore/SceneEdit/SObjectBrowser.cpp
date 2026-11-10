@@ -295,11 +295,21 @@ void SObjectBrowser::Construct(const FArguments& InArgs)
       + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
       [
         SNew(STextBlock)
+        .Font(Font(10))
+        .AutoWrapText(true)
+        .ColorAndOpacity(FLinearColor(0.75f, 0.9f, 1.0f))
+        .Text_Lambda([this]() { return Selection; })
+      ]
+
+      + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+      [
+        SNew(STextBlock)
         .Font(Font(9))
         .AutoWrapText(true)
         .ColorAndOpacity(Muted)
-        .Text(LOCTEXT("Help", "Pick an object, then click in the world to drop it; shift-click drops another. Wheel turns it, Esc cancels. "
-                              "Hold the right button to look around, WASD to fly. Tab hides this panel."))
+        .Text(LOCTEXT("Help", "Pick an object and click to drop it, shift-click to drop another. Click a placed object to select it: drag it over "
+                              "surfaces, along an arrow, or around the ring; the wheel turns it. Del removes, Ctrl+D duplicates, Ctrl+Z and Ctrl+Y "
+                              "undo and redo, G snaps, Ctrl+S saves the scene. Hold the right button to look, WASD and Q/E to fly, Tab hides this panel."))
       ]
     ]
   ];
@@ -480,6 +490,11 @@ void SObjectBrowser::ClearPicked()
 void SObjectBrowser::SetStatus(const FText& InStatus)
 {
   Status = InStatus;
+}
+
+void SObjectBrowser::SetSelection(const FText& InSelection)
+{
+  Selection = InSelection;
 }
 
 #undef LOCTEXT_NAMESPACE

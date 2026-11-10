@@ -89,6 +89,11 @@ public:
 
   AActor* GetActor(int32 ObjectId) const;
 
+  /** INDEX_NONE when the actor is not a spawned object. */
+  int32 FindObject(const AActor* Actor) const;
+
+  FString GetAsset(int32 ObjectId) const;
+
   bool RemoveObject(int32 ObjectId);
 
   int32 RemoveAllObjects();

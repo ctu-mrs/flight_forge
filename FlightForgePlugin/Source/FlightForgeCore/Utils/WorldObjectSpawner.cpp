@@ -254,6 +254,33 @@ AActor* UWorldObjectSpawner::GetActor(const int32 ObjectId) const
 
 /* //} */
 
+/* FindObject() //{ */
+
+int32 UWorldObjectSpawner::FindObject(const AActor* Actor) const
+{
+  for (const auto& [ObjectId, Record] : SpawnedObjects)
+  {
+    if (Actor && Record.Actor == Actor)
+    {
+      return ObjectId;
+    }
+  }
+
+  return INDEX_NONE;
+}
+
+/* //} */
+
+/* GetAsset() //{ */
+
+FString UWorldObjectSpawner::GetAsset(const int32 ObjectId) const
+{
+  const FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
+  return Record ? Record->Asset : FString();
+}
+
+/* //} */
+
 /* RemoveObject() //{ */
 
 bool UWorldObjectSpawner::RemoveObject(const int32 ObjectId)

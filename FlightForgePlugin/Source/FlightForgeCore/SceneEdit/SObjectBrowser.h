@@ -34,6 +34,8 @@ public:
 
   void SetStatus(const FText& InStatus);
 
+  void SetSelection(const FText& InSelection);
+
 private:
   using FItem = TSharedPtr<FLibraryObject>;
 
@@ -69,6 +71,7 @@ private:
   int32              Total    = 0;
   int32              Revision = -1;
   FText              Status;
+  FText              Selection;
 
   TSharedPtr<STileView<FItem>>       Tiles;
   TSharedPtr<SSearchBox>             SearchBox;
