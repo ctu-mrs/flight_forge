@@ -48,8 +48,15 @@ public:
 
   const FLibraryObject* Find(const FString& SpawnName) const;
 
-  /** Case-insensitive filter over id, class and description; an empty library or class matches all. */
+  /** Every word of the filter must appear in the id, class or description, ignoring case; an empty library or class matches all. */
   TArray<FLibraryObject> Search(const FString& Library, const FString& Class, const FString& Filter, int32 Offset, int32 Limit, int32& OutTotal) const;
+
+  TArray<FString> Libraries() const;
+
+  /** Each class in a library (all of them when empty) with its object count, sorted by name. */
+  TArray<TPair<FString, int32>> Classes(const FString& Library) const;
+
+  int32 GetRevision() const { return Revision; }
 
   static constexpr const TCHAR* Prefix = TEXT("lib:");
 
@@ -60,6 +67,8 @@ private:
 
   TArray<FLibraryObject> Objects;
   TMap<FString, int32>   BySpawnName;
+
+  int32 Revision = 0;
 };
 
 /* //} */

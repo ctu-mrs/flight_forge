@@ -244,6 +244,16 @@ bool UWorldObjectSpawner::HasObject(const int32 ObjectId) const
 
 /* //} */
 
+/* GetActor() //{ */
+
+AActor* UWorldObjectSpawner::GetActor(const int32 ObjectId) const
+{
+  const FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
+  return Record && IsValid(Record->Actor) ? Record->Actor.Get() : nullptr;
+}
+
+/* //} */
+
 /* RemoveObject() //{ */
 
 bool UWorldObjectSpawner::RemoveObject(const int32 ObjectId)

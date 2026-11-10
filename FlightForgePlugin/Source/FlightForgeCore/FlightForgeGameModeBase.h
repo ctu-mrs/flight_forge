@@ -883,7 +883,7 @@ public:
 		return ObjectLibrary.Load(Path, OutCount, OutError);
 	}
 
-	TArray<FLibraryObject> SearchLibrary(const FString& Library, const FString& Class, const FString& Filter, const int32 Offset, const int32 Limit, int32& OutTotal)
+	const FObjectLibrary& GetObjectLibrary()
 	{
 		if (!bProjectAssetsListed)
 		{
@@ -892,7 +892,12 @@ public:
 			bProjectAssetsListed = true;
 		}
 
-		return ObjectLibrary.Search(Library, Class, Filter, Offset, Limit, OutTotal);
+		return ObjectLibrary;
+	}
+
+	TArray<FLibraryObject> SearchLibrary(const FString& Library, const FString& Class, const FString& Filter, const int32 Offset, const int32 Limit, int32& OutTotal)
+	{
+		return GetObjectLibrary().Search(Library, Class, Filter, Offset, Limit, OutTotal);
 	}
 
 	/* //} */

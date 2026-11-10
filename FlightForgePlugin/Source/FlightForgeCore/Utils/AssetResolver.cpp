@@ -102,10 +102,11 @@ const TCHAR* CombineSceneMeshes(FglTFRuntimeParser& Parser, FglTFRuntimeMeshLOD&
       continue;
     }
 
+    // a mesh with line or point primitives does not load; the rest of the model still can
     FglTFRuntimeMeshLOD LOD;
     if (!Parser.LoadMeshAsRuntimeLOD(Node.MeshIndex, LOD, FglTFRuntimeMaterialsConfig()))
     {
-      return TEXT("has a mesh that does not load");
+      continue;
     }
 
     FTransform       Transform = Node.Transform;
@@ -126,7 +127,7 @@ const TCHAR* CombineSceneMeshes(FglTFRuntimeParser& Parser, FglTFRuntimeMeshLOD&
     }
   }
 
-  return OutCombined.Primitives.IsEmpty() ? TEXT("has no meshes") : nullptr;
+  return OutCombined.Primitives.IsEmpty() ? TEXT("has no meshes that load") : nullptr;
 }
 
 /* //} */

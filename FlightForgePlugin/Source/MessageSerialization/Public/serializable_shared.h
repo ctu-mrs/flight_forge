@@ -2958,7 +2958,7 @@ namespace ListLibrary
   {
     Request() : Common::NetworkRequest(MessageType::list_library){};
 
-    // Empty strings match everything; filter is a case-insensitive substring of id, class or description.
+    // Empty strings match everything; each word of filter must appear in the id, class or description, ignoring case.
     std::string library;
     std::string cls;
     std::string filter;

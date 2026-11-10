@@ -1,5 +1,6 @@
 #include "ObjectLibrary.h"
 
+#include "Algo/AllOf.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -195,6 +196,8 @@ void FObjectLibrary::Replace(const FString& Library, TArray<FLibraryObject>&& Ne
   {
     BySpawnName.Add(Objects[Index].SpawnName, Index);
   }
+
+  Revision++;
 }
 
 /* //} */
@@ -219,6 +222,9 @@ TArray<FLibraryObject> FObjectLibrary::Search(const FString& Library, const FStr
 
   OutTotal = 0;
 
+  TArray<FString> Words;
+  Filter.ParseIntoArrayWS(Words);
+
   for (const FLibraryObject& Object : Objects)
   {
     if ((!Library.IsEmpty() && Object.Library != Library) || (!Class.IsEmpty() && !Object.Class.Equals(Class, ESearchCase::IgnoreCase)))
@@ -226,7 +232,11 @@ TArray<FLibraryObject> FObjectLibrary::Search(const FString& Library, const FStr
       continue;
     }
 
-    if (!Filter.IsEmpty() && !Object.Id.Contains(Filter) && !Object.Class.Contains(Filter) && !Object.Description.Contains(Filter))
+    const bool bMatches = Algo::AllOf(Words, [&Object](const FString& Word) {
+      return Object.Id.Contains(Word) || Object.Class.Contains(Word) || Object.Description.Contains(Word);
+    });
+
+    if (!bMatches)
     {
       continue;
     }
@@ -240,6 +250,43 @@ TArray<FLibraryObject> FObjectLibrary::Search(const FString& Library, const FStr
   }
 
   return Found;
+}
+
+/* //} */
+
+/* Libraries() //{ */
+
+TArray<FString> FObjectLibrary::Libraries() const
+{
+  TArray<FString> Names;
+
+  for (const FLibraryObject& Object : Objects)
+  {
+    Names.AddUnique(Object.Library);
+  }
+
+  return Names;
+}
+
+/* //} */
+
+/* Classes() //{ */
+
+TArray<TPair<FString, int32>> FObjectLibrary::Classes(const FString& Library) const
+{
+  TMap<FString, int32> Counts;
+
+  for (const FLibraryObject& Object : Objects)
+  {
+    if (Library.IsEmpty() || Object.Library == Library)
+    {
+      Counts.FindOrAdd(Object.Class)++;
+    }
+  }
+
+  Counts.KeySort([](const FString& A, const FString& B) { return A < B; });
+
+  return Counts.Array();
 }
 
 /* //} */

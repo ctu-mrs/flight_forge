@@ -87,6 +87,8 @@ public:
 
   bool HasObject(int32 ObjectId) const;
 
+  AActor* GetActor(int32 ObjectId) const;
+
   bool RemoveObject(int32 ObjectId);
 
   int32 RemoveAllObjects();
