@@ -16,11 +16,12 @@
 
 #include "RobotPawn.h"
 #include "SimClock.h"
-#include "Server/FlightForgeGameModeServer.h"
+#include "Server/SimServer.h"
 #include "HAL/FileManager.h"
 #include "Utils/ObjectLibrary.h"
 #include "Utils/SpawnConfig.h"
 #include "Utils/WorldObjectSpawner.h"
+#include "Utils/WireFrame.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -101,12 +102,6 @@ private:
 		}
 
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>>();
-
-		// Per-drone servers start at "-FlightForgeDroneStartPort=<port>" (default 4000) and
-		// increment per spawned drone. Overrides the NextDronePort member initializer.
-		FParse::Value(FCommandLine::Get(), TEXT("FlightForgeDroneStartPort="), NextDronePort);
-
-		UE_LOG(LogTemp, Warning, TEXT("FlightForge: drone start port %d"), NextDronePort);
 	}
 
 	// Must be used in order to tell UE that there will be more players - drones
@@ -138,11 +133,11 @@ private:
 			DefaultPawnClass = RobotPawnClass;
 		}
 
-		UFlightForgeGameInstance* MyGameInstance = Cast<UFlightForgeGameInstance>(GetGameInstance());
-		if (MyGameInstance && MyGameInstance->Server)
+		GroundOrigin = FindGroundOrigin();
+
+		if (FSimServer* Server = GetServer())
 		{
-			MyGameInstance->Server->SetCurrentGameMode(this);
-			UE_LOG(LogTemp, Log, TEXT("GameMode connected to server!"));
+			Server->AttachGameMode(this);
 		}
 
 		FString NextMapNameStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapName"));
@@ -158,21 +153,6 @@ private:
 			UE_LOG(LogTemp, Warning, TEXT("Starting game mode server (Normal Map)"));
 			InitializeDronePool();
 		}
-		// if(GEngine->GetCurrentPlayWorld()->GetName().Equals("Forest"))
-		// {
-		// 	
-		// }else
-		// {
-		// SwitchWorldLevel(Serializable::GameMode::WorldLevelEnum::FOREST);
-		// }
-		
-		//FVector L = FVector::Zero();
-		// for(int i = 0; i < 20; i++)
-		// {
-		// 	SpawnDroneAtLocation(L);
-		// 	L.X += 200;
-		// }
-		//SpawnDrone();
 	}
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override
@@ -180,10 +160,10 @@ private:
 		SetLockstep(false);
 		SetFixedTimestep(0.0, 0.0);
 
-		UFlightForgeGameInstance* MyGameInstance = Cast<UFlightForgeGameInstance>(GetGameInstance());
-		if (MyGameInstance && MyGameInstance->Server)
+		// a connection may be waiting on an instruction only this thread runs
+		if (FSimServer* Server = GetServer())
 		{
-			MyGameInstance->Server->SetCurrentGameMode(nullptr);
+			Server->DetachGameMode(this, [this]() { PumpInstructions(); });
 		}
 
 		Super::EndPlay(EndPlayReason);
@@ -196,13 +176,7 @@ private:
 		// pause only changes inside the drain below, so on entry it says whether the world ticks this frame
 		const bool bPausedFrame = World && World->IsPaused();
 
-		std::shared_ptr<FInstruction<AFlightForgeGameModeBase>> Instruction;
-		while(InstructionQueue->Dequeue(Instruction))
-		{
-			//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::Tick got Instruction"));
-			Instruction->Function(*this);
-			Instruction->Finished = true;
-		}
+		PumpInstructions();
 
 		if (bLockstep.load())
 		{
@@ -244,12 +218,36 @@ private:
 		Super::Tick(DeltaSeconds);
 	}
 
-	int NextDronePort = 4000;
-	
-	int GetAvailableDronePort()
+	void PumpInstructions()
 	{
-		return NextDronePort++;
+		std::shared_ptr<FInstruction<AFlightForgeGameModeBase>> Instruction;
+		while (InstructionQueue->Dequeue(Instruction))
+		{
+			Instruction->Function(*this);
+			Instruction->Finished = true;
+		}
 	}
+
+	FSimServer* GetServer() const
+	{
+		const UFlightForgeGameInstance* Instance = Cast<UFlightForgeGameInstance>(GetGameInstance());
+		return Instance ? Instance->Server.get() : nullptr;
+	}
+
+	// the "UAV" PlayerStart lowered onto the floor it stands on, or the level origin
+	FVector FindGroundOrigin()
+	{
+		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
+		if (!PlayerStart)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase: no PlayerStart tagged \"UAV\", the ground frame sits at the level origin"));
+			return FVector::ZeroVector;
+		}
+
+		return PlayerStart->GetActorLocation() - FVector(0, 0, FWireFrame::PlayerStartHeightCm);
+	}
+
+	FVector GroundOrigin = FVector::ZeroVector;
 
 	void InitializeDronePool()
 	{
@@ -279,57 +277,6 @@ private:
 	}
 
 public:
-	void GetDronePorts(std::vector<int>& Ports)
-	{
-		TArray<int> Keys;
-		
-		RobotPawnsCriticalSection->Lock();
-		const auto PawnsCount = RobotPawns.Num();
-		RobotPawns.GetKeys(Keys);
-		RobotPawnsCriticalSection->Unlock();
-
-		Ports.resize(PawnsCount);
-		std::copy_n(Keys.GetData(), PawnsCount, Ports.begin());
-	}
-	
-	int SpawnDrone()
-	{
-		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
-		ARobotPawn* PlayerPawn = nullptr;
-		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
-
-		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone"));
-
-		if (PlayerStart == nullptr)
-		{
-			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: no PlayerStart in the level, use SpawnDroneAtLocation instead"));
-			return -1;
-		}
-
-		if (PlayerPawn == nullptr)
-		{
-			PlayerPawn = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
-			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at PlayerStart"));
-		}
-
-		if (PlayerPawn == nullptr)
-		{
-			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: DefaultPawnClass is not an ARobotPawn, nothing spawned"));
-			return -1;
-		}
-
-		const auto DronePort = GetAvailableDronePort();
-		PlayerPawn->droneServer->SetPort(DronePort);
-		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
-		PlayerPawn->StartServer();
-
-		RobotPawnsCriticalSection->Lock();
-		RobotPawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
-		RobotPawnsCriticalSection->Unlock();
-
-		return PlayerPawn->droneServer->GetPort();
-	}
-
 	/* LiftOntoSurface() //{ */
 
 	// landscape collision is one-sided, so a drone asked for below the terrain falls through
@@ -355,7 +302,7 @@ public:
 			}
 
 			const FVector Lifted = FVector(Location.X, Location.Y, *Height + ClearanceCm);
-			UE_LOG(LogTemp, Warning, TEXT("SpawnDroneAtLocation: %s is under the terrain, spawning at %s instead"), *Location.ToCompactString(),
+			UE_LOG(LogTemp, Warning, TEXT("SpawnRobot: %s is under the terrain, spawning at %s instead"), *Location.ToCompactString(),
 			       *Lifted.ToCompactString());
 
 			return Lifted;
@@ -366,83 +313,102 @@ public:
 
 	/* //} */
 
-	int SpawnDroneAtLocation(FVector Location, std::string MeshName)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation at location: %lf, %lf, %lf [mesh %s]"), Location.X, Location.Y, Location.Z, *FString(MeshName.c_str()));
+	/* robots //{ */
 
-		Location = LiftOntoSurface(Location);
-		
+	ARobotPawn* SpawnRobot(const FTransform& Transform, const FString& Name, const FString& Label)
+	{
+		const FVector Location = LiftOntoSurface(Transform.GetLocation());
+
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: spawning %s '%s' at %s"), *Name, *Label, *Location.ToCompactString());
+
 		FPooledDrone ReadyDrone;
 		if (DronePool.Num() > 0)
 		{
 			ReadyDrone = DronePool.Pop();
-			
-			ReadyDrone.Pawn->SetActorLocation(Location);
-			
+
+			ReadyDrone.Pawn->SetActorLocationAndRotation(Location, Transform.GetRotation());
 			ReadyDrone.Pawn->SetActorHiddenInGame(false);
 			ReadyDrone.Pawn->SetActorEnableCollision(true);
 			ReadyDrone.Pawn->SetActorTickEnabled(true);
-        
-			UE_LOG(LogTemp, Log, TEXT("Drone taken from a pool"));
 
-			//new drone to pool
-			auto Instruction = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
-			Instruction->Function = [](AFlightForgeGameModeBase& _GameMode)
-			{
-				_GameMode.SpawnDroneToPool();
-			};
+			auto Instruction      = std::make_shared<FInstruction<AFlightForgeGameModeBase>>();
+			Instruction->Function = [](AFlightForgeGameModeBase& _GameMode) { _GameMode.SpawnDroneToPool(); };
 			InstructionQueue->Enqueue(Instruction);
-			
 		}
 		else
 		{
 			ReadyDrone.Controller = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
-			ReadyDrone.Pawn = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Location)));
-			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at defined Location"));
+			ReadyDrone.Pawn       = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Transform.GetRotation(), Location)));
 		}
 
 		if (ReadyDrone.Pawn == nullptr)
 		{
-			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation: DefaultPawnClass is not an ARobotPawn, nothing spawned"));
-			return -1;
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnRobot: DefaultPawnClass is not an ARobotPawn, nothing spawned"));
+			return nullptr;
 		}
 
-		const auto DronePort = GetAvailableDronePort();
-		ReadyDrone.Pawn->droneServer->SetPort(DronePort);
-		ReadyDrone.Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
-		ReadyDrone.Pawn->StartServer();
-		ReadyDrone.Pawn->SetStaticMesh(MeshName);
-		ReadyDrone.Pawn->Simulate_UE_Physics(3.0f);
-		
+		ARobotPawn* Pawn   = ReadyDrone.Pawn;
+		Pawn->RobotId      = FSimServer::AllocateRobotId();
+		Pawn->RobotName    = Name;
+		Pawn->Label        = Label;
+		Pawn->GroundOrigin = GroundOrigin;
+		Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
+		Pawn->SetStaticMesh(std::string(TCHAR_TO_UTF8(*Name)));
+		Pawn->WireKind = Name.Contains(TEXT("wing")) ? 2 : (Pawn->PropellerLinkNames().Num() > 0 ? 1 : 0);
+		Pawn->Simulate_UE_Physics(3.0f);
+
 		RobotPawnsCriticalSection->Lock();
-		RobotPawns.Add(DronePort, std::make_pair(ReadyDrone.Pawn, ReadyDrone.Controller));
+		RobotPawns.Add(Pawn->RobotId, std::make_pair(Pawn, ReadyDrone.Controller));
 		RobotPawnsCriticalSection->Unlock();
 
-		if(!bMutualDroneVisibilityEnabled_)
+		if (FSimServer* Server = GetServer())
 		{
-			ReadyDrone.Pawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
+			Server->RegisterRobot(Pawn);
+		}
+
+		if (!bMutualDroneVisibilityEnabled_)
+		{
+			Pawn->SetVisibilityOtherDrones(bMutualDroneVisibilityEnabled_);
 			UpdateMutualVisibility();
 		}
 
-		return ReadyDrone.Pawn->droneServer->GetPort();
+		return Pawn;
 	}
 
-	bool RemoveDrone(int Port)
+	bool RemoveRobot(const int32 RobotId)
 	{
-		//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::RemoveDrone"));
-		
 		RobotPawnsCriticalSection->Lock();
-		auto DronePair = RobotPawns.Find(Port);
-		if(DronePair)
+		std::pair<ARobotPawn*, APlayerController*> Pair(nullptr, nullptr);
+		if (const auto* Entry = RobotPawns.Find(RobotId))
 		{
-			DronePair->second->Destroy();
-			DronePair->first->Destroy();
+			Pair = *Entry;
 		}
-		const bool Success = RobotPawns.Remove(Port) > 0;
+		RobotPawns.Remove(RobotId);
 		RobotPawnsCriticalSection->Unlock();
 
-		return Success;
+		if (!Pair.first)
+		{
+			return false;
+		}
+
+		if (Pair.second)
+		{
+			Pair.second->Destroy();
+		}
+		Pair.first->Destroy();
+		return true;
 	}
+
+	ARobotPawn* FindRobotPawn(const int32 RobotId)
+	{
+		RobotPawnsCriticalSection->Lock();
+		const auto* Entry = RobotPawns.Find(RobotId);
+		ARobotPawn* Pawn  = Entry ? Entry->first : nullptr;
+		RobotPawnsCriticalSection->Unlock();
+		return Pawn;
+	}
+
+	/* //} */
 
 	CameraCaptureModeEnum GetCaptureMode()
 	{
@@ -651,14 +617,10 @@ public:
 
 	void GetAllDronesLocation(std::vector<FVector>& Positions)
 	{
-		TArray<int> DronePorts;
-		
 		RobotPawnsCriticalSection->Lock();
-		RobotPawns.GetKeys(DronePorts);
-		for (const auto DronePort : DronePorts)
+		for (const auto& Entry : RobotPawns)
 		{
-			auto RobotPawn = RobotPawns.Find(DronePort)->first;
-			Positions.push_back(RobotPawn->GetActorLocation());
+			Positions.push_back(Entry.Value.first->GetActorLocation());
 		}
 		RobotPawnsCriticalSection->Unlock();
 	}
@@ -685,10 +647,8 @@ public:
 	}
 
 	//UFUNCTION(BlueprintCallable)
-	bool SwitchWorldLevel(const std::string& WorldLevelName)
+	bool SwitchWorldLevel(const FString& WorldLevelStr)
 	{
-		const FString WorldLevelStr = FString(WorldLevelName.c_str());
-
 		// full package path: preload the map through the Entry level for a fast switch
 		if (WorldLevelStr.Contains(TEXT("/")))
 		{
@@ -739,27 +699,10 @@ public:
 		}
 	}
 
-	ARobotPawn* FindRobotPawn(const int Port)
+	// Unreal cm; set at BeginPlay, read by any thread
+	FVector GetGroundOrigin() const
 	{
-		RobotPawnsCriticalSection->Lock();
-		const auto* Entry = RobotPawns.Find(Port);
-		ARobotPawn* Pawn  = Entry ? Entry->first : nullptr;
-		RobotPawnsCriticalSection->Unlock();
-		return Pawn;
-	}
-
-	FVector GetWorldOrigin()
-	{
-		// A level without a PlayerStart tagged "UAV" falls back to the level origin rather
-		// than crashing; spawning is still useful in that case, just unshifted.
-		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
-		if(!PlayerStart)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase: no PlayerStart tagged \"UAV\", using the level origin"));
-			return FVector::ZeroVector;
-		}
-
-		return PlayerStart->GetActorLocation();
+		return GroundOrigin;
 	}
 
 	/* object spawning //{ */
@@ -777,7 +720,7 @@ public:
 
 	TArray<int32> SpawnObjectsFromConfig(const FSpawnConfig& Config, const FSpawnBatchPtr& Batch = nullptr)
 	{
-		return GetObjectSpawner()->SpawnFromConfig(GetWorld(), Config, GetWorldOrigin(), Batch);
+		return GetObjectSpawner()->SpawnFromConfig(GetWorld(), Config, GroundOrigin, Batch);
 	}
 
 	// Used by the spawn_objects_from_yaml command, where the document arrives over the
@@ -816,19 +759,19 @@ public:
 		return GetObjectSpawner()->RemoveAllObjects();
 	}
 
-	bool MoveSpawnedObject(const int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale)
+	bool MoveSpawnedObject(const int32 ObjectId, const FTransform& BaseTransform)
 	{
-		return GetObjectSpawner()->MoveObject(ObjectId, Position, Orientation, Scale, GetWorldOrigin());
+		return GetObjectSpawner()->MoveObject(ObjectId, BaseTransform);
 	}
 
 	TArray<FSpawnedObjectState> ListSpawnedObjects()
 	{
-		return GetObjectSpawner()->ListObjects(GetWorldOrigin());
+		return GetObjectSpawner()->ListObjects();
 	}
 
 	FString ExportSceneYaml()
 	{
-		return GetObjectSpawner()->ExportScene(GetWorldOrigin());
+		return GetObjectSpawner()->ExportScene(GroundOrigin);
 	}
 
 	TArray<FString> ListSpawnableAssets(const FString& PathPrefix, const FString& NameFilter, const int32 MaxResults, bool& bOutTruncated)

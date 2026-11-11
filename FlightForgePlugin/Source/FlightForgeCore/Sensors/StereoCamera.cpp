@@ -2,7 +2,7 @@
 
 #include "TextureResource.h"
 
-#include "Serialize.h"
+#include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
 #include "RenderingThread.h"
 
@@ -278,7 +278,7 @@ void UStereoCamera::DrainReadback()
 	}
 }
 
-bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double& stamp)
+bool UStereoCamera::GetStereoCameraDataFromServerThread(FCameraFrame& OutLeft, FCameraFrame& OutRight)
 {
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
@@ -315,7 +315,8 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 		RawLeft           = CameraBuffer;
 		RawRight          = StereoRightCameraBuffer;
 		RawSize           = CameraBufferSize;
-		stamp             = stamp_;
+		OutLeft.Stamp     = stamp_;
+		OutRight.Stamp    = stamp_;
 		LUT               = DistortionLUT;
 		CompressionConfig = stereo_camera_config_.Compression;
 
@@ -332,163 +333,105 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(TArray<uint8>& image_lef
 		RawSize  = LUT->OutputSize;
 	}
 
-	CompressFrame(RawLeft, RawSize, CompressionConfig, false, image_left);
-	CompressFrame(RawRight, RawSize, CompressionConfig, false, image_right);
+	CompressFrame(RawLeft, RawSize, CompressionConfig, false, OutLeft);
+	CompressFrame(RawRight, RawSize, CompressionConfig, false, OutRight);
 
 	return true;
 }
 
-void UStereoCamera::GetConfig(std::stringstream& OutputStream)
+/* wire //{ */
+
+void UStereoCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetStereoCameraConfig::Response ResponseStereo(true);
-	ResponseStereo.config = Serializable::Drone::StereoCameraConfig{};
+	const FStereoCameraConfig& C = stereo_camera_config_;
 
-	ResponseStereo.config.show_debug_camera_= stereo_camera_config_.ShowCameraComponent;
+	flightforge::wire::StereoCameraConfigT Table;
+	Table.show_debug_camera  = C.ShowCameraComponent;
+	Table.mount_left         = FSensorWire::Mount(C.Offset_left, C.Orientation_left);
+	Table.mount_right        = FSensorWire::Mount(C.Offset_right, C.Orientation_right);
+	Table.fov                = C.FOVAngle;
+	Table.width              = C.Width;
+	Table.height             = C.Height;
+	Table.enable_temporal_aa = C.enable_temporal_aa;
+	Table.enable_raytracing  = C.enable_raytracing;
+	Table.enable_hdr         = C.enable_hdr;
+	Table.intrinsics         = FSensorWire::Intrinsics(C.Intrinsics.UseCustom, EffectiveIntrinsics(C.Intrinsics, C.FOVAngle, C.Width, C.Height));
+	Table.distortion         = FSensorWire::Distortion(C.Distortion);
+	Table.encoding           = FSensorWire::Encoding(C.Compression);
+	Table.capture_rate       = C.CaptureRate;
 
-	ResponseStereo.config.offset_x_left_ = stereo_camera_config_.Offset_left.X;
-	ResponseStereo.config.offset_y_left_ = stereo_camera_config_.Offset_left.Y;
-	ResponseStereo.config.offset_z_left_ = stereo_camera_config_.Offset_left.Z;
-
-	ResponseStereo.config.offset_x_right_ = stereo_camera_config_.Offset_right.X;
-	ResponseStereo.config.offset_y_right_ = stereo_camera_config_.Offset_right.Y;
-	ResponseStereo.config.offset_z_right_ = stereo_camera_config_.Offset_right.Z;
-
-	ResponseStereo.config.rotation_pitch_left_ = stereo_camera_config_.Orientation_left.Pitch;
-	ResponseStereo.config.rotation_yaw_left_ = stereo_camera_config_.Orientation_left.Yaw;
-	ResponseStereo.config.rotation_roll_left_ = stereo_camera_config_.Orientation_left.Roll;
-
-	ResponseStereo.config.rotation_pitch_right_ = stereo_camera_config_.Orientation_right.Pitch;
-	ResponseStereo.config.rotation_yaw_right_ = stereo_camera_config_.Orientation_right.Yaw;
-	ResponseStereo.config.rotation_roll_right_ = stereo_camera_config_.Orientation_right.Roll;
-
-	ResponseStereo.config.fov_ = stereo_camera_config_.FOVAngle;
-
-	ResponseStereo.config.width_ = stereo_camera_config_.Width;
-	ResponseStereo.config.capture_rate_ = stereo_camera_config_.CaptureRate;
-	ResponseStereo.config.height_ = stereo_camera_config_.Height;
-
-	ResponseStereo.config.enable_temporal_aa_ = stereo_camera_config_.enable_temporal_aa;
-	ResponseStereo.config.enable_hdr_ = stereo_camera_config_.enable_hdr;
-	ResponseStereo.config.enable_raytracing_ = stereo_camera_config_.enable_raytracing;
-
-	const FCameraIntrinsics Effective =
-	    EffectiveIntrinsics(stereo_camera_config_.Intrinsics, stereo_camera_config_.FOVAngle, stereo_camera_config_.Width, stereo_camera_config_.Height);
-	ResponseStereo.config.intrinsics_.use_custom_ = stereo_camera_config_.Intrinsics.UseCustom;
-	ResponseStereo.config.intrinsics_.fx_         = Effective.Fx;
-	ResponseStereo.config.intrinsics_.fy_         = Effective.Fy;
-	ResponseStereo.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
-	ResponseStereo.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
-
-	ResponseStereo.config.distortion_.enable_ = stereo_camera_config_.Distortion.Enable;
-	ResponseStereo.config.distortion_.k1_     = stereo_camera_config_.Distortion.K1;
-	ResponseStereo.config.distortion_.k2_     = stereo_camera_config_.Distortion.K2;
-	ResponseStereo.config.distortion_.k3_     = stereo_camera_config_.Distortion.K3;
-	ResponseStereo.config.distortion_.p1_     = stereo_camera_config_.Distortion.P1;
-	ResponseStereo.config.distortion_.p2_     = stereo_camera_config_.Distortion.P2;
-
-	ResponseStereo.config.compression_.format_ =
-	    stereo_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
-	ResponseStereo.config.compression_.quality_ = stereo_camera_config_.Compression.Quality;
-
-	Serialization::DeserializeResponse(ResponseStereo, OutputStream);
-	UE_LOG(LogTemp, Warning, TEXT("Got CameraStereo config"));
+	const auto Offset = flightforge::wire::CreateStereoCameraConfig(Reply.Builder, &Table);
+	Reply.Set(flightforge::wire::CreateGetStereoCameraConfigResponse(Reply.Builder, Offset));
 }
 
-void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void UStereoCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetStereoCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
-
-	FStereoCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
-
-	Config.Offset_left = FVector(Request.config.offset_x_left_, Request.config.offset_y_left_, Request.config.offset_z_left_);
-	Config.Offset_right = FVector(Request.config.offset_x_right_, Request.config.offset_y_right_, Request.config.offset_z_right_);
-	Config.Orientation_left = FRotator(Request.config.rotation_pitch_left_, Request.config.rotation_yaw_left_, Request.config.rotation_roll_left_);
-	Config.Orientation_right = FRotator(Request.config.rotation_pitch_right_, Request.config.rotation_yaw_right_, Request.config.rotation_roll_right_);
-
-	Config.FOVAngle = Request.config.fov_;
-
-	Config.Width = Request.config.width_;
-	Config.CaptureRate = Request.config.capture_rate_;
-	Config.Height = Request.config.height_;
-
-	Config.enable_hdr = Request.config.enable_hdr_;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
-	Config.enable_raytracing = Request.config.enable_raytracing_;
-
-	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
-	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
-	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
-
-	Config.Distortion.Enable = Request.config.distortion_.enable_;
-	Config.Distortion.K1     = Request.config.distortion_.k1_;
-	Config.Distortion.K2     = Request.config.distortion_.k2_;
-	Config.Distortion.K3     = Request.config.distortion_.k3_;
-	Config.Distortion.P1     = Request.config.distortion_.p1_;
-	Config.Distortion.P2     = Request.config.distortion_.p2_;
-
-	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
-	Config.Compression.Quality = Request.config.compression_.quality_;
-
-	bool Status = false;
-
-	// auto Instruction = std::make_shared<FInstruction<ARobotPawn>>();
-	//
-	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ARobotPawn& _ARobotPawn) {
-	// 	Status = _ARobotPawn.SetStereoCameraConfig(Config, ID);
-	// };
-	//
-	// Owner->InstructionQueue->Enqueue(Instruction);
-	
-	auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
-	Instruction->Function = [&Config, &Status](UStereoCamera& _UStereoCamera)
+	const flightforge::wire::SetStereoCameraConfigRequest* Set = Request.body_as_SetStereoCameraConfigRequest();
+	if (!Set || !Set->config())
 	{
-		Status = _UStereoCamera.SetStereoCameraConfig(Config);
-	};
-	InstructionQueue->Enqueue(Instruction);
-		
-	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
-
-	Serializable::Drone::SetStereoCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
-	UE_LOG(LogTemp, Log, TEXT("Set Stereo Camera config"));
-}
-
-void UStereoCamera::GetData(std::stringstream& OutputStream)
-{
-	TArray<uint8> image_left_;
-	TArray<uint8> image_right_;
-	double stamp;
-	bool res = GetStereoCameraDataFromServerThread(image_left_, image_right_, stamp);
-
-	if (!res) {
-		Serializable::Drone::GetStereoCameraData::Response Response(false);
-		Serialization::DeserializeResponse(Response, OutputStream);
-
+		Reply.Fail(TEXT("set_stereo_camera_config carries no config"));
 		return;
 	}
 
-	Serializable::Drone::GetStereoCameraData::Response Response(true);
-
-	Response.image_left_ = std::vector<unsigned char>(image_left_.Num());
-	Response.image_right_ = std::vector<unsigned char>(image_right_.Num());
-
-	// TODO
-	// std::copy(CompressedBitmap.begin(), CompressedBitmap.end(), std::back_inserter(Response->imageData));
-	for(int i = 0; i < image_left_.Num(); i++) {
-		Response.image_left_[i] = image_left_[i];
+	const std::unique_ptr<flightforge::wire::StereoCameraConfigT> In(Set->config()->UnPack());
+	if (!FSensorWire::ValidPinhole(In->fov, In->width, In->height, Reply))
+	{
+		return;
 	}
 
-	for(int i = 0; i < image_right_.Num(); i++) {
-		Response.image_right_[i] = image_right_[i];
+	FStereoCameraConfig Config;
+	Config.ShowCameraComponent = In->show_debug_camera;
+	FSensorWire::Mount(In->mount_left, Config.Offset_left, Config.Orientation_left);
+	FSensorWire::Mount(In->mount_right, Config.Offset_right, Config.Orientation_right);
+	Config.FOVAngle           = In->fov;
+	Config.Width              = In->width;
+	Config.Height             = In->height;
+	Config.enable_temporal_aa = In->enable_temporal_aa;
+	Config.enable_raytracing  = In->enable_raytracing;
+	Config.enable_hdr         = In->enable_hdr;
+	Config.Intrinsics         = FSensorWire::Intrinsics(In->intrinsics.get());
+	Config.Distortion         = FSensorWire::Distortion(In->distortion.get());
+	Config.Compression        = FSensorWire::Encoding(In->encoding.get());
+	Config.CaptureRate        = In->capture_rate;
+
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](UStereoCamera& Camera) { bApplied = Camera.SetStereoCameraConfig(Config); });
+
+	if (!bApplied)
+	{
+		Reply.Fail(TEXT("the stereo camera rejected the config"));
 	}
-
-	Response.stamp_ = stamp;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
 }
 
+// the pose places the left eye; the right keeps its offset from it
+void UStereoCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](UStereoCamera& Camera) {
+		FStereoCameraConfig Config   = Camera.stereo_camera_config_;
+		const FTransform    OldLeft(Config.Orientation_left, Config.Offset_left);
+		const FTransform    NewLeft(Rotation, OffsetCm);
+		const FTransform    Right    = FTransform(Config.Orientation_right, Config.Offset_right).GetRelativeTransform(OldLeft) * NewLeft;
+		Config.Offset_left           = OffsetCm;
+		Config.Orientation_left      = Rotation;
+		Config.Offset_right          = Right.GetLocation();
+		Config.Orientation_right     = Right.Rotator();
+		Camera.SetStereoCameraConfig(Config);
+	});
+}
 
+void UStereoCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
+{
+	FCameraFrame Left;
+	FCameraFrame Right;
+	if (!GetStereoCameraDataFromServerThread(Left, Right))
+	{
+		Reply.Fail(TEXT("the stereo camera has no frame yet"));
+		return;
+	}
+
+	const auto LeftImage  = FSensorWire::Image(Reply, Left, FSensorWire::ColourFormat(Left.Codec));
+	const auto RightImage = FSensorWire::Image(Reply, Right, FSensorWire::ColourFormat(Right.Codec));
+	Reply.Set(flightforge::wire::CreateStereoCameraDataResponse(Reply.Builder, Left.Stamp, LeftImage, RightImage));
+}
+
+/* //} */

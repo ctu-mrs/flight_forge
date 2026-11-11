@@ -21,11 +21,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
-#include <cereal/details/helpers.hpp>
 
 #include "NaniteSceneProxy.h"
 #include "FlightForgeCore/Devices/SensorDeviceLibrary.h"
 #include "FlightForgeCore/FlightForgeGameInstance.h"
+#include "FlightForgeCore/Server/SimServer.h"
 
 
 // Sets default values
@@ -116,8 +116,6 @@ ARobotPawn::ARobotPawn() {
   ThirdPersonCameraSpringArm->SetupAttachment(RootMeshComponent);
   ThirdPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("ThirdPersonCamera"));
   ThirdPersonCamera->SetupAttachment(ThirdPersonCameraSpringArm);
-
-  droneServer = std::make_shared<DroneServer>(*this);
 }
 
 //}
@@ -147,12 +145,6 @@ void ARobotPawn::BeginPlay() {
 // }
 
 
-void ARobotPawn::StartServer() {
-  // UE_LOG(LogTemp, Warning, TEXT("Starting drone server"));
-  droneServer->Run();
-}
-
-
 void ARobotPawn::DrainInstructions() {
   std::shared_ptr<FInstruction<ARobotPawn>> Instruction;
   while (InstructionQueue->Dequeue(Instruction)) {
@@ -170,8 +162,11 @@ void ARobotPawn::DrainInstructions() {
 }
 
 void ARobotPawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
-  // the server thread may be mid-request, spinning on an instruction only this thread can run
-  droneServer->Stop([this]() { DrainInstructions(); });
+  // a connection may be mid-request, spinning on an instruction only this thread can run
+  UFlightForgeGameInstance* Instance = Cast<UFlightForgeGameInstance>(GetGameInstance());
+  if (Instance && Instance->Server) {
+    Instance->Server->ReleaseRobot(this, [this]() { DrainInstructions(); });
+  }
 
   for (auto& SensorPair : Sensors)
   {
@@ -632,10 +627,11 @@ void ARobotPawn::Tick(float DeltaSeconds) {
 
     const TArray<UStaticMeshComponent*> Propellers = AllPropellers();
 
+    // Unreal's yaw turns clockwise seen from above, the wire's rate counterclockwise
     for (int32 i = 0; i < Propellers.Num() && i < PropellerSpeeds.Num(); ++i) {
       if (IsValid(Propellers[i])) {
         const double DegreesPerSecond = FMath::RadiansToDegrees(PropellerSpeeds[i]);
-        Propellers[i]->AddLocalRotation(FRotator(0, DegreesPerSecond * DeltaSeconds, 0));
+        Propellers[i]->AddLocalRotation(FRotator(0, -DegreesPerSecond * DeltaSeconds, 0));
       }
     }
   }
@@ -700,6 +696,7 @@ int ARobotPawn::AddSensor(int SensorTypeNum){
 
     SensorsCriticalSection->Lock();
     Sensors.Add(nextSensorID, NewSensor);
+    SensorSlots.Add(nextSensorID, std::make_shared<FSensorSlot>());
     if (!DefaultSensorOfType.Contains(Type))
     {
       DefaultSensorOfType.Add(Type, nextSensorID);
@@ -724,6 +721,7 @@ bool ARobotPawn::RemoveSensor(int32 sensorID)
   {
     Sensor = *SensorPtr;
     Sensors.Remove(sensorID);
+    SensorSlots.Remove(sensorID);
 
     if (Sensor)
     {
@@ -796,6 +794,16 @@ int ARobotPawn::ResolveSensorId(SensorType Type, int RequestedID)
   SensorsCriticalSection->Unlock();
 
   return AddSensorFromServerThread(static_cast<int>(Type));
+}
+
+std::shared_ptr<FSensorSlot> ARobotPawn::FindSensorSlot(int SensorID)
+{
+  SensorsCriticalSection->Lock();
+  const std::shared_ptr<FSensorSlot>* Found = SensorSlots.Find(SensorID);
+  std::shared_ptr<FSensorSlot>        Slot  = Found ? *Found : nullptr;
+  SensorsCriticalSection->Unlock();
+
+  return Slot;
 }
 
 void ARobotPawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes)
@@ -921,7 +929,7 @@ bool ARobotPawn::AddDeviceFromServerThread(const FString& DeviceName, const FVec
   Instruction->Function = [&](ARobotPawn& Pawn) { bAdded = Pawn.AddDevice(DeviceName, MountOffset, MountRotation, bShowMesh, OutIds, OutTypes); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
 
   return bAdded;
 }
@@ -936,7 +944,7 @@ int ARobotPawn::AddSensorFromServerThread(int SensorTypeNum)
   Instruction->Function = [SensorTypeNum, &NewID](ARobotPawn& Pawn) { NewID = Pawn.AddSensor(SensorTypeNum); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
 
   return NewID;
 }
@@ -949,7 +957,7 @@ bool ARobotPawn::RemoveSensorFromServerThread(int SensorID)
   Instruction->Function = [SensorID, &bRemoved](ARobotPawn& Pawn) { bRemoved = Pawn.RemoveSensor(SensorID); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
+  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
 
   return bRemoved;
 }
@@ -980,6 +988,36 @@ TArray<UStaticMeshComponent*> ARobotPawn::AllPropellers() const
   }
 
   return Propellers;
+}
+
+/* //} */
+
+/* propellerLinkNames() //{ */
+
+TArray<FString> ARobotPawn::PropellerLinkNames() const
+{
+  TArray<FString> Names;
+
+  const TPair<UStaticMeshComponent*, const TCHAR*> Fixed[] = {
+      {PropellerRearLeft, TEXT("prop_rl")}, {PropellerRearRight, TEXT("prop_rr")}, {PropellerFrontLeft, TEXT("prop_fl")}, {PropellerFrontRight, TEXT("prop_fr")}};
+
+  for (const auto& [Propeller, Name] : Fixed)
+  {
+    if (IsValid(Propeller) && Propeller->GetStaticMesh())
+    {
+      Names.Add(Name);
+    }
+  }
+
+  for (const TObjectPtr<UStaticMeshComponent>& Propeller : DynamicPropellers)
+  {
+    if (IsValid(Propeller))
+    {
+      Names.Add(Propeller->GetName());
+    }
+  }
+
+  return Names;
 }
 
 /* //} */

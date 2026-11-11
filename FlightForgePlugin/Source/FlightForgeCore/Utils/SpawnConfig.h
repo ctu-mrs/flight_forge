@@ -7,11 +7,7 @@
 
 /* FSpawnObjectEntry //{ */
 
-/**
- * One object to place in the world. Poses are given in a right-handed (ROS) frame,
- * in metres and degrees; they are converted to Unreal's left-handed centimetres by
- * USpawnConfigUtils::ToUnrealTransform.
- */
+/** One object to place, in the ground frame (m, roll/pitch/yaw deg) or Unreal's (cm, rotator). */
 USTRUCT(BlueprintType)
 struct FLIGHTFORGECORE_API FSpawnObjectEntry
 {
@@ -65,13 +61,9 @@ struct FLIGHTFORGECORE_API FSpawnConfig
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   FVector OriginOffset = FVector::ZeroVector;
 
-  /** When true, poses are relative to the "UAV" PlayerStart rather than to the world origin. */
+  /** frame: unreal */
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
-  bool bRelativeToWorldOrigin = true;
-
-  /** With a relative frame, z = 0 is the floor under the PlayerStart, as in the ROS node. */
-  UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
-  bool bGroundFrame = false;
+  bool bUnrealFrame = false;
 
   UPROPERTY(BlueprintReadWrite, Category = "FlightForge|Spawn")
   TArray<FSpawnObjectEntry> Objects;
@@ -80,9 +72,6 @@ struct FLIGHTFORGECORE_API FSpawnConfig
 /* //} */
 
 /* USpawnConfigUtils //{ */
-
-// the ROS node's offset between the "UAV" PlayerStart and the floor
-inline constexpr double PlayerStartHeightCm = 92.12;
 
 UCLASS()
 class FLIGHTFORGECORE_API USpawnConfigUtils : public UBlueprintFunctionLibrary
@@ -97,16 +86,13 @@ public:
   UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
   static bool LoadSpawnConfigFile(const FString& FilePath, FSpawnConfig& OutConfig, FString& OutError);
 
-  /**
-   * Right-handed metres/degrees to Unreal's left-handed centimetres. The Y axis and the
-   * pitch and yaw senses are flipped; roll is unchanged.
-   */
+  /** GroundOrigin in Unreal cm. */
   UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
-  static FTransform ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, const FVector& WorldOrigin);
+  static FTransform ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, bool bUnrealFrame, const FVector& GroundOrigin);
 
-  /** Exact inverse of ToUnrealTransform (with a zero origin offset). */
+  /** Exact inverse of ToUnrealTransform into the ground frame (with a zero origin offset). */
   UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")
-  static void FromUnrealTransform(const FTransform& Transform, const FVector& WorldOrigin, FSpawnObjectEntry& OutEntry);
+  static void FromUnrealTransform(const FTransform& Transform, const FVector& GroundOrigin, FSpawnObjectEntry& OutEntry);
 
   /** Serializes a config back into the YAML schema ParseSpawnConfig reads. */
   UFUNCTION(BlueprintCallable, Category = "FlightForge|Spawn")

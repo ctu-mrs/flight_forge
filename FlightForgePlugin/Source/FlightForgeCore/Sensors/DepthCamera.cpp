@@ -3,7 +3,7 @@
 #include "TextureResource.h"
 
 #include "FlightForgeCore/RobotPawn.h"
-#include "Serialize.h"
+#include "SensorWire.h"
 
 UDepthCamera::UDepthCamera() : UCamera()
 {
@@ -216,105 +216,56 @@ bool UDepthCamera::GetDepthCameraDataFromServerThread(TArray<uint16>& OutDepthMm
 
 /* //} */
 
-/* GetData() //{ */
+/* wire //{ */
 
-void UDepthCamera::GetData(std::stringstream& OutputStream)
+void UDepthCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
 	TArray<uint16> DepthMm;
 	FIntPoint      Size;
-	double         stamp;
+	double         Stamp = 0.0;
 
-	const bool res = GetDepthCameraDataFromServerThread(DepthMm, Size, stamp);
-
-	if (!res)
+	if (!GetDepthCameraDataFromServerThread(DepthMm, Size, Stamp))
 	{
-		Serializable::Drone::GetDepthCameraData::Response Response(false);
-		Serialization::DeserializeResponse(Response, OutputStream);
+		Reply.Fail(TEXT("the depth camera has no frame yet"));
 		return;
 	}
 
-	Serializable::Drone::GetDepthCameraData::Response Response(true);
-	Response.image_.resize(DepthMm.Num());
-	for (int i = 0; i < DepthMm.Num(); i++)
-	{
-		Response.image_[i] = DepthMm[i];
-	}
-	Response.width_  = Size.X;
-	Response.height_ = Size.Y;
-	Response.stamp_  = stamp;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const auto Data  = Reply.CopyVector(reinterpret_cast<const uint8*>(DepthMm.GetData()), DepthMm.Num() * sizeof(uint16));
+	const auto Image = flightforge::wire::CreateImage(Reply.Builder, Size.X, Size.Y, flightforge::wire::PixelFormat::MONO16,
+	                                                  flightforge::wire::Compression::NONE, Data);
+	Reply.Set(flightforge::wire::CreateDepthCameraDataResponse(Reply.Builder, Stamp, Image));
 }
 
-/* //} */
-
-/* GetConfig() / SetConfig() //{ */
-
-void UDepthCamera::GetConfig(std::stringstream& OutputStream)
+void UDepthCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetRgbCameraConfig::Response Response(true);
-	Response.config = Serializable::Drone::RgbCameraConfig{};
-
-	Response.config.show_debug_camera_ = depth_camera_config_.ShowCameraComponent;
-
-	Response.config.offset_x_ = depth_camera_config_.Offset.X;
-	Response.config.offset_y_ = depth_camera_config_.Offset.Y;
-	Response.config.offset_z_ = depth_camera_config_.Offset.Z;
-
-	Response.config.rotation_pitch_ = depth_camera_config_.Orientation.Pitch;
-	Response.config.rotation_yaw_   = depth_camera_config_.Orientation.Yaw;
-	Response.config.rotation_roll_  = depth_camera_config_.Orientation.Roll;
-
-	Response.config.fov_ = depth_camera_config_.FOVAngle;
-
-	Response.config.width_  = depth_camera_config_.Width;
-	Response.config.capture_rate_ = depth_camera_config_.CaptureRate;
-	Response.config.height_ = depth_camera_config_.Height;
-
-	const FCameraIntrinsics Effective =
-	    EffectiveIntrinsics(depth_camera_config_.Intrinsics, depth_camera_config_.FOVAngle, depth_camera_config_.Width, depth_camera_config_.Height);
-	Response.config.intrinsics_.use_custom_ = depth_camera_config_.Intrinsics.UseCustom;
-	Response.config.intrinsics_.fx_         = Effective.Fx;
-	Response.config.intrinsics_.fy_         = Effective.Fy;
-	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
-	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	FSensorWire::ReplyConfig(depth_camera_config_, Reply);
 }
 
-void UDepthCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void UDepthCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetRgbCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
-
 	FRgbCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
+	if (!FSensorWire::FromWire(Request, Config, Reply))
+	{
+		return;
+	}
 
-	Config.Offset      = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](UDepthCamera& Camera) { bApplied = Camera.SetDepthCameraConfig(Config); });
 
-	Config.FOVAngle = Request.config.fov_;
+	if (!bApplied)
+	{
+		Reply.Fail(TEXT("the depth camera rejected the config"));
+	}
+}
 
-	Config.Width  = Request.config.width_;
-	Config.CaptureRate = Request.config.capture_rate_;
-	Config.Height = Request.config.height_;
-
-	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
-	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
-	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
-
-	bool Status = false;
-
-	auto Instruction      = std::make_shared<FInstruction<UDepthCamera>>();
-	Instruction->Function = [&Config, &Status](UDepthCamera& _Camera) { Status = _Camera.SetDepthCameraConfig(Config); };
-	InstructionQueue->Enqueue(Instruction);
-
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-
-	Serializable::Drone::SetRgbCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
+void UDepthCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](UDepthCamera& Camera) {
+		FRgbCameraConfig Config = Camera.depth_camera_config_;
+		Config.Offset           = OffsetCm;
+		Config.Orientation      = Rotation;
+		Camera.SetDepthCameraConfig(Config);
+	});
 }
 
 /* //} */

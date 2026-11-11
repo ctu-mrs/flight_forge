@@ -12,11 +12,18 @@
 #include "Materials/Material.h"
 #include "RHIGPUReadback.h"
 #include "Sensor.h"
+#include "MessageSerialization/Public/FlightForgeWire.h"
 
 #include "Camera.generated.h"
 
 
-using Serializable::GameMode::CameraCaptureModeEnum;
+// the wire's CaptureMode ids
+enum CameraCaptureModeEnum : unsigned short
+{
+	CAPTURE_ALL_FRAMES  = 0x0,
+	CAPTURE_ON_MOVEMENT = 0x1,
+	CAPTURE_ON_DEMAND   = 0x2,
+};
 
 /* DEFAULT_CAMERA_MOUNT //{ */
 
@@ -78,12 +85,27 @@ struct FCameraRollingShutter
 	double ReadoutTime = 0.03;  // seconds, top-to-bottom
 };
 
-// Wire encoding of a served frame. JPEG by default: PNG costs tens of milliseconds and
-// several times the bytes per frame, for detail no vision pipeline sees.
+enum class ECameraCodec : uint8
+{
+	Raw,
+	Jpeg,
+	Png,
+};
+
+// JPEG by default: PNG costs tens of milliseconds and several times the bytes per frame, for detail no vision pipeline sees
 struct FCameraCompression
 {
-	bool  bJpeg   = true;
-	int32 Quality = 90;  // 1-100, JPEG only
+	ECameraCodec Codec   = ECameraCodec::Jpeg;
+	int32        Quality = 90;  // 1-100, JPEG only
+};
+
+// a served frame: Bytes hold the codec's output, or BGRA8 rows when raw
+struct FCameraFrame
+{
+	TArray<uint8> Bytes;
+	FIntPoint     Size  = FIntPoint::ZeroValue;
+	ECameraCodec  Codec = ECameraCodec::Raw;
+	double        Stamp = 0.0;
 };
 
 // Precomputed output-pixel -> source-pixel map. The source image is an ideal pinhole
@@ -193,10 +215,10 @@ public:
 	static bool ValidDimensions(int32 Width, int32 Height);
 
 	// one CameraInfo per eye, for get_camera_info
-	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) {}
+	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) {}
 
-	static Serializable::Drone::CameraInfo PinholeInfo(int SensorId, ::SensorType Type, const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion,
-	                                                   double FovDeg, int32 Width, int32 Height, const FVector& Offset, const FRotator& Orientation);
+	static flightforge::wire::CameraInfoT PinholeInfo(int SensorId, ::SensorType Type, const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion,
+	                                                  double FovDeg, int32 Width, int32 Height, const FVector& Offset, const FRotator& Orientation);
 
 	static void ApplyProjection(USceneCaptureComponent2D* Capture, const FCameraIntrinsics& Intrinsics, double FovDeg, int32 Width, int32 Height);
 
@@ -210,7 +232,8 @@ public:
 
 	static void ApplyNoise(TArray<FColor>& Pixels, FIntPoint Size, const FCameraNoise& Noise, uint32 Seed);
 
-	static void CompressFrame(const TArray<FColor>& Pixels, FIntPoint Size, const FCameraCompression& Compression, bool bLossless, TArray<uint8>& OutBytes);
+	// bLossless turns JPEG into PNG; raw stays raw
+	static void CompressFrame(const TArray<FColor>& Pixels, FIntPoint Size, const FCameraCompression& Compression, bool bLossless, FCameraFrame& OutFrame);
 
 protected:
 	void SetupCaptureProjection(const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion, double FovDeg, int32 Width, int32 Height,
@@ -241,7 +264,7 @@ protected:
 	bool WaitForNewFrame(uint64 BaselineFrame, double TimeoutSeconds);
 
 	// server thread: waits for the capture instruction to run, then for its readback, and publishes it itself
-	bool WaitForRequestedFrame(const bool& InstructionFinished, uint64 BaselineFrame, double TimeoutSeconds);
+	bool WaitForRequestedFrame(const std::atomic<bool>& InstructionFinished, uint64 BaselineFrame, double TimeoutSeconds);
 
 	// server thread, on demand: registers the copy with the frame that will render the capture and
 	// asks for that capture, with no game tick in the loop; polls the fence and publishes itself
@@ -269,14 +292,7 @@ public:
 
 	// game thread: blocks until the frame in flight has landed
 	virtual void DrainReadback();
-	
-	virtual void GetConfig(std::stringstream& OutputStream) override;
 
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
-
-	virtual void GetData(std::stringstream& OutputStream) override;
-
-	
 protected:
 	virtual void BeginPlay() override;
 	virtual void Initialize(int InSensorID) override;

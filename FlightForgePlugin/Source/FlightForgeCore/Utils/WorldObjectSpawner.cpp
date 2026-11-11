@@ -116,7 +116,7 @@ int32 UWorldObjectSpawner::TaggedStencil(const AActor* Actor)
 
 /* SpawnFromConfig() //{ */
 
-TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin, const FSpawnBatchPtr& Batch)
+TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& GroundOrigin, const FSpawnBatchPtr& Batch)
 {
   TArray<int32> SpawnedIds;
 
@@ -131,12 +131,8 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     Resolver = NewObject<UAssetResolver>(this);
   }
 
-  FVector Origin = Config.bRelativeToWorldOrigin ? WorldOrigin : FVector::ZeroVector;
-
-  if (Config.bRelativeToWorldOrigin && Config.bGroundFrame)
-  {
-    Origin.Z -= PlayerStartHeightCm;
-  }
+  // library heights are metres, the unreal frame's positions centimetres
+  const double BaseUnit = Config.bUnrealFrame ? 100.0 : 1.0;
 
   for (const FSpawnObjectEntry& Requested : Config.Objects)
   {
@@ -153,7 +149,7 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
         Entry.Scale = FVector(Object->Scale);
       }
 
-      Entry.Position.Z += BaseZ * Entry.Scale.Z;
+      Entry.Position.Z += BaseZ * Entry.Scale.Z * BaseUnit;
     }
     else if (Requested.Asset.StartsWith(FObjectLibrary::Prefix))
     {
@@ -161,7 +157,7 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
       continue;
     }
 
-    const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, Config.OriginOffset, Origin);
+    const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, Config.OriginOffset, Config.bUnrealFrame, GroundOrigin);
 
     FString ModelFile;
     AActor* Actor = SpawnEntry(World, Entry, Config, Transform, ModelFile);
@@ -327,8 +323,7 @@ int32 UWorldObjectSpawner::RemoveAllObjects()
 
 /* MoveObject() //{ */
 
-bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale,
-                                     const FVector& WorldOrigin)
+bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FTransform& BaseTransform)
 {
   const FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
   if (!Record || !IsValid(Record->Actor))
@@ -336,14 +331,8 @@ bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FVector& Positi
     return false;
   }
 
-  FSpawnObjectEntry Entry;
-  Entry.Position    = Position;
-  Entry.Orientation = Orientation;
-  Entry.Scale       = Scale;
-
-  Entry.Position.Z += Record->BaseZ * Scale.Z;
-
-  const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, WorldOrigin);
+  FTransform Transform = BaseTransform;
+  Transform.AddToTranslation(FVector(0, 0, Record->BaseZ * BaseTransform.GetScale3D().Z * 100.0));
 
   return Record->Actor->SetActorTransform(Transform, false, nullptr, ETeleportType::TeleportPhysics);
 }
@@ -352,7 +341,7 @@ bool UWorldObjectSpawner::MoveObject(const int32 ObjectId, const FVector& Positi
 
 /* ListObjects() //{ */
 
-TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects(const FVector& WorldOrigin) const
+TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects() const
 {
   TArray<FSpawnedObjectState> States;
 
@@ -363,16 +352,12 @@ TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects(const FVector& Worl
       continue;
     }
 
-    FSpawnObjectEntry Entry;
-    USpawnConfigUtils::FromUnrealTransform(Record.Actor->GetActorTransform(), WorldOrigin, Entry);
-
     FSpawnedObjectState State;
-    State.Id          = ObjectId;
-    State.Asset       = Record.Asset;
-    State.Stencil     = Record.Stencil;
-    State.Position    = Entry.Position - FVector(0, 0, Record.BaseZ * Entry.Scale.Z);
-    State.Orientation = Entry.Orientation;
-    State.Scale       = Entry.Scale;
+    State.Id        = ObjectId;
+    State.Asset     = Record.Asset;
+    State.Stencil   = Record.Stencil;
+    State.Transform = Record.Actor->GetActorTransform();
+    State.Transform.AddToTranslation(FVector(0, 0, -Record.BaseZ * State.Transform.GetScale3D().Z * 100.0));
 
     States.Add(State);
   }
@@ -386,11 +371,9 @@ TArray<FSpawnedObjectState> UWorldObjectSpawner::ListObjects(const FVector& Worl
 
 /* ExportScene() //{ */
 
-FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
+FString UWorldObjectSpawner::ExportScene(const FVector& GroundOrigin) const
 {
   FSpawnConfig Config;
-
-  Config.bGroundFrame = true;
 
   const USegmentationTagger* Tagger = nullptr;
   for (const auto& [ObjectId, Record] : SpawnedObjects)
@@ -402,15 +385,13 @@ FString UWorldObjectSpawner::ExportScene(const FVector& WorldOrigin) const
     }
   }
 
-  for (const FSpawnedObjectState& State : ListObjects(WorldOrigin - FVector(0, 0, PlayerStartHeightCm)))
+  for (const FSpawnedObjectState& State : ListObjects())
   {
     FSpawnObjectEntry Entry;
-    Entry.Asset       = State.Asset;
-    Entry.Position    = State.Position;
-    Entry.Orientation = State.Orientation;
-    Entry.Scale       = State.Scale;
-    Entry.Stencil     = State.Stencil;
-    Entry.Class       = Tagger && State.Stencil > 0 ? Tagger->ClassPathOf(State.Stencil) : FString();
+    USpawnConfigUtils::FromUnrealTransform(State.Transform, GroundOrigin, Entry);
+    Entry.Asset   = State.Asset;
+    Entry.Stencil = State.Stencil;
+    Entry.Class   = Tagger && State.Stencil > 0 ? Tagger->ClassPathOf(State.Stencil) : FString();
 
     Config.Objects.Add(Entry);
   }

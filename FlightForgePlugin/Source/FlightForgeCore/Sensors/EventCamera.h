@@ -60,7 +60,7 @@ public:
 
 	FEventCameraConfig GetEventCameraConfig() const { return event_camera_config_; }
 
-	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) override
 	{
 		const FEventCameraConfig& C = event_camera_config_;
 		Out.push_back(PinholeInfo(GetSensorID(), GetSensorType(), FCameraIntrinsics{}, FCameraDistortion{}, C.FOVAngle, C.Width, C.Height, C.Offset, C.Orientation));
@@ -72,9 +72,10 @@ public:
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 
-	virtual void GetConfig(std::stringstream& OutputStream) override;
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
-	virtual void GetData(std::stringstream& OutputStream) override;
+	virtual void GetConfig(FWireReply& Reply) override;
+	virtual void SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) override;
 
 	virtual void BeginDestroy() override;
 

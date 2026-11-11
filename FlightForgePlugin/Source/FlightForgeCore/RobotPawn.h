@@ -2,8 +2,8 @@
 
 #pragma once
 
-//#include "FlightForgeCore/Server/DroneServer.h"
-#include "Server/DroneServer.h"
+#include <memory>
+
 #include "Instruction.h"
 #include "Sensors/Sensor.h"
 #include "Sensors/Lidar.h"
@@ -62,8 +62,6 @@ public:
   FTransform FrontRight;
 };
 
-using Serializable::GameMode::CameraCaptureModeEnum;
-
 UCLASS()
 class FLIGHTFORGECORE_API ARobotPawn : public APawn {
   GENERATED_BODY()
@@ -77,15 +75,39 @@ public:
    */
   TArray<UStaticMeshComponent*> AllPropellers() const;
 
-  /**
-   * Angular rate per propeller [rad/s], indexed as AllPropellers(). Empty hands them back
-   * to the uniform default spin. Fewer entries than propellers leaves the rest alone.
-   */
+  // the wire's joint order
+  TArray<FString> PropellerLinkNames() const;
+
+  // rad/s about each link's +z in AllPropellers() order; empty restores the default spin
   bool SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount);
 
   ARobotPawn();
-  
-  std::shared_ptr<DroneServer> droneServer;
+
+  /* identity on the wire //{ */
+
+  // assigned by the server at spawn, -1 for a pooled or unregistered pawn
+  int32 RobotId = -1;
+
+  FString Label;
+
+  // the frame or model the pawn was spawned as
+  FString RobotName;
+
+  // flightforge.wire.RobotKind
+  uint8 WireKind = 0;
+
+  // set once by the game mode at spawn, so server threads read it without the world
+  FVector GroundOrigin = FVector::ZeroVector;
+
+  FVector GroundOriginCm() const { return GroundOrigin; }
+
+  // as last set by a client: m/s in the ground frame, rad/s in the body frame
+  FVector BaseLinearVelocity  = FVector::ZeroVector;
+  FVector BaseAngularVelocity = FVector::ZeroVector;
+
+  FVector LastImpactPoint = FVector::ZeroVector;
+
+  /* //} */
 
   UPROPERTY(VisibleAnywhere, Category = "Sensors")
   TMap<int, TObjectPtr<USensor>> Sensors;
@@ -124,8 +146,6 @@ protected:
 public:
   // Called to bind functionality to input
   virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-  void StartServer();
 
   void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
 
@@ -192,6 +212,9 @@ public:
   // RequestedID does not exist or is of an incompatible type.
   int ResolveSensorId(SensorType Type, int RequestedID);
 
+  // the slot requests to SensorID queue on; null once the sensor is gone
+  std::shared_ptr<FSensorSlot> FindSensorSlot(int SensorID);
+
   void GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes);
 
   // server-thread wrappers; the actual component work hops to the game thread
@@ -215,6 +238,8 @@ private:
   std::unique_ptr<FCriticalSection> SensorsCriticalSection;
 
   TMap<SensorType, int> DefaultSensorOfType;
+
+  TMap<int, std::shared_ptr<FSensorSlot>> SensorSlots;
 
   bool bCanSeeOtherDrone = true;
 

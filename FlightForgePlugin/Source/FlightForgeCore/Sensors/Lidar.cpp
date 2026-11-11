@@ -1,5 +1,7 @@
 #include "Lidar.h"
 
+#include <limits>
+
 #include "Async/ParallelFor.h"
 #include "CollisionQueryParams.h"
 #include "Components/StaticMeshComponent.h"
@@ -9,7 +11,8 @@
 
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
-#include "Serialize.h"
+#include "FlightForgeCore/Server/WireReply.h"
+#include "FlightForgeCore/Utils/WireFrame.h"
 
 ULidar::ULidar()
 {
@@ -113,13 +116,8 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
 
     LidarConfig.Frequency = Config.Frequency;
 
-    LidarConfig.Offset.X = Config.Offset.X;
-    LidarConfig.Offset.Y = Config.Offset.Y;
-    LidarConfig.Offset.Z = Config.Offset.Z;
-
-    LidarConfig.Orientation.Pitch = Config.Orientation.Pitch;
-    LidarConfig.Orientation.Yaw   = -Config.Orientation.Yaw;
-    LidarConfig.Orientation.Roll  = -Config.Orientation.Roll;
+    LidarConfig.Offset      = Config.Offset;
+    LidarConfig.Orientation = Config.Orientation;
 
     LidarConfig.FOVVertUp   = Config.FOVVertUp;
     LidarConfig.FOVVertDown = Config.FOVVertDown;
@@ -149,9 +147,7 @@ void ULidar::ResetLivoxCursorsIfChanged(bool LivoxWas, const FString& LivoxSenso
         return;
     }
 
-    LivoxCursor    = FLivoxCursor();
-    LivoxSegCursor = FLivoxCursor();
-    LivoxIntCursor = FLivoxCursor();
+    LivoxCursor = FLivoxCursor();
 
     if (LidarConfig.Livox) {
         // Fail loudly at configuration time rather than returning empty clouds.
@@ -384,28 +380,23 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
     const bool   bProfile       = CVarLidarProfile.GetValueOnAnyThread() != 0;
     const double CastFrom       = FPlatformTime::Seconds();
 
-    Out.Stamp = CastFrom;
-    Out.Start = LidarConfig.Offset;
-
     auto       World          = Owner->GetWorld();
     const auto droneTransform = Owner->GetActorTransform();
 
-    // ROS roll convention for the raster lidar; the Livox patterns already carry it
-    FRotator correctedLidarOrientation = LidarConfig.Orientation;
-    if (!LidarConfig.Livox) {
-        correctedLidarOrientation.Roll = -correctedLidarOrientation.Roll;
-    }
+    Out.Stamp = World ? World->GetTimeSeconds() : 0.0;
 
-    const FQuat      lidarQuat     = droneTransform.GetRotation() * correctedLidarOrientation.Quaternion();
+    const FQuat      lidarQuat     = droneTransform.GetRotation() * LidarConfig.Orientation.Quaternion();
     const FVector    lidarLocation = droneTransform.TransformPosition(LidarConfig.Offset);
     const FTransform lidarGlobalTransform(lidarQuat, lidarLocation);
+
+    Out.SensorPose = lidarGlobalTransform;
 
     // hits become ids and classes after the parallel loop; the tagger is not for worker threads
     std::vector<const AActor*>             HitActors;
     std::vector<const UPrimitiveComponent*> HitComponents;
 
     auto Prepare = [&](int32 NumRays) {
-        Out.Points.assign(NumRays, Serializable::Drone::GetLidarData::LidarData{});
+        Out.Points.assign(NumRays, FVector3f(std::numeric_limits<float>::quiet_NaN()));
         Out.Intensity.assign(bWantIntensity ? NumRays : 0, -1);
         Out.ClassId.assign(bWantLabels ? NumRays : 0, -1);
         Out.InstanceId.assign(bWantLabels ? NumRays : 0, 0u);
@@ -414,14 +405,12 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
     };
 
     auto Store = [&](int32 i, double Distance, const FVector& Dir, const FHitResult& Hit, bool bHasReturn) {
-        Out.Points[i].distance   = Distance;
-        Out.Points[i].directionX = Dir.X;
-        Out.Points[i].directionY = Dir.Y;
-        Out.Points[i].directionZ = Dir.Z;
-
         if (!bHasReturn) {
             return;
         }
+
+        Out.Points[i] = FVector3f(FWireFrame::ToRightHanded(Dir.GetSafeNormal() * Distance));
+
         if (bWantIntensity) {
             const UPhysicalMaterial* PhysMat = Hit.PhysMaterial.Get();
             Out.Intensity[i]                 = PhysMat ? MaterialIntensity(PhysMat->GetName()) : -1;
@@ -433,9 +422,13 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
     };
 
     if (LidarConfig.Livox) {
+        Out.Rows = 0;
+        Out.Cols = 0;
         CastLivoxRays(Cursor, Prepare, Store, bWantIntensity);
     } else {
         const int32 NumRays = LidarConfig.BeamHorRays * LidarConfig.BeamVertRays;
+        Out.Rows            = LidarConfig.BeamVertRays;
+        Out.Cols            = LidarConfig.BeamHorRays;
         Prepare(NumRays);
 
         const FVector forwardVec  = lidarQuat.RotateVector(FVector::ForwardVector);
@@ -478,7 +471,8 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
                 }
             }
 
-            Store(rayIndex, Distance, raycastLidar, HitResult, bHasReturn);
+            // the wire's row 0 is the top beam
+            Store((LidarConfig.BeamVertRays - 1 - col) * LidarConfig.BeamHorRays + row, Distance, raycastLidar, HitResult, bHasReturn);
         });
     }
 
@@ -512,263 +506,100 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
 
 //}
 
-/* legacy per-channel messages //{ */
+/* wire //{ */
 
-void ULidar::GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp) {
-    FLidarScan S;
-    Scan(LivoxCursor, LidarChannelNone, S);
-    OutLidarData = std::move(S.Points);
-    OutStart     = S.Start;
-    OutStamp     = S.Stamp;
-}
-
-void ULidar::GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp) {
-    FLidarScan S;
-    Scan(LivoxSegCursor, LidarChannelLabels, S);
-    OutLidarSegData.resize(S.Points.size());
-    for (size_t i = 0; i < S.Points.size(); ++i) {
-        OutLidarSegData[i].distance     = S.Points[i].distance;
-        OutLidarSegData[i].directionX   = S.Points[i].directionX;
-        OutLidarSegData[i].directionY   = S.Points[i].directionY;
-        OutLidarSegData[i].directionZ   = S.Points[i].directionZ;
-        OutLidarSegData[i].segmentation = S.ClassId[i];
-    }
-    OutStart = S.Start;
-    OutStamp = S.Stamp;
-}
-
-void ULidar::GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp) {
-    FLidarScan S;
-    Scan(LivoxIntCursor, LidarChannelIntensity, S);
-    OutLidarIntData.resize(S.Points.size());
-    for (size_t i = 0; i < S.Points.size(); ++i) {
-        OutLidarIntData[i].distance   = S.Points[i].distance;
-        OutLidarIntData[i].directionX = S.Points[i].directionX;
-        OutLidarIntData[i].directionY = S.Points[i].directionY;
-        OutLidarIntData[i].directionZ = S.Points[i].directionZ;
-        OutLidarIntData[i].intensity  = S.Intensity[i];
-    }
-    OutStart = S.Start;
-    OutStamp = S.Stamp;
-}
-
-//}
-
-/* GetScan() //{ */
-
-void ULidar::GetScan(const Serializable::Drone::GetLidarScan::Request& Request, std::stringstream& OutputStream) {
-    FLidarScan S;
-    Scan(LivoxCursor, (Request.with_intensity_ ? LidarChannelIntensity : 0) | (Request.with_labels_ ? LidarChannelLabels : 0), S);
-
-    Serializable::Drone::GetLidarScan::Response Response(true);
-    Response.startX       = S.Start.X;
-    Response.startY       = S.Start.Y;
-    Response.startZ       = S.Start.Z;
-    Response.stamp_       = S.Stamp;
-    Response.points_      = std::move(S.Points);
-    Response.intensity_   = std::move(S.Intensity);
-    Response.class_id_    = std::move(S.ClassId);
-    Response.instance_id_ = std::move(S.InstanceId);
-
-    Serialization::DeserializeResponse(Response, OutputStream);
-}
-
-//}
-
-
-/* SetLidarModeWithInt() //{ */
-
-void ULidar::SetLidarModeWithInt(int type)
+void ULidar::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-    if (type < 0 || type >= static_cast<int>(FLidarMode::MAX_MODE_TYPE))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Invalid mode type"));
+    const flightforge::wire::GetLidarScanRequest* Ask = Request.body_as_GetLidarScanRequest();
+    if (!Ask) {
+        USensor::GetData(Request, Reply);
         return;
     }
-    
-    FLidarMode NewLidarMode = static_cast<FLidarMode>(type);
-    LidarMode = NewLidarMode;
+
+    FLidarScan S;
+    Scan(LivoxCursor, (Ask->with_intensity() ? LidarChannelIntensity : 0) | (Ask->with_labels() ? LidarChannelLabels : 0), S);
+
+    const FVector Origin = Owner ? Owner->GroundOriginCm() : FVector::ZeroVector;
+    const auto    Pose   = FWireFrame::ToGroundPose(S.SensorPose, Origin);
+
+    static_assert(sizeof(FVector3f) == sizeof(flightforge::wire::Vec3f));
+    const auto Points     = Reply.CopyStructs(reinterpret_cast<const flightforge::wire::Vec3f*>(S.Points.data()), S.Points.size());
+    const auto Intensity  = Reply.CopyVector(S.Intensity.data(), S.Intensity.size());
+    const auto ClassId    = Reply.CopyVector(S.ClassId.data(), S.ClassId.size());
+    const auto InstanceId = Reply.CopyVector(S.InstanceId.data(), S.InstanceId.size());
+
+    Reply.Set(flightforge::wire::CreateLidarScanResponse(Reply.Builder, S.Stamp, &Pose, S.Rows, S.Cols, Points, Intensity, ClassId, InstanceId));
 }
 
-//}
-
-/* GetConfig() //{ */
-
-void ULidar::GetConfig(std::stringstream& OutputStream)
+void ULidar::GetConfig(FWireReply& Reply)
 {
-    Serializable::Drone::GetLidarConfig::Response Response(true);
-    Response.config = Serializable::Drone::LidarConfig{};
-
-    Response.config.Enable        = LidarConfig.Enable;
-    Response.config.ShowBeams      = LidarConfig.ShowBeams;
-    Response.config.ShowSensorBody = LidarConfig.ShowSensorBody;
-    Response.config.BeamLength    = LidarConfig.BeamLength;
-    Response.config.BeamHorRays   = LidarConfig.BeamHorRays;
-    Response.config.BeamVertRays  = LidarConfig.BeamVertRays;
-    Response.config.Frequency     = LidarConfig.Frequency;
-    Response.config.OffsetX       = LidarConfig.Offset.X;
-    Response.config.OffsetY       = LidarConfig.Offset.Y;
-    Response.config.OffsetZ       = LidarConfig.Offset.Z;
-    Response.config.OrientationPitch = LidarConfig.Orientation.Pitch;
-    Response.config.OrientationYaw   = LidarConfig.Orientation.Yaw;
-    Response.config.OrientationRoll  = LidarConfig.Orientation.Roll;
-    Response.config.FOVHorLeft       = LidarConfig.FOVHorLeft;
-    Response.config.FOVHorRight      = LidarConfig.FOVHorRight;
-    Response.config.FOVVertUp        = LidarConfig.FOVVertUp;
-    Response.config.FOVVertDown      = LidarConfig.FOVVertDown;
-    Response.config.Livox            = LidarConfig.Livox;
-    Response.config.LivoxSensor      = TCHAR_TO_UTF8(*LidarConfig.LivoxSensor);
-
-    Serialization::DeserializeResponse(Response, OutputStream);
-
-    UE_LOG(LogTemp, Log, TEXT("Got lidar config"));
-}
-
-//}
-
-/* SetConfig() //{ */
-
-void ULidar::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
-{
-    Serializable::Drone::SetLidarConfig::Request Request;
-    Serialization::SerializeRequest(Request, *InputStream);
-
-    bool Status;
-    
     LidarHitsCriticalSection->Lock();
-
-    const bool    LivoxWas       = LidarConfig.Livox;
-    const FString LivoxSensorWas = LidarConfig.LivoxSensor;
-
-    LidarConfig.Enable      = Request.config.Enable;
-    LidarConfig.Livox       = Request.config.Livox;
-    LidarConfig.LivoxSensor = FString(UTF8_TO_TCHAR(Request.config.LivoxSensor.c_str()));
-    LidarConfig.ShowBeams      = Request.config.ShowBeams;
-    LidarConfig.BeamLength     = Request.config.BeamLength;
-    LidarConfig.ShowSensorBody = Request.config.ShowSensorBody;
-
-    ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
-
-    if (Request.config.BeamHorRays > 0 && Request.config.BeamVertRays > 0) {
-        LidarConfig.BeamHorRays  = Request.config.BeamHorRays;
-        LidarConfig.BeamVertRays = Request.config.BeamVertRays;
-        UE_LOG(LogTemp, Warning, TEXT("Setting LiDAR with width = %d, height %d"), LidarConfig.BeamHorRays, LidarConfig.BeamVertRays);
-    } else {
-        UE_LOG(LogTemp, Error, TEXT("Invalid dimensions for Lidar. BeamHorRays and BeamVertRays should be greater than 0."));
-    }
-
-    LidarConfig.Frequency = Request.config.Frequency;
-    
-    LidarConfig.Offset = FVector(Request.config.OffsetX, Request.config.OffsetY, Request.config.OffsetZ);
-    
-    // LidarConfig.Offset.X = Config.Offset.X;
-    // LidarConfig.Offset.Y = Config.Offset.Y;
-    // LidarConfig.Offset.Z = Config.Offset.Z;
-
-    // LidarConfig.Orientation.Pitch = Config.Orientation.Pitch;
-    // LidarConfig.Orientation.Yaw   = -Config.Orientation.Yaw;
-    // LidarConfig.Orientation.Roll  = -Config.Orientation.Roll;
-
-    LidarConfig.Orientation = FRotator(Request.config.OrientationPitch, Request.config.OrientationYaw, Request.config.OrientationRoll);
-
-    /* LidarConfig.FOVHor  = Config.FOVHor; */
-    /* LidarConfig.FOVVert = Config.FOVVert; */
-    LidarConfig.FOVVertUp   = Request.config.FOVVertUp;
-    LidarConfig.FOVVertDown = Request.config.FOVVertDown;
-    LidarConfig.FOVHorLeft  = Request.config.FOVHorLeft;
-    LidarConfig.FOVHorRight = Request.config.FOVHorRight;
-    
-    LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
-    LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)(LidarConfig.BeamHorRays);
-
+    const FLidarConfig C = LidarConfig;
     LidarHitsCriticalSection->Unlock();
 
-    UpdateSensorBody(LidarConfig.ShowSensorBody, LidarConfig.Offset, LidarConfig.Orientation, FVector(0.10, 0.10, 0.07));
+    flightforge::wire::LidarConfigT Table;
+    Table.enable           = C.Enable;
+    Table.show_beams       = C.ShowBeams;
+    Table.range_m          = C.BeamLength / 100.0;
+    Table.horizontal_rays  = C.BeamHorRays;
+    Table.vertical_rays    = C.BeamVertRays;
+    Table.frequency        = C.Frequency;
+    Table.mount            = std::make_unique<flightforge::wire::Pose>(FWireFrame::ToMountPose(C.Offset, C.Orientation));
+    Table.fov_left         = C.FOVHorLeft;
+    Table.fov_right        = C.FOVHorRight;
+    Table.fov_up           = C.FOVVertUp;
+    Table.fov_down         = C.FOVVertDown;
+    Table.livox            = C.Livox;
+    Table.livox_pattern    = TCHAR_TO_UTF8(*C.LivoxSensor);
+    Table.show_sensor_body = C.ShowSensorBody;
 
-    Status = true;
-
-
-    Serializable::Drone::SetLidarConfig::Response Response(Status);
-    Serialization::DeserializeResponse(Response, OutputStream);
+    const auto Offset = flightforge::wire::CreateLidarConfig(Reply.Builder, &Table);
+    Reply.Set(flightforge::wire::CreateGetLidarConfigResponse(Reply.Builder, Offset));
 }
 
-//}
-
-/* GetData() //{ */
-
-void ULidar::GetData(std::stringstream& OutputStream)
+void ULidar::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-    switch (LidarMode)
-    {
-        case FLidarMode::DEFAULT:
-        {
-            std::vector<Serializable::Drone::GetLidarData::LidarData> LidarData;
-            FVector Start;
-            double stamp;
-            GetLidarHits(LidarData, Start, stamp);
-
-            const bool   bProfile     = CVarLidarProfile.GetValueOnAnyThread() != 0;
-            const double MarshalFrom  = FPlatformTime::Seconds();
-
-            Serializable::Drone::GetLidarData::Response Response(true);
-            Response.lidarData = std::move(LidarData);
-            Response.startX = Start.X;
-            Response.startY = Start.Y;
-            Response.startZ = Start.Z;
-            Response.stamp_ = stamp;
-
-            const double SerializeFrom = FPlatformTime::Seconds();
-
-            Serialization::DeserializeResponse(Response, OutputStream);
-
-            if (bProfile) {
-                const double Done = FPlatformTime::Seconds();
-                UE_LOG(LogTemp, Warning, TEXT("Lidar profile: move %.1f ms, serialize %.1f ms"), 1000.0 * (SerializeFrom - MarshalFrom),
-                       1000.0 * (Done - SerializeFrom));
-            }
-            break;
-        }
-        
-        case FLidarMode::SEG:
-        {
-            std::vector<Serializable::Drone::GetLidarSegData::LidarSegData> LidarSegData;
-            FVector Start;
-            double stamp;
-            GetSegLidarHits(LidarSegData, Start, stamp);
-
-            Serializable::Drone::GetLidarSegData::Response Response(true);
-            Response.lidarSegData = LidarSegData;
-            Response.startX = Start.X;
-            Response.startY = Start.Y;
-            Response.startZ = Start.Z;
-            Response.stamp_ = stamp;
-        
-            Serialization::DeserializeResponse(Response, OutputStream);
-            break;
-        }
-        
-        case FLidarMode::INTE:
-        {
-            std::vector<Serializable::Drone::GetLidarIntData::LidarIntData> LidarIntData;
-            FVector Start;
-            double stamp;
-            GetIntLidarHits(LidarIntData, Start, stamp);
-
-            Serializable::Drone::GetLidarIntData::Response Response(true);
-            Response.lidarIntData = LidarIntData;
-            Response.startX = Start.X;
-            Response.startY = Start.Y;
-            Response.startZ = Start.Z;
-            Response.stamp_ = stamp;
-        
-            Serialization::DeserializeResponse(Response, OutputStream);
-            break;
-        }
-
-        default:
-            UE_LOG(LogTemp, Error, TEXT("Invalid Lidar Mode"));
-            break;
+    const flightforge::wire::SetLidarConfigRequest* Set = Request.body_as_SetLidarConfigRequest();
+    if (!Set || !Set->config()) {
+        Reply.Fail(TEXT("set_lidar_config carries no config"));
+        return;
     }
+
+    const std::unique_ptr<flightforge::wire::LidarConfigT> In(Set->config()->UnPack());
+    if (In->horizontal_rays == 0 || In->vertical_rays == 0 || static_cast<uint64>(In->horizontal_rays) * In->vertical_rays > 16u * 1024u * 1024u) {
+        Reply.Fail(FString::Printf(TEXT("%u x %u rays is not a valid lidar grid"), In->horizontal_rays, In->vertical_rays));
+        return;
+    }
+    if (!(In->range_m > 0.0)) {
+        Reply.Fail(FString::Printf(TEXT("range %g m must be positive"), In->range_m));
+        return;
+    }
+
+    FLidarConfig Config  = GetLidarConfig();
+    Config.Enable         = In->enable;
+    Config.ShowBeams      = In->show_beams;
+    Config.BeamLength     = In->range_m * 100.0;
+    Config.BeamHorRays    = In->horizontal_rays;
+    Config.BeamVertRays   = In->vertical_rays;
+    Config.Frequency      = In->frequency;
+    FWireFrame::FromMountPose(In->mount.get(), Config.Offset, Config.Orientation);
+    Config.FOVHorLeft     = In->fov_left;
+    Config.FOVHorRight    = In->fov_right;
+    Config.FOVVertUp      = In->fov_up;
+    Config.FOVVertDown    = In->fov_down;
+    Config.Livox          = In->livox;
+    Config.LivoxSensor    = UTF8_TO_TCHAR(In->livox_pattern.c_str());
+    Config.ShowSensorBody = In->show_sensor_body;
+
+    SetLidarConfig(Config);
+}
+
+void ULidar::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+    FLidarConfig Config = GetLidarConfig();
+    Config.Offset       = OffsetCm;
+    Config.Orientation  = Rotation;
+    SetLidarConfig(Config);
 }
 
 //}

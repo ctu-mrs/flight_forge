@@ -6,7 +6,6 @@
 #include "CoreMinimal.h"
 #include "Sensor.h"
 #include "FlightForgeCore/LivoxPattern.h"
-//#include "MessageSerialization/Public/serializable_shared.h"
 #include "Lidar.generated.h"
 
 /* #define DEFAULT_LIDAR_BEAM_HOR 256  // 100 */
@@ -16,14 +15,6 @@
 
 #define DEFAULT_LIDAR_BEAM_LENGTH 1000
 #define DEFAULT_LIDAR_SHOW_BEAMS false 
-
-enum class FLidarMode : int
-{
-	DEFAULT = 0,
-	SEG = 1,
-	INTE = 2, //INT is not allowed
-	MAX_MODE_TYPE
-};
 
 struct FLidarConfig
 {
@@ -79,10 +70,12 @@ constexpr uint8 LidarChannelLabels    = 2;
 // one scan; the channel vectors are empty unless asked for, otherwise parallel to Points
 struct FLidarScan
 {
-	FVector Start;
-	double  Stamp = 0.0;
+	FTransform SensorPose;
+	double     Stamp = 0.0;
+	uint32     Rows  = 0;
+	uint32     Cols  = 0;
 
-	std::vector<Serializable::Drone::GetLidarData::LidarData> Points;
+	std::vector<FVector3f> Points;  // m, sensor frame (REP-103), NaN for no return
 	std::vector<int32>  Intensity;   // material class per point, -1 without a return
 	std::vector<int32>  ClassId;     // segmentation stencil, landscape 1, -1 without a return
 	std::vector<uint32> InstanceId;  // the instance camera's id space, 0 background
@@ -105,25 +98,14 @@ public:
 	bool         SetLidarConfig(const FLidarConfig& Config);
 	
 
-	virtual void GetConfig(std::stringstream& OutputStream) override;
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
-	virtual void GetData(std::stringstream& OutputStream) override;
+	virtual void GetConfig(FWireReply& Reply) override;
+	virtual void SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) override;
 
-	FLidarMode LidarMode = FLidarMode::DEFAULT;
-	
-	void SetLidarModeWithInt(int type); 
-
-	void GetScan(const Serializable::Drone::GetLidarScan::Request& Request, std::stringstream& OutputStream);
-	
 protected:
 	virtual void BeginPlay() override;
 
-	void GetLidarHits(std::vector<Serializable::Drone::GetLidarData::LidarData>& OutLidarData, FVector& OutStart, double& OutStamp);
-
-	void GetSegLidarHits(std::vector<Serializable::Drone::GetLidarSegData::LidarSegData>& OutLidarSegData, FVector& OutStart, double& OutStamp);
-
-	void GetIntLidarHits(std::vector<Serializable::Drone::GetLidarIntData::LidarIntData>& OutLidarIntData, FVector& OutStart, double& OutStamp);
-	
 	// one trace with the channels asked for; Cursor is the Livox pattern position to advance
 	void Scan(FLivoxCursor& Cursor, uint8 Channels, FLidarScan& Out);
 
@@ -148,8 +130,6 @@ protected:
 	static int MaterialIntensity(const FString& PhysMatName);
 
 	FLivoxCursor LivoxCursor;
-	FLivoxCursor LivoxSegCursor;
-	FLivoxCursor LivoxIntCursor;
 
 	std::unique_ptr<FCriticalSection> LidarHitsCriticalSection;
 

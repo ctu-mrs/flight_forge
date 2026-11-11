@@ -5,7 +5,7 @@
 #include "Materials/MaterialRenderProxy.h"
 #include "TextureResource.h"
 
-#include "Serialize.h"
+#include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
 
 URgbSegCamera::URgbSegCamera() : UCamera()
@@ -228,7 +228,7 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	PushReadback(EnqueueReadback(RenderTarget2D, stamp));
 }
 
-bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, double& stamp) {
+bool URgbSegCamera::GetRgbSegCameraFromServerThread(FCameraFrame& OutFrame) {
 
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
@@ -269,10 +269,10 @@ bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, dou
 			return false;
 		}
 
-		RawCopy = CameraBuffer;
-		RawSize = CameraBufferSize;
-		stamp   = stamp_;
-		LUT     = DistortionLUT;
+		RawCopy        = CameraBuffer;
+		RawSize        = CameraBufferSize;
+		OutFrame.Stamp = stamp_;
+		LUT            = DistortionLUT;
 
 		CameraBufferCriticalSection->Unlock();
 	}
@@ -285,142 +285,59 @@ bool URgbSegCamera::GetRgbSegCameraFromServerThread(TArray<uint8>& OutArray, dou
 		RawSize = LUT->OutputSize;
 	}
 
-	TransformImageArray(RawSize.X, RawSize.Y, RawCopy, OutArray);
+	TransformImageArray(RawSize.X, RawSize.Y, RawCopy, OutFrame.Bytes);
+	OutFrame.Size  = RawSize;
+	OutFrame.Codec = ECameraCodec::Raw;
 
 	return true;
 }
 
-void URgbSegCamera::GetConfig(std::stringstream& OutputStream)
+/* wire //{ */
+
+void URgbSegCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetRgbCameraConfig::Response ResponseRGB(true);
-	ResponseRGB.config = Serializable::Drone::RgbCameraConfig{};
-
-	ResponseRGB.config.show_debug_camera_= rgb_camera_config_.ShowCameraComponent;
-
-	ResponseRGB.config.offset_x_ = rgb_camera_config_.Offset.X;
-	ResponseRGB.config.offset_y_ = rgb_camera_config_.Offset.Y;
-	ResponseRGB.config.offset_z_ = rgb_camera_config_.Offset.Z;
-
-	ResponseRGB.config.rotation_pitch_ = rgb_camera_config_.Orientation.Pitch;
-	ResponseRGB.config.rotation_yaw_ = rgb_camera_config_.Orientation.Yaw;
-	ResponseRGB.config.rotation_roll_ = rgb_camera_config_.Orientation.Roll;
-
-	ResponseRGB.config.fov_ = rgb_camera_config_.FOVAngle;
-
-	ResponseRGB.config.width_ = rgb_camera_config_.Width;
-	ResponseRGB.config.capture_rate_ = rgb_camera_config_.CaptureRate;
-	ResponseRGB.config.height_ = rgb_camera_config_.Height;
-
-	ResponseRGB.config.enable_temporal_aa_ = rgb_camera_config_.enable_temporal_aa;
-	ResponseRGB.config.enable_hdr_ = rgb_camera_config_.enable_hdr;
-	ResponseRGB.config.enable_raytracing_ = rgb_camera_config_.enable_raytracing;
-
-	ResponseRGB.config.enable_motion_blur_ = rgb_camera_config_.enable_motion_blur;
-	ResponseRGB.config.motion_blur_distortion_ = rgb_camera_config_.motion_blur_distortion;
-	ResponseRGB.config.motion_blur_amount_ = rgb_camera_config_.motion_blur_amount;
-
-	const FCameraIntrinsics Effective =
-	    EffectiveIntrinsics(rgb_camera_config_.Intrinsics, rgb_camera_config_.FOVAngle, rgb_camera_config_.Width, rgb_camera_config_.Height);
-	ResponseRGB.config.intrinsics_.use_custom_ = rgb_camera_config_.Intrinsics.UseCustom;
-	ResponseRGB.config.intrinsics_.fx_         = Effective.Fx;
-	ResponseRGB.config.intrinsics_.fy_         = Effective.Fy;
-	ResponseRGB.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
-	ResponseRGB.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
-
-	ResponseRGB.config.distortion_.enable_ = rgb_camera_config_.Distortion.Enable;
-	ResponseRGB.config.distortion_.k1_     = rgb_camera_config_.Distortion.K1;
-	ResponseRGB.config.distortion_.k2_     = rgb_camera_config_.Distortion.K2;
-	ResponseRGB.config.distortion_.k3_     = rgb_camera_config_.Distortion.K3;
-	ResponseRGB.config.distortion_.p1_     = rgb_camera_config_.Distortion.P1;
-	ResponseRGB.config.distortion_.p2_     = rgb_camera_config_.Distortion.P2;
-
-	Serialization::DeserializeResponse(ResponseRGB, OutputStream);
-	UE_LOG(LogTemp, Log, TEXT("Got CameraRGBSeg config"));
+	FSensorWire::ReplyConfig(rgb_camera_config_, Reply);
 }
 
-void URgbSegCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void URgbSegCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetRgbCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
-	
 	FRgbCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
-
-	Config.Offset = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
-
-	Config.FOVAngle = Request.config.fov_;
-
-	Config.Width = Request.config.width_;
-	Config.CaptureRate = Request.config.capture_rate_;
-	Config.Height = Request.config.height_;
-
-	Config.enable_hdr = Request.config.enable_hdr_;
-	Config.enable_temporal_aa = Request.config.enable_temporal_aa_;
-	Config.enable_raytracing = Request.config.enable_raytracing_;
-
-	Config.enable_motion_blur = Request.config.enable_motion_blur_;
-	Config.motion_blur_amount = Request.config.motion_blur_amount_;
-	Config.motion_blur_distortion = Request.config.motion_blur_distortion_;
-
-	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
-	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
-	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
-
-	Config.Distortion.Enable = Request.config.distortion_.enable_;
-	Config.Distortion.K1     = Request.config.distortion_.k1_;
-	Config.Distortion.K2     = Request.config.distortion_.k2_;
-	Config.Distortion.K3     = Request.config.distortion_.k3_;
-	Config.Distortion.P1     = Request.config.distortion_.p1_;
-	Config.Distortion.P2     = Request.config.distortion_.p2_;
-
-	bool Status = false;
-
-	// auto Instruction = std::make_shared<FInstruction<ARobotPawn>>();
-	//
-	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ARobotPawn& _ARobotPawn) {
-	// 	Status = _ARobotPawn.SetRgbCameraConfig(Config, ID); //wrong
-	// };
-	//
-	// Owner->InstructionQueue->Enqueue(Instruction);
-
-	auto Instruction      = std::make_shared<FInstruction<URgbSegCamera>>();
-	Instruction->Function = [&Config, &Status](URgbSegCamera& _URgbSegCamera)
+	if (!FSensorWire::FromWire(Request, Config, Reply))
 	{
-		Status = _URgbSegCamera.SetRgbSegCameraConfig(Config);
-	};
-	InstructionQueue->Enqueue(Instruction);
-		
-	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
-
-	Serializable::Drone::SetRgbCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
-	UE_LOG(LogTemp, Log, TEXT("Set RGBSegCamera config"));
-}
-
-void URgbSegCamera::GetData(std::stringstream& OutputStream)
-{
-	TArray<uint8> CompressedBitmap;
-	double stamp;
-	bool res = GetRgbSegCameraFromServerThread(CompressedBitmap, stamp);
-
-	if (!res) {
-		Serializable::Drone::GetRgbSegCameraData::Response Response(false);
-
-		Serialization::DeserializeResponse(Response, OutputStream);
 		return;
 	}
 
-	Serializable::Drone::GetRgbSegCameraData::Response Response(true);
-	Response.image_ = std::vector<unsigned char>(CompressedBitmap.Num());
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](URgbSegCamera& Camera) { bApplied = Camera.SetRgbSegCameraConfig(Config); });
 
-	for(int i = 0; i < CompressedBitmap.Num(); i++) {
-		Response.image_[i] = CompressedBitmap[i];
+	if (!bApplied)
+	{
+		Reply.Fail(TEXT("the segmentation camera rejected the config"));
+	}
+}
+
+void URgbSegCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](URgbSegCamera& Camera) {
+		FRgbCameraConfig Config = Camera.rgb_camera_config_;
+		Config.Offset           = OffsetCm;
+		Config.Orientation      = Rotation;
+		Camera.SetRgbSegCameraConfig(Config);
+	});
+}
+
+// labels never go through a lossy codec
+void URgbSegCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
+{
+	FCameraFrame Frame;
+	if (!GetRgbSegCameraFromServerThread(Frame))
+	{
+		Reply.Fail(TEXT("the segmentation camera has no frame yet"));
+		return;
 	}
 
-	Response.stamp_ = stamp;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const auto Image = FSensorWire::Image(Reply, Frame, flightforge::wire::PixelFormat::BGR8);
+	Reply.Set(flightforge::wire::CreateRgbSegCameraDataResponse(Reply.Builder, Frame.Stamp, Image));
 }
+
+/* //} */

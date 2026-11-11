@@ -6,6 +6,7 @@
 #include "yaml.h"
 
 #include "YamlUtils.h"
+#include "WireFrame.h"
 
 namespace
 {
@@ -94,10 +95,26 @@ bool USpawnConfigUtils::ParseSpawnConfig(const FString& YamlText, FSpawnConfig& 
 
     if (Root["frame"])
     {
-      const FString Frame = ToFString(Root["frame"].as<std::string>("origin"));
+      const FString Frame = ToFString(Root["frame"].as<std::string>("ground"));
 
-      OutConfig.bRelativeToWorldOrigin = !Frame.Equals(TEXT("world"), ESearchCase::IgnoreCase);
-      OutConfig.bGroundFrame           = Frame.Equals(TEXT("ground"), ESearchCase::IgnoreCase);
+      // reinterpreting the old frames silently would move a scene by 0.92 m or the whole world origin
+      if (Frame.Equals(TEXT("origin"), ESearchCase::IgnoreCase))
+      {
+        OutError = TEXT("frame 'origin' is no longer accepted: use 'ground' (z = 0 is the floor, 0.9212 m below the UAV PlayerStart) and lower the poses");
+        return false;
+      }
+      if (Frame.Equals(TEXT("world"), ESearchCase::IgnoreCase))
+      {
+        OutError = TEXT("frame 'world' is no longer accepted: use 'unreal' (absolute Unreal cm and rotator) or 'ground'");
+        return false;
+      }
+      if (!Frame.Equals(TEXT("ground"), ESearchCase::IgnoreCase) && !Frame.Equals(TEXT("unreal"), ESearchCase::IgnoreCase))
+      {
+        OutError = FString::Printf(TEXT("unknown frame '%s', expected 'ground' or 'unreal'"), *Frame);
+        return false;
+      }
+
+      OutConfig.bUnrealFrame = Frame.Equals(TEXT("unreal"), ESearchCase::IgnoreCase);
     }
 
     int32 EntryIndex = 0;
@@ -180,34 +197,27 @@ bool USpawnConfigUtils::LoadSpawnConfigFile(const FString& FilePath, FSpawnConfi
 
 /* ToUnrealTransform() //{ */
 
-FTransform USpawnConfigUtils::ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, const FVector& WorldOrigin)
+FTransform USpawnConfigUtils::ToUnrealTransform(const FSpawnObjectEntry& Entry, const FVector& OriginOffset, const bool bUnrealFrame, const FVector& GroundOrigin)
 {
-  constexpr double MetresToCentimetres = 100.0;
-
   const FVector Position = Entry.Position + OriginOffset;
 
-  const FVector Location(WorldOrigin.X + Position.X * MetresToCentimetres,
-                         WorldOrigin.Y - Position.Y * MetresToCentimetres,
-                         WorldOrigin.Z + Position.Z * MetresToCentimetres);
+  if (bUnrealFrame)
+  {
+    return FTransform(FRotator(Entry.Orientation.Y, Entry.Orientation.Z, Entry.Orientation.X).Quaternion(), Position, Entry.Scale);
+  }
 
   const FRotator Rotation(-Entry.Orientation.Y, -Entry.Orientation.Z, Entry.Orientation.X);
 
-  return FTransform(Rotation.Quaternion(), Location, Entry.Scale);
+  return FTransform(Rotation.Quaternion(), FWireFrame::FromGround(Position, GroundOrigin), Entry.Scale);
 }
 
 /* //} */
 
 /* FromUnrealTransform() //{ */
 
-void USpawnConfigUtils::FromUnrealTransform(const FTransform& Transform, const FVector& WorldOrigin, FSpawnObjectEntry& OutEntry)
+void USpawnConfigUtils::FromUnrealTransform(const FTransform& Transform, const FVector& GroundOrigin, FSpawnObjectEntry& OutEntry)
 {
-  constexpr double CentimetresToMetres = 0.01;
-
-  const FVector Location = Transform.GetLocation();
-
-  OutEntry.Position = FVector((Location.X - WorldOrigin.X) * CentimetresToMetres,
-                              -(Location.Y - WorldOrigin.Y) * CentimetresToMetres,
-                              (Location.Z - WorldOrigin.Z) * CentimetresToMetres);
+  OutEntry.Position = FWireFrame::ToGround(Transform.GetLocation(), GroundOrigin);
 
   const FRotator Rotation = Transform.GetRotation().Rotator();
 
@@ -255,14 +265,7 @@ FString USpawnConfigUtils::WriteSpawnConfig(const FSpawnConfig& Config)
     EmitVector("origin_offset", Config.OriginOffset);
   }
 
-  if (!Config.bRelativeToWorldOrigin)
-  {
-    Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << "world";
-  }
-  else if (Config.bGroundFrame)
-  {
-    Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << "ground";
-  }
+  Out << YAML::EmitterManip::Key << "frame" << YAML::EmitterManip::Value << (Config.bUnrealFrame ? "unreal" : "ground");
 
   Out << YAML::EmitterManip::Key << "objects" << YAML::EmitterManip::Value << YAML::EmitterManip::BeginSeq;
 

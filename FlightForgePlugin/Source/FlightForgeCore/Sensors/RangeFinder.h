@@ -12,8 +12,9 @@
 
 struct FRangefinderConfig
 {
-	double BeamLength;
-	FVector Offset;
+	double   BeamLength;
+	FVector  Offset;
+	FRotator Rotation = FRotator::ZeroRotator;  // the beam points along the mount's -Z
 };
 
 
@@ -25,9 +26,8 @@ class FLIGHTFORGECORE_API URangeFinder : public USensor
 public:
 	URangeFinder();
 	
-	void GetData(std::stringstream& OutputStream) override;
-	void GetConfig(std::stringstream& OutputStream) override;
-	void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) override;
 protected:
 	virtual void BeginPlay() override;
 
@@ -46,6 +46,7 @@ public:
 
 private:
 	FRangefinderConfig RangefinderConfig;
+	// cm, negative without a return
 	void GetRangefinderData(double& range);
 
   std::unique_ptr<FCriticalSection> RangefinderHitsCriticalSection;

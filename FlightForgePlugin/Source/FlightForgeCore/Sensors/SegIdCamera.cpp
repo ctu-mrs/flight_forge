@@ -5,7 +5,7 @@
 #include "FlightForgeCore/RobotPawn.h"
 #include "SegIdPass.h"
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
-#include "Serialize.h"
+#include "SensorWire.h"
 
 USegIdCamera::USegIdCamera() : UCamera()
 {
@@ -187,7 +187,7 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 
 /* GetInstanceSegFromServerThread() //{ */
 
-bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, double& stamp)
+bool USegIdCamera::GetInstanceSegFromServerThread(FCameraFrame& OutFrame)
 {
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
@@ -222,10 +222,10 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 			return false;
 		}
 
-		RawCopy = CameraBuffer;
-		RawSize = CameraBufferSize;
-		stamp   = stamp_;
-		LUT     = DistortionLUT;
+		RawCopy        = CameraBuffer;
+		RawSize        = CameraBufferSize;
+		OutFrame.Stamp = stamp_;
+		LUT            = DistortionLUT;
 
 		CameraBufferCriticalSection->Unlock();
 	}
@@ -240,7 +240,7 @@ bool USegIdCamera::GetInstanceSegFromServerThread(TArray<uint8>& OutArray, doubl
 	}
 
 	// lossless always: these pixels are 24-bit instance ids, not colour
-	CompressFrame(RawCopy, RawSize, FCameraCompression{}, true, OutArray);
+	CompressFrame(RawCopy, RawSize, FCameraCompression{}, true, OutFrame);
 
 	return true;
 }
@@ -265,35 +265,28 @@ bool USegIdCamera::CopyLastFrame(TArray<FColor>& OutIds, FIntPoint& OutSize, TAr
 
 //}
 
-/* GetData() / GetMapData() //{ */
+/* wire //{ */
 
-void USegIdCamera::GetData(std::stringstream& OutputStream)
+void USegIdCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	TArray<uint8> CompressedBitmap;
-	double        stamp;
-
-	const bool res = GetInstanceSegFromServerThread(CompressedBitmap, stamp);
-
-	if (!res)
+	if (Request.body_type() == flightforge::wire::RequestBody::GetInstanceSegMapRequest)
 	{
-		Serializable::Drone::GetInstanceSegData::Response Response(false);
-		Serialization::DeserializeResponse(Response, OutputStream);
+		GetMapData(Reply);
 		return;
 	}
 
-	Serializable::Drone::GetInstanceSegData::Response Response(true);
-	Response.image_.resize(CompressedBitmap.Num());
-	for (int i = 0; i < CompressedBitmap.Num(); i++)
+	FCameraFrame Frame;
+	if (!GetInstanceSegFromServerThread(Frame))
 	{
-		Response.image_[i] = CompressedBitmap[i];
+		Reply.Fail(TEXT("the instance camera has no frame yet"));
+		return;
 	}
-	Response.stamp_ = stamp;
-	Response.size_  = CompressedBitmap.Num();
 
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const auto Image = FSensorWire::Image(Reply, Frame, flightforge::wire::PixelFormat::RGBA8);
+	Reply.Set(flightforge::wire::CreateInstanceSegDataResponse(Reply.Builder, Frame.Stamp, Image));
 }
 
-void USegIdCamera::GetMapData(std::stringstream& OutputStream)
+void USegIdCamera::GetMapData(FWireReply& Reply)
 {
 	TArray<FSegInstanceEntry> MapCopy;
 
@@ -301,103 +294,46 @@ void USegIdCamera::GetMapData(std::stringstream& OutputStream)
 	MapCopy = InstanceMap;
 	CameraBufferCriticalSection->Unlock();
 
-	Serializable::Drone::GetInstanceSegMap::Response Response(true);
-
+	std::vector<flatbuffers::Offset<flightforge::wire::InstanceSegEntry>> Entries;
+	Entries.reserve(MapCopy.Num());
 	for (const FSegInstanceEntry& Entry : MapCopy)
 	{
-		Serializable::Drone::InstanceSegMapEntry Out;
-		Out.id       = Entry.Id;
-		Out.actor    = TCHAR_TO_UTF8(*Entry.Actor);
-		Out.class_id = Entry.ClassId;
-		Response.entries_.push_back(Out);
+		Entries.push_back(flightforge::wire::CreateInstanceSegEntry(Reply.Builder, Entry.Id, Reply.String(Entry.Actor), Entry.ClassId));
 	}
 
-	Serialization::DeserializeResponse(Response, OutputStream);
+	Reply.Set(flightforge::wire::CreateInstanceSegMapResponse(Reply.Builder, Reply.Builder.CreateVector(Entries)));
 }
 
-/* //} */
-
-/* GetConfig() / SetConfig() //{ */
-
-void USegIdCamera::GetConfig(std::stringstream& OutputStream)
+void USegIdCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetRgbCameraConfig::Response Response(true);
-	Response.config = Serializable::Drone::RgbCameraConfig{};
-
-	Response.config.show_debug_camera_ = seg_camera_config_.ShowCameraComponent;
-
-	Response.config.offset_x_ = seg_camera_config_.Offset.X;
-	Response.config.offset_y_ = seg_camera_config_.Offset.Y;
-	Response.config.offset_z_ = seg_camera_config_.Offset.Z;
-
-	Response.config.rotation_pitch_ = seg_camera_config_.Orientation.Pitch;
-	Response.config.rotation_yaw_   = seg_camera_config_.Orientation.Yaw;
-	Response.config.rotation_roll_  = seg_camera_config_.Orientation.Roll;
-
-	Response.config.fov_ = seg_camera_config_.FOVAngle;
-
-	Response.config.width_  = seg_camera_config_.Width;
-	Response.config.capture_rate_ = seg_camera_config_.CaptureRate;
-	Response.config.height_ = seg_camera_config_.Height;
-
-	const FCameraIntrinsics Effective =
-	    EffectiveIntrinsics(seg_camera_config_.Intrinsics, seg_camera_config_.FOVAngle, seg_camera_config_.Width, seg_camera_config_.Height);
-	Response.config.intrinsics_.use_custom_ = seg_camera_config_.Intrinsics.UseCustom;
-	Response.config.intrinsics_.fx_         = Effective.Fx;
-	Response.config.intrinsics_.fy_         = Effective.Fy;
-	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
-	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
-
-	Response.config.distortion_.enable_ = seg_camera_config_.Distortion.Enable;
-	Response.config.distortion_.k1_     = seg_camera_config_.Distortion.K1;
-	Response.config.distortion_.k2_     = seg_camera_config_.Distortion.K2;
-	Response.config.distortion_.k3_     = seg_camera_config_.Distortion.K3;
-	Response.config.distortion_.p1_     = seg_camera_config_.Distortion.P1;
-	Response.config.distortion_.p2_     = seg_camera_config_.Distortion.P2;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	FSensorWire::ReplyConfig(seg_camera_config_, Reply);
 }
 
-void USegIdCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void USegIdCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetRgbCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
-
 	FRgbCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
+	if (!FSensorWire::FromWire(Request, Config, Reply))
+	{
+		return;
+	}
 
-	Config.Offset      = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](USegIdCamera& Camera) { bApplied = Camera.SetSegIdCameraConfig(Config); });
 
-	Config.FOVAngle = Request.config.fov_;
+	if (!bApplied)
+	{
+		Reply.Fail(TEXT("the instance camera rejected the config"));
+	}
+}
 
-	Config.Width  = Request.config.width_;
-	Config.CaptureRate = Request.config.capture_rate_;
-	Config.Height = Request.config.height_;
-
-	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
-	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
-	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
-
-	Config.Distortion.Enable = Request.config.distortion_.enable_;
-	Config.Distortion.K1     = Request.config.distortion_.k1_;
-	Config.Distortion.K2     = Request.config.distortion_.k2_;
-	Config.Distortion.K3     = Request.config.distortion_.k3_;
-	Config.Distortion.P1     = Request.config.distortion_.p1_;
-	Config.Distortion.P2     = Request.config.distortion_.p2_;
-
-	bool Status = false;
-
-	auto Instruction      = std::make_shared<FInstruction<USegIdCamera>>();
-	Instruction->Function = [&Config, &Status](USegIdCamera& _Camera) { Status = _Camera.SetSegIdCameraConfig(Config); };
-	InstructionQueue->Enqueue(Instruction);
-
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
-
-	Serializable::Drone::SetRgbCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
+void USegIdCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](USegIdCamera& Camera) {
+		FRgbCameraConfig Config = Camera.seg_camera_config_;
+		Config.Offset           = OffsetCm;
+		Config.Orientation      = Rotation;
+		Camera.SetSegIdCameraConfig(Config);
+	});
 }
 
 /* //} */

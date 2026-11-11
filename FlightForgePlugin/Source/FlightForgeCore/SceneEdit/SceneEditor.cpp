@@ -1202,7 +1202,7 @@ int32 USceneEditor::SpawnAt(const FString& Asset, const FVector& Location, const
   }
 
   FSpawnObjectEntry Entry;
-  USpawnConfigUtils::FromUnrealTransform(FTransform(Location), GameMode->GetWorldOrigin(), Entry);
+  USpawnConfigUtils::FromUnrealTransform(FTransform(Location), GameMode->GetGroundOrigin(), Entry);
   Entry.Asset       = Asset;
   Entry.Orientation = FVector::ZeroVector;
   Entry.Scale       = FVector::OneVector;

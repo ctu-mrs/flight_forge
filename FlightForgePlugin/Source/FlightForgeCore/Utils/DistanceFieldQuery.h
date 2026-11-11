@@ -15,12 +15,11 @@ class FLIGHTFORGECORE_API FDistanceFieldQuery
 {
 public:
 	/**
-	 * Points are packed xyz in the scene frame (right-handed metres relative to
-	 * WorldOrigin); distances come back in metres, max_radius when truncated and
+	 * Points are packed xyz in the ground frame; distances come back in metres, max_radius when truncated and
 	 * 0 when the point is inside geometry. TerrainOnly restricts hits to
 	 * Landscape or actors tagged "terrain".
 	 */
-	static bool Batch(UWorld* World, const FVector& WorldOrigin, const TArray<float>& QueryPoints, double MaxRadiusM, double ToleranceM, bool bTerrainOnly,
+	static bool Batch(UWorld* World, const FVector& GroundOrigin, const TArray<float>& QueryPoints, double MaxRadiusM, double ToleranceM, bool bTerrainOnly,
 	                  TArray<float>& OutDistances);
 };
 

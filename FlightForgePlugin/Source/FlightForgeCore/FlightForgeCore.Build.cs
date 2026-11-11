@@ -39,6 +39,8 @@ public class FlightForgeCore : ModuleRules
 			RuntimeDependencies.Add("$(PluginDir)/Content/Meshes/Sensors/" + Housing + ".glb", StagedFileType.NonUFS);
 		}
 		RuntimeDependencies.Add("$(PluginDir)/Content/ExternalModels/...", StagedFileType.NonUFS);
+		// get_info serves it
+		RuntimeDependencies.Add("$(PluginDir)/Source/MessageSerialization/Public/Generated/flightforge.bfbs", StagedFileType.NonUFS);
 		// the segmentation class tree is read from Config/ at runtime, and only .ini files stage there by default
 		string ProjectConfig = Target.ProjectFile == null ? "" : Path.Combine(Target.ProjectFile.Directory.FullName, "Config");
 		if (Directory.Exists(ProjectConfig))

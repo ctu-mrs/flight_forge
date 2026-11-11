@@ -10,6 +10,7 @@
 #include "FlightForgeCore/Sensors/Camera.h"
 #include "FlightForgeCore/Sensors/FisheyeCamera.h"
 #include "FlightForgeCore/Utils/SpawnConfig.h"
+#include "FlightForgeCore/Utils/WireFrame.h"
 
 /* spawn transform inverse //{ */
 
@@ -32,7 +33,7 @@ bool FFlightForgeSpawnTransformInverseTest::RunTest(const FString& Parameters)
 			Entry.Orientation = Orientation;
 			Entry.Scale       = FVector(2.0, 0.5, 1.0);
 
-			const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, WorldOrigin);
+			const FTransform Transform = USpawnConfigUtils::ToUnrealTransform(Entry, FVector::ZeroVector, false, WorldOrigin);
 
 			FSpawnObjectEntry Recovered;
 			USpawnConfigUtils::FromUnrealTransform(Transform, WorldOrigin, Recovered);
@@ -41,11 +42,49 @@ bool FFlightForgeSpawnTransformInverseTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("scale recovered"), Recovered.Scale.Equals(Entry.Scale, 1.0e-4));
 
 			// orientations may come back as an equivalent rotation; compare quaternions
-			const FTransform Again = USpawnConfigUtils::ToUnrealTransform(Recovered, FVector::ZeroVector, WorldOrigin);
+			const FTransform Again = USpawnConfigUtils::ToUnrealTransform(Recovered, FVector::ZeroVector, false, WorldOrigin);
 			TestTrue(TEXT("orientation recovered"),
 			         Again.GetRotation().AngularDistance(Transform.GetRotation()) < 1.0e-4);
 		}
 	}
+
+	return true;
+}
+
+/* //} */
+
+/* wire frame //{ */
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeWireFrameTest, "FlightForge.Math.WireFrame",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeWireFrameTest::RunTest(const FString& Parameters)
+{
+	const FVector Origin(1234.0, -567.0, 89.0);
+
+	const FVector Ground = FWireFrame::ToGround(Origin + FVector(100.0, 200.0, 300.0), Origin);
+	TestTrue(TEXT("Unreal +Y is ground -y, cm become m"), Ground.Equals(FVector(1.0, -2.0, 3.0), 1.0e-9));
+	TestTrue(TEXT("position round-trips"), FWireFrame::FromGround(Ground, Origin).Equals(Origin + FVector(100.0, 200.0, 300.0), 1.0e-9));
+
+	// +90 deg yaw about ground z faces +y
+	const flightforge::wire::Pose Yawed(flightforge::wire::Vec3(0, 0, 0), flightforge::wire::Quat(0, 0, FMath::Sin(UE_DOUBLE_PI / 4), FMath::Cos(UE_DOUBLE_PI / 4)));
+	const FTransform              Unreal = FWireFrame::FromGroundPose(&Yawed, Origin);
+	const FVector                 Facing = FWireFrame::ToRightHanded(Unreal.GetRotation().RotateVector(FVector::ForwardVector) * 100.0);
+	TestTrue(TEXT("+90 yaw faces +y"), Facing.Equals(FVector(0.0, 1.0, 0.0), 1.0e-9));
+	TestEqual(TEXT("and turns the Unreal yaw negative"), Unreal.Rotator().Yaw, -90.0, 1.0e-6);
+
+	// the ROS node's convention: roll unchanged, pitch and yaw negated
+	const FRotator Rotator(20.0, 30.0, 10.0);
+	const FQuat    Wire = FWireFrame::ToRightHanded(Rotator.Quaternion());
+	const FQuat    Expected = FQuat(FVector::UnitZ(), FMath::DegreesToRadians(-30.0)) * FQuat(FVector::UnitY(), FMath::DegreesToRadians(-20.0)) *
+	                       FQuat(FVector::UnitX(), FMath::DegreesToRadians(10.0));
+	TestTrue(TEXT("roll, -pitch, -yaw"), Wire.AngularDistance(Expected) < 1.0e-6);
+
+	const flightforge::wire::Pose Zeroed(flightforge::wire::Vec3(1, 2, 3), flightforge::wire::Quat(0, 0, 0, 0));
+	TestTrue(TEXT("a zeroed quaternion is identity"), FWireFrame::FromGroundPose(&Zeroed, FVector::ZeroVector).GetRotation().Equals(FQuat::Identity));
+
+	const flightforge::wire::Pose Round = FWireFrame::ToGroundPose(Unreal, Origin);
+	TestTrue(TEXT("pose round-trips"), FWireFrame::FromWireQuat(Round.orientation()).AngularDistance(FWireFrame::FromWireQuat(Yawed.orientation())) < 1.0e-6);
 
 	return true;
 }
@@ -281,26 +320,29 @@ bool FFlightForgeCameraInfoTest::RunTest(const FString& Parameters)
 	D.Enable = true;
 	D.K1 = 0.1; D.K2 = 0.02; D.K3 = 0.003; D.P1 = 0.0004; D.P2 = 0.00005;
 	const auto Info = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, FCameraIntrinsics{}, D, 90.0, W, H, FVector(10.0, 0.0, -5.0), FRotator(-30.0, 0.0, 0.0));
-	TestEqual(TEXT("fx from fov"), Info.fx_, (W * 0.5) / FMath::Tan(FMath::DegreesToRadians(45.0)), 1.0e-9);
-	TestEqual(TEXT("fov round-trips"), Info.fov_deg_, 90.0, 1.0e-9);
-	TestEqual(TEXT("cx is the image centre in OpenCV convention"), Info.cx_, W * 0.5 - 0.5, 1.0e-9);
-	TestEqual(TEXT("cy likewise"), Info.cy_, H * 0.5 - 0.5, 1.0e-9);
-	TestEqual(TEXT("D size"), (int32)Info.d_.size(), 5);
-	TestTrue(TEXT("D is k1 k2 p1 p2 k3"), Info.d_[0] == 0.1 && Info.d_[2] == 0.0004 && Info.d_[3] == 0.00005 && Info.d_[4] == 0.003);
-	TestEqual(TEXT("projection"), FString(Info.projection_.c_str()), FString(TEXT("pinhole")));
-	TestEqual(TEXT("distortion model"), FString(Info.distortion_model_.c_str()), FString(TEXT("plumb_bob")));
-	TestEqual(TEXT("pitch"), Info.rotation_pitch_, -30.0, 1.0e-9);
+	TestEqual(TEXT("fx from fov"), Info.fx, (W * 0.5) / FMath::Tan(FMath::DegreesToRadians(45.0)), 1.0e-9);
+	TestEqual(TEXT("fov round-trips"), Info.fov, 90.0, 1.0e-9);
+	TestEqual(TEXT("cx is the image centre in OpenCV convention"), Info.cx, W * 0.5 - 0.5, 1.0e-9);
+	TestEqual(TEXT("cy likewise"), Info.cy, H * 0.5 - 0.5, 1.0e-9);
+	TestEqual(TEXT("D size"), (int32)Info.d.size(), 5);
+	TestTrue(TEXT("D is k1 k2 p1 p2 k3"), Info.d[0] == 0.1 && Info.d[2] == 0.0004 && Info.d[3] == 0.00005 && Info.d[4] == 0.003);
+	TestTrue(TEXT("projection"), Info.projection == flightforge::wire::Projection::PINHOLE);
+	TestEqual(TEXT("distortion model"), FString(Info.distortion_model.c_str()), FString(TEXT("plumb_bob")));
+	TestEqual(TEXT("mount x in metres"), Info.mount->position().x(), 0.1, 1.0e-9);
+	TestEqual(TEXT("mount z in metres"), Info.mount->position().z(), -0.05, 1.0e-9);
+	const FVector Axis = FWireFrame::FromWireQuat(Info.mount->orientation()).RotateVector(FVector::ForwardVector);
+	TestEqual(TEXT("an Unreal pitch of -30 looks down in the wire frame"), Axis.Z, -0.5, 1.0e-9);
 
 	// custom K: reported as-is (wire convention), fov is what fx implies, D present but zero
 	FCameraIntrinsics K;
 	K.UseCustom = true;
 	K.Fx = 500.0; K.Fy = 510.0; K.Cx = 300.5; K.Cy = 250.5;
 	const auto Custom = UCamera::PinholeInfo(3, SensorType::RGB_CAMERA, K, FCameraDistortion{}, 90.0, W, H, FVector::ZeroVector, FRotator::ZeroRotator);
-	TestEqual(TEXT("custom fy"), Custom.fy_, 510.0, 1.0e-9);
-	TestEqual(TEXT("custom cx back in wire convention"), Custom.cx_, 300.0, 1.0e-9);
-	TestEqual(TEXT("custom fov"), Custom.fov_deg_, FMath::RadiansToDegrees(2.0 * FMath::Atan(320.0 / 500.0)), 1.0e-9);
-	TestEqual(TEXT("zero D without distortion"), (int32)Custom.d_.size(), 5);
-	TestTrue(TEXT("zero D values"), Custom.d_[0] == 0.0 && Custom.d_[4] == 0.0);
+	TestEqual(TEXT("custom fy"), Custom.fy, 510.0, 1.0e-9);
+	TestEqual(TEXT("custom cx back in wire convention"), Custom.cx, 300.0, 1.0e-9);
+	TestEqual(TEXT("custom fov"), Custom.fov, FMath::RadiansToDegrees(2.0 * FMath::Atan(320.0 / 500.0)), 1.0e-9);
+	TestEqual(TEXT("zero D without distortion"), (int32)Custom.d.size(), 5);
+	TestTrue(TEXT("zero D values"), Custom.d[0] == 0.0 && Custom.d[4] == 0.0);
 
 	return true;
 }
@@ -311,11 +353,11 @@ bool FFlightForgeCameraInfoTest::RunTest(const FString& Parameters)
 
 // Projects a ray through a reported CameraInfo the way OpenCV's fisheye::projectPoints does
 // (theta-polynomial on the equidistant model, OpenCV pixel convention).
-static FVector2D ProjectKannalaBrandt(const Serializable::Drone::CameraInfo& Info, const double Theta, const double Phi)
+static FVector2D ProjectKannalaBrandt(const flightforge::wire::CameraInfoT& Info, const double Theta, const double Phi)
 {
 	const double T2 = Theta * Theta;
-	const double Td = Theta * (1.0 + Info.d_[0] * T2 + Info.d_[1] * T2 * T2 + Info.d_[2] * T2 * T2 * T2 + Info.d_[3] * T2 * T2 * T2 * T2);
-	return FVector2D(Info.cx_ + Info.fx_ * Td * FMath::Cos(Phi), Info.cy_ + Info.fy_ * Td * FMath::Sin(Phi));
+	const double Td = Theta * (1.0 + Info.d[0] * T2 + Info.d[1] * T2 * T2 + Info.d[2] * T2 * T2 * T2 + Info.d[3] * T2 * T2 * T2 * T2);
+	return FVector2D(Info.cx + Info.fx * Td * FMath::Cos(Phi), Info.cy + Info.fy * Td * FMath::Sin(Phi));
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeFisheyeCalibrationTest, "FlightForge.Math.FisheyeCalibration",
@@ -373,13 +415,13 @@ bool FFlightForgeFisheyeCalibrationTest::RunTest(const FString& Parameters)
 	{
 		const FFisheyeCameraConfig&           C    = Case.Config;
 		const FCameraIntrinsics               K    = UFisheyeCamera::EffectiveFisheyeIntrinsics(C);
-		const Serializable::Drone::CameraInfo Info = UFisheyeCamera::FisheyeInfo(C);
+		const flightforge::wire::CameraInfoT  Info = UFisheyeCamera::FisheyeInfo(C);
 
-		TestEqual(*FString::Printf(TEXT("%s: four KB coefficients"), Case.Name), (int32)Info.d_.size(), 4);
-		TestEqual(*FString::Printf(TEXT("%s: distortion model"), Case.Name), FString(Info.distortion_model_.c_str()), FString(TEXT("equidistant")));
+		TestEqual(*FString::Printf(TEXT("%s: four KB coefficients"), Case.Name), (int32)Info.d.size(), 4);
+		TestEqual(*FString::Printf(TEXT("%s: distortion model"), Case.Name), FString(Info.distortion_model.c_str()), FString(TEXT("equidistant")));
 		if (C.Intrinsics.UseCustom)
 		{
-			TestEqual(*FString::Printf(TEXT("%s: custom cx round-trips to wire convention"), Case.Name), Info.cx_, 405.7, 1.0e-9);
+			TestEqual(*FString::Printf(TEXT("%s: custom cx round-trips to wire convention"), Case.Name), Info.cx, 405.7, 1.0e-9);
 		}
 
 		double MaxError = 0.0;

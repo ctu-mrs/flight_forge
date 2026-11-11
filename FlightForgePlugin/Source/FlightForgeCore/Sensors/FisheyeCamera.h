@@ -77,7 +77,7 @@ public:
 
 	FFisheyeCameraConfig GetFisheyeCameraConfig() const { return fisheye_camera_config_; }
 
-	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override;
+	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) override;
 
 	// pixels per radian of theta such that theta = fov/2 lands on the image circle, matching RebuildLUT
 	static double FocalPx(EFisheyeLensModel Model, double FovDeg, int32 Width, int32 Height, bool FullFrame);
@@ -93,7 +93,7 @@ public:
 	static void KannalaBrandtCoefficients(const FFisheyeCameraConfig& Config, double& K1, double& K2, double& K3, double& K4);
 
 	// the calibration get_camera_info reports for this config (sensor id/type left for the caller), wire pixel convention
-	static Serializable::Drone::CameraInfo FisheyeInfo(const FFisheyeCameraConfig& Config);
+	static flightforge::wire::CameraInfoT FisheyeInfo(const FFisheyeCameraConfig& Config);
 
 	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
@@ -101,13 +101,14 @@ public:
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 
-	virtual void GetConfig(std::stringstream& OutputStream) override;
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
-	virtual void GetData(std::stringstream& OutputStream) override;
+	virtual void GetConfig(FWireReply& Reply) override;
+	virtual void SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) override;
 
 	virtual void BeginDestroy() override;
 
-	bool GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp);
+	bool GetFisheyeCameraDataFromServerThread(FCameraFrame& OutFrame);
 
 protected:
 	virtual void BeginPlay() override;

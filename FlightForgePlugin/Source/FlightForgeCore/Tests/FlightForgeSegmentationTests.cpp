@@ -32,7 +32,7 @@ struct FSegDiffRig
 	TWeakObjectPtr<USegIdCamera>             Camera;
 	TWeakObjectPtr<UDepthCamera>             Depth;  // the render's own depth: a trace hit that is not at it is a hull, not a surface
 	TArray<FFloat16>                         DepthCm;
-	int32                                    Port    = -1;
+	int32                                    RobotId = -1;
 	double                                   Started = 0.0;
 
 	TArray<FColor>                Ids;
@@ -69,10 +69,10 @@ FColor Palette(const uint32 Id)
 
 void SavePng(const FString& Name, const TArray<FColor>& Pixels, const FIntPoint Size)
 {
-	TArray<uint8> Bytes;
-	UCamera::CompressFrame(Pixels, Size, FCameraCompression{}, true, Bytes);
+	FCameraFrame Frame;
+	UCamera::CompressFrame(Pixels, Size, FCameraCompression{}, true, Frame);
 	const FString Path = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("FlightForge"), Name);
-	FFileHelper::SaveArrayToFile(Bytes, *Path);
+	FFileHelper::SaveArrayToFile(Frame.Bytes, *Path);
 	UE_LOG(LogTemp, Log, TEXT("SegDiff: wrote %s"), *Path);
 }
 
@@ -103,9 +103,8 @@ bool FSegDiffSpawn::Update()
 	}
 
 	Rig->GameMode = GameMode;
-	Rig->Port     = GameMode->SpawnDroneAtLocation(GameMode->GetWorldOrigin() + FVector(0, 0, 150), "x500");
-
-	ARobotPawn* Pawn = Rig->Port >= 0 ? GameMode->FindRobotPawn(Rig->Port) : nullptr;
+	ARobotPawn* Pawn = GameMode->SpawnRobot(FTransform(GameMode->GetGroundOrigin() + FVector(0, 0, FWireFrame::PlayerStartHeightCm + 150)), TEXT("x500"), FString());
+	Rig->RobotId     = Pawn ? Pawn->RobotId : -1;
 	if (!Pawn)
 	{
 		return true;
@@ -422,9 +421,9 @@ bool FSegDiffCompare::Update()
 	Test->TestTrue(TEXT("no actor is drawn with another actor's id"), Wrong <= Comparable / 50);  // trunk bases and leaf edges sit within the depth tolerance of the ground
 	Test->TestTrue(TEXT("something was actually rendered"), Comparable - Sky > 1000);
 
-	if (Rig->GameMode.IsValid() && Rig->Port >= 0)
+	if (Rig->GameMode.IsValid() && Rig->RobotId >= 0)
 	{
-		Rig->GameMode->RemoveDrone(Rig->Port);
+		Rig->GameMode->RemoveRobot(Rig->RobotId);
 	}
 	return true;
 }

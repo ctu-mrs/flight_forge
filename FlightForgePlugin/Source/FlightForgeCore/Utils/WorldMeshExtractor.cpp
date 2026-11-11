@@ -9,10 +9,11 @@
 #include "FlightForgeCore/RobotPawn.h"
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "StaticMeshResources.h"
+#include "WireFrame.h"
 
 /* AppendLandscape() //{ */
 
-static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heightfield, const FVector& WorldOrigin, const FBox& SceneBounds,
+static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heightfield, const FVector& GroundOrigin, const FBox& SceneBounds,
                             const int32 MaxTriangles, FWorldMeshResult& Out)
 {
 	// the cooked physics heightfield is what a packaged build has; the editor's raw height data is editor-only
@@ -35,8 +36,7 @@ static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heigh
 	{
 		const FVector W = ToWorld.TransformPosition(FVector(Field->GetPointScaled(Index)));
 
-		Scene[Index] = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
-		                         static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
+		Scene[Index] = FVector3f(FWireFrame::ToGround(W, GroundOrigin));
 	}
 
 	// a landscape component covers hundreds of metres, so without per-quad clipping a
@@ -102,7 +102,7 @@ static void AppendLandscape(const ULandscapeHeightfieldCollisionComponent* Heigh
 
 /* Extract() //{ */
 
-bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, const FBox& SceneBounds, const int32 MaxTriangles, FWorldMeshResult& Out)
+bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& GroundOrigin, const FBox& SceneBounds, const int32 MaxTriangles, FWorldMeshResult& Out)
 {
 	Out = FWorldMeshResult();
 
@@ -113,14 +113,11 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 
 	const bool bFilter = SceneBounds.IsValid != 0;
 
-	// scene metres -> world centimetres, with the scene frame's y negation
 	FBox WorldBounds(EForceInit::ForceInit);
 	if (bFilter)
 	{
-		const FVector A = WorldOrigin + FVector(SceneBounds.Min.X, -SceneBounds.Max.Y, SceneBounds.Min.Z) * 100.0;
-		const FVector B = WorldOrigin + FVector(SceneBounds.Max.X, -SceneBounds.Min.Y, SceneBounds.Max.Z) * 100.0;
-		WorldBounds += A;
-		WorldBounds += B;
+		WorldBounds += FWireFrame::FromGround(SceneBounds.Min, GroundOrigin);
+		WorldBounds += FWireFrame::FromGround(SceneBounds.Max, GroundOrigin);
 	}
 
 	for (TActorIterator<AActor> It(World); It; ++It)
@@ -138,7 +135,7 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 		{
 			if (Heightfield && (!bFilter || WorldBounds.Intersect(Heightfield->Bounds.GetBox())))
 			{
-				AppendLandscape(Heightfield, WorldOrigin, SceneBounds, MaxTriangles, Out);
+				AppendLandscape(Heightfield, GroundOrigin, SceneBounds, MaxTriangles, Out);
 			}
 		}
 
@@ -218,8 +215,7 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 				for (int32 i = 0; i < NumVertices; ++i)
 				{
 					const FVector W = ToWorld.TransformPosition(FVector(LOD.VertexBuffers.PositionVertexBuffer.VertexPosition(i)));
-					Scene[i]        = FVector3f(static_cast<float>((W.X - WorldOrigin.X) / 100.0), static_cast<float>(-(W.Y - WorldOrigin.Y) / 100.0),
-					                            static_cast<float>((W.Z - WorldOrigin.Z) / 100.0));
+					Scene[i]        = FVector3f(FWireFrame::ToGround(W, GroundOrigin));
 				}
 
 				// vertices are emitted only once a triangle keeps them, so a clipped export

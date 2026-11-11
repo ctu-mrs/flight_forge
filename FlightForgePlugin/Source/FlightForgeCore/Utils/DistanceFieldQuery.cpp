@@ -1,4 +1,5 @@
 #include "DistanceFieldQuery.h"
+#include "WireFrame.h"
 
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
@@ -43,7 +44,7 @@ bool SphereBlocked(UWorld* World, const FVector& Center, const float RadiusCm, c
 
 /* Batch() //{ */
 
-bool FDistanceFieldQuery::Batch(UWorld* World, const FVector& WorldOrigin, const TArray<float>& QueryPoints, const double MaxRadiusM, double ToleranceM,
+bool FDistanceFieldQuery::Batch(UWorld* World, const FVector& GroundOrigin, const TArray<float>& QueryPoints, const double MaxRadiusM, double ToleranceM,
                                 const bool bTerrainOnly, TArray<float>& OutDistances)
 {
 	constexpr int64 MaxQueries = 2000000;
@@ -77,9 +78,7 @@ bool FDistanceFieldQuery::Batch(UWorld* World, const FVector& WorldOrigin, const
 
 	for (int32 i = 0; i < NumPoints; ++i)
 	{
-		// scene metres -> world centimetres, with the scene frame's y negation
-		const FVector P(WorldOrigin.X + QueryPoints[i * 3] * 100.0, WorldOrigin.Y - QueryPoints[i * 3 + 1] * 100.0,
-		                WorldOrigin.Z + QueryPoints[i * 3 + 2] * 100.0);
+		const FVector P = FWireFrame::FromGround(FVector(QueryPoints[i * 3], QueryPoints[i * 3 + 1], QueryPoints[i * 3 + 2]), GroundOrigin);
 
 		if (SphereBlocked(World, P, 0.1f, bTerrainOnly, InsideParams))
 		{

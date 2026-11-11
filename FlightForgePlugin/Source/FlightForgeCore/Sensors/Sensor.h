@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
-#include "MessageSerialization/Public/serializable_shared.h"
-#include <fstream>
+#include <memory>
+#include <mutex>
 #include "Sensor.generated.h"
 
 
@@ -23,6 +23,19 @@ enum class SensorType : int
 };
 
 class ARobotPawn;
+struct FWireReply;
+
+namespace flightforge::wire
+{
+struct Request;
+}
+
+// outlives its sensor, so a request queued on it can see the removal
+struct FSensorSlot
+{
+	std::mutex RequestMutex;
+	bool       bRemoved = false;
+};
 
 UCLASS()
 class FLIGHTFORGECORE_API USensor : public USceneComponent
@@ -36,9 +49,12 @@ public:
 	virtual void Initialize(int InSensorID);
 	FName Name;
     
-    virtual void GetData(std::stringstream& OutputStream) {};
-    virtual void GetConfig(std::stringstream& OutputStream) {};
-    virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {};
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply);
+	virtual void GetConfig(FWireReply& Reply);
+	virtual void SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply);
+
+	// link-relative, Unreal cm; add_sensor's pose
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) {}
 
 	// runs queued server-thread instructions on the game thread; the tick does this, and so does the pawn while its server stops
 	virtual void DrainInstructions() {};

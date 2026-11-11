@@ -63,7 +63,7 @@ protected:
 
 	FStereoCameraConfig stereo_camera_config_;
 
-	bool GetStereoCameraDataFromServerThread(TArray<uint8>& image_left, TArray<uint8>& image_right, double &stamp);
+	bool GetStereoCameraDataFromServerThread(FCameraFrame& OutLeft, FCameraFrame& OutRight);
 
 	// the base ring carries the left eye; the right eye rides here in step and both publish together
 	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> InflightRight;
@@ -83,21 +83,22 @@ public:
 
 	FStereoCameraConfig GetStereoCameraConfig() const { return stereo_camera_config_; }
 
-	virtual void DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out) override
+	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) override
 	{
 		const FStereoCameraConfig& C = stereo_camera_config_;
-		const double Baseline = FVector::Dist(C.Offset_left, C.Offset_right);
+		const double BaselineM = FVector::Dist(C.Offset_left, C.Offset_right) / 100.0;
 		auto Left  = PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset_left, C.Orientation_left);
 		auto Right = PinholeInfo(GetSensorID(), GetSensorType(), C.Intrinsics, C.Distortion, C.FOVAngle, C.Width, C.Height, C.Offset_right, C.Orientation_right);
-		Left.baseline_ = Right.baseline_ = Baseline;
-		Right.eye_ = 1;
-		Out.push_back(Left);
-		Out.push_back(Right);
+		Left.baseline_m = Right.baseline_m = BaselineM;
+		Right.eye = flightforge::wire::Eye::RIGHT;
+		Out.push_back(std::move(Left));
+		Out.push_back(std::move(Right));
 	}
 
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp) override;
 	
-	virtual void GetConfig(std::stringstream& OutputStream) override;
-	virtual void SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) override;
-	virtual void GetData(std::stringstream& OutputStream) override;
+	virtual void GetConfig(FWireReply& Reply) override;
+	virtual void SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void GetData(const flightforge::wire::Request& Request, FWireReply& Reply) override;
+	virtual void SetMount(const FVector& OffsetCm, const FRotator& Rotation) override;
 };

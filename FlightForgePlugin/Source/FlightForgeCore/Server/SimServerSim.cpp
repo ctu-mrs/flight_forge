@@ -1,0 +1,646 @@
+#include "SimServerInternal.h"
+
+#include "GameFramework/WorldSettings.h"
+#include "Interfaces/IPluginManager.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+#include "FlightForgeCore/Segmentation/SegmentationTagger.h"
+#include "FlightForgeCore/Utils/DistanceFieldQuery.h"
+#include "FlightForgeCore/Utils/WorldMeshExtractor.h"
+
+static constexpr uint16 ApiMajor = 1;
+static constexpr uint16 ApiMinor = 0;
+
+/* connection //{ */
+
+void FSimServer::Ping(const ffw::Request& Request, FWireReply& Reply)
+{
+}
+
+// the compiled schema ships beside the plugin's generated headers
+static const TArray<uint8>& CompiledSchema()
+{
+	static const TArray<uint8> Schema = [] {
+		TArray<uint8> Bytes;
+		if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("FlightForgePlugin")))
+		{
+			const FString Path =
+			    FPaths::Combine(Plugin->GetBaseDir(), TEXT("Source"), TEXT("MessageSerialization"), TEXT("Public"), TEXT("Generated"), TEXT("flightforge.bfbs"));
+			if (!FFileHelper::LoadFileToArray(Bytes, *Path))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("FlightForge: %s is missing, get_info carries no schema"), *Path);
+			}
+		}
+		return Bytes;
+	}();
+	return Schema;
+}
+
+void FSimServer::GetInfo(const ffw::Request& Request, FWireReply& Reply)
+{
+	const TArray<uint8>& Schema = CompiledSchema();
+	const auto           Bytes  = Reply.CopyVector(Schema.GetData(), Schema.Num());
+	Reply.Set(ffw::CreateGetInfoResponse(Reply.Builder, ApiMajor, ApiMinor, Bytes));
+}
+
+/* //} */
+
+/* time //{ */
+
+void FSimServer::GetTime(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	double SimTime  = 0.0;
+	double Dilation = 1.0;
+	if (const UWorld* World = GameMode->GetWorld())
+	{
+		SimTime  = World->GetTimeSeconds();
+		Dilation = World->GetWorldSettings() ? World->GetWorldSettings()->GetEffectiveTimeDilation() : 1.0;
+	}
+
+	Reply.Set(ffw::CreateGetTimeResponse(Reply.Builder, FPlatformTime::Seconds(), SimTime, Dilation));
+}
+
+void FSimServer::GetFps(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		Reply.Set(ffw::CreateGetFpsResponse(Reply.Builder, GameMode->GetFPS()));
+	}
+}
+
+void FSimServer::SetTimeDilation(const ffw::Request& Request, FWireReply& Reply)
+{
+	const double Dilation = Request.body_as_SetTimeDilationRequest()->dilation();
+	if (!(Dilation > 0.0))
+	{
+		Reply.Fail(FString::Printf(TEXT("time dilation %g must be positive"), Dilation));
+		return;
+	}
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	double Applied = 1.0;
+	RunOnGameThread(*GameMode.GameMode, [Dilation, &Applied](AFlightForgeGameModeBase& Mode) {
+		if (UWorld* World = Mode.GetWorld())
+		{
+			UGameplayStatics::SetGlobalTimeDilation(World, static_cast<float>(Dilation));
+			// the engine clamps to the world's limits; the client is told what it got
+			Applied = World->GetWorldSettings() ? World->GetWorldSettings()->GetEffectiveTimeDilation() : 1.0;
+		}
+	});
+
+	Reply.Set(ffw::CreateSetTimeDilationResponse(Reply.Builder, Applied));
+}
+
+void FSimServer::SetFixedTimestep(const ffw::Request& Request, FWireReply& Reply)
+{
+	const ffw::SetFixedTimestepRequest* Ask = Request.body_as_SetFixedTimestepRequest();
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool   bOk     = false;
+	double Applied = 0.0;
+	RunOnGameThread(*GameMode.GameMode, [Ask, &bOk, &Applied](AFlightForgeGameModeBase& Mode) {
+		bOk     = Mode.SetFixedTimestep(Ask->dt(), Ask->adaptive_min_dt());
+		Applied = Mode.GetFixedTimestep();
+	});
+
+	if (!bOk)
+	{
+		Reply.Fail(FString::Printf(TEXT("fixed timestep %g s with adaptive floor %g s is not valid"), Ask->dt(), Ask->adaptive_min_dt()));
+		return;
+	}
+	Reply.Set(ffw::CreateSetFixedTimestepResponse(Reply.Builder, Applied));
+}
+
+void FSimServer::SetLockstep(const ffw::Request& Request, FWireReply& Reply)
+{
+	const bool bEnabled = Request.body_as_SetLockstepRequest()->enabled();
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [bEnabled, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetLockstep(bEnabled); });
+
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("the world could not be paused (no player controller?)"));
+	}
+}
+
+void FSimServer::Step(const ffw::Request& Request, FWireReply& Reply)
+{
+	const uint32 Ticks = Request.body_as_StepRequest()->ticks();
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [Ticks, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.RequestStep(static_cast<int32>(FMath::Min<uint32>(Ticks, MAX_int32))); });
+
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("step needs lockstep on and no step in progress"));
+		return;
+	}
+
+	// a step not done within a minute means the world went away underneath it
+	const double Deadline = FPlatformTime::Seconds() + 60.0;
+	while (!GameMode->IsStepDone() && FPlatformTime::Seconds() < Deadline && bRunning)
+	{
+		FPlatformProcess::SleepNoStats(0.0002f);
+	}
+
+	if (!GameMode->IsStepDone())
+	{
+		Reply.Fail(TEXT("the step did not finish within 60 s"));
+		return;
+	}
+
+	Reply.Set(ffw::CreateStepResponse(Reply.Builder, GameMode->GetSimTime(), GameMode->GetLockstepTicks()));
+}
+
+/* //} */
+
+/* world //{ */
+
+void FSimServer::SwitchWorld(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FString Level = WireString(Request.body_as_SwitchWorldRequest()->level());
+	if (Level.IsEmpty())
+	{
+		Reply.Fail(TEXT("switch_world needs a level"));
+		return;
+	}
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	// the reply goes out before the level unloads under this connection
+	PostToGameThread(*GameMode.GameMode, [Level](AFlightForgeGameModeBase& Mode) { Mode.SwitchWorldLevel(Level); });
+}
+
+void FSimServer::SetWeather(const ffw::Request& Request, FWireReply& Reply)
+{
+	const int32          Weather  = static_cast<int32>(Request.body_as_SetWeatherRequest()->weather());
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [Weather, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetWeather(Weather); });
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("this world does not implement set_weather"));
+	}
+}
+
+void FSimServer::SetDaytime(const ffw::Request& Request, FWireReply& Reply)
+{
+	const ffw::SetDaytimeRequest* Ask = Request.body_as_SetDaytimeRequest();
+	if (Ask->hour() > 23 || Ask->minute() > 59)
+	{
+		Reply.Fail(FString::Printf(TEXT("%u:%02u is not a time of day"), Ask->hour(), Ask->minute()));
+		return;
+	}
+
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [Ask, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetDaytime(Ask->hour(), Ask->minute()); });
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("this world does not implement set_daytime"));
+	}
+}
+
+void FSimServer::SetGraphicsSettings(const ffw::Request& Request, FWireReply& Reply)
+{
+	const int32          Quality  = static_cast<int32>(Request.body_as_SetGraphicsSettingsRequest()->quality());
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [Quality, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetGraphicsSettings(Quality); });
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("no game user settings to apply the quality to"));
+	}
+}
+
+void FSimServer::SetForestDensity(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		GameMode->ForestDensityLevel = Request.body_as_SetForestDensityRequest()->level();
+	}
+}
+
+void FSimServer::SetForestHillyLevel(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		GameMode->ForestHillyLevel = Request.body_as_SetForestHillyLevelRequest()->level();
+	}
+}
+
+void FSimServer::SetMutualVisibility(const ffw::Request& Request, FWireReply& Reply)
+{
+	const bool           bEnabled = Request.body_as_SetMutualVisibilityRequest()->enabled();
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		RunOnGameThread(*GameMode.GameMode, [bEnabled](AFlightForgeGameModeBase& Mode) { Mode.SetMutualVisibility(bEnabled); });
+	}
+}
+
+void FSimServer::GetCaptureMode(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		Reply.Set(ffw::CreateGetCaptureModeResponse(Reply.Builder, static_cast<ffw::CaptureMode>(GameMode->GetCaptureMode())));
+	}
+}
+
+void FSimServer::SetCaptureMode(const ffw::Request& Request, FWireReply& Reply)
+{
+	const ffw::CaptureMode Mode = Request.body_as_SetCaptureModeRequest()->mode();
+	if (Mode > ffw::CaptureMode::MAX)
+	{
+		Reply.Fail(TEXT("unknown capture mode"));
+		return;
+	}
+
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		RunOnGameThread(*GameMode.GameMode, [Mode](AFlightForgeGameModeBase& GM) { GM.SetCameraCaptureMode(static_cast<CameraCaptureModeEnum>(Mode)); });
+	}
+}
+
+void FSimServer::GetWorldOrigin(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (GameMode)
+	{
+		const ffw::Vec3 Origin = FWireFrame::ToVec3(GameMode->GetGroundOrigin());
+		Reply.Set(ffw::CreateGetWorldOriginResponse(Reply.Builder, &Origin));
+	}
+}
+
+void FSimServer::GetClassMap(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	std::vector<flatbuffers::Offset<ffw::ClassEntry>> Classes;
+	uint64                                            Hash = 0;
+
+	const UWorld*              World  = GameMode->GetWorld();
+	const USegmentationTagger* Tagger = World ? World->GetSubsystem<USegmentationTagger>() : nullptr;
+	if (Tagger)
+	{
+		TArray<int32> Ids;
+		Tagger->Classes().GetKeys(Ids);
+		Ids.Sort();
+		for (const int32 Id : Ids)
+		{
+			const FSegClass& Class = Tagger->Classes()[Id];
+			Classes.push_back(ffw::CreateClassEntry(Reply.Builder, Class.Id, Class.ParentId, Reply.String(Class.Path)));
+		}
+		Hash = Tagger->ClassMapHash();
+	}
+
+	Reply.Set(ffw::CreateGetClassMapResponse(Reply.Builder, Reply.Builder.CreateVector(Classes), Hash));
+}
+
+/* //} */
+
+/* scene //{ */
+
+void FSimServer::SpawnObjectsFromYaml(const ffw::Request& Request, FWireReply& Reply)
+{
+	const flatbuffers::String* Yaml = Request.body_as_SpawnObjectsFromYamlRequest()->yaml();
+	const std::string          Document(Yaml ? Yaml->str() : std::string());
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<int32>        SpawnedIds;
+	FString              Error;
+	const FSpawnBatchPtr Batch = MakeShared<FSpawnBatch, ESPMode::ThreadSafe>();
+
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { SpawnedIds = Mode.SpawnObjectsFromYaml(Document, Error, Batch); });
+
+	// models import off the game thread, so the reply waits here and the sim keeps ticking
+	if (Batch->Pending.load() > 0)
+	{
+		const double Deadline = FPlatformTime::Seconds() + 300.0;
+		FGenericPlatformProcess::ConditionalSleep([&Batch, Deadline]() { return Batch->Pending.load() <= 0 || FPlatformTime::Seconds() > Deadline; }, 0.01f);
+
+		RunOnGameThread(*GameMode.GameMode, [&SpawnedIds](AFlightForgeGameModeBase& Mode) {
+			SpawnedIds.RemoveAll([&Mode](const int32 Id) { return !Mode.GetObjectSpawner()->HasObject(Id); });
+		});
+	}
+
+	// a config that placed nothing still succeeded; only one that could not be read failed
+	if (!Error.IsEmpty())
+	{
+		Reply.Fail(Error);
+		return;
+	}
+
+	Reply.Set(ffw::CreateSpawnObjectsFromYamlResponse(Reply.Builder, Reply.CopyVector(SpawnedIds.GetData(), SpawnedIds.Num())));
+}
+
+void FSimServer::RemoveSpawnedObject(const ffw::Request& Request, FWireReply& Reply)
+{
+	const int32 ObjectId = Request.body_as_RemoveSpawnedObjectRequest()->object_id();
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	int32 Removed = 0;
+	RunOnGameThread(*GameMode.GameMode, [ObjectId, &Removed](AFlightForgeGameModeBase& Mode) {
+		Removed = ObjectId < 0 ? Mode.RemoveAllSpawnedObjects() : (Mode.RemoveSpawnedObject(ObjectId) ? 1 : 0);
+	});
+
+	// clearing an empty scene is the requested state; one missing id is not
+	if (ObjectId >= 0 && Removed == 0)
+	{
+		Reply.Fail(FString::Printf(TEXT("no spawned object %d"), ObjectId));
+		return;
+	}
+
+	Reply.Set(ffw::CreateRemoveSpawnedObjectResponse(Reply.Builder, Removed));
+}
+
+void FSimServer::MoveSpawnedObject(const ffw::Request& Request, FWireReply& Reply)
+{
+	const ffw::MoveSpawnedObjectRequest* Ask = Request.body_as_MoveSpawnedObjectRequest();
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	FTransform Base = FWireFrame::FromGroundPose(Ask->pose(), GameMode->GetGroundOrigin());
+	Base.SetScale3D(Ask->scale() ? FWireFrame::FromVec3(*Ask->scale()) : FVector::OneVector);
+
+	bool bMoved = false;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { bMoved = Mode.MoveSpawnedObject(Ask->object_id(), Base); });
+
+	if (!bMoved)
+	{
+		Reply.Fail(FString::Printf(TEXT("no spawned object %d"), Ask->object_id()));
+	}
+}
+
+void FSimServer::ListSpawnedObjects(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<FSpawnedObjectState> States;
+	RunOnGameThread(*GameMode.GameMode, [&States](AFlightForgeGameModeBase& Mode) { States = Mode.ListSpawnedObjects(); });
+
+	std::vector<flatbuffers::Offset<ffw::SpawnedObject>> Objects;
+	for (const FSpawnedObjectState& State : States)
+	{
+		const ffw::Pose Pose  = FWireFrame::ToGroundPose(State.Transform, GameMode->GetGroundOrigin());
+		const ffw::Vec3 Scale = FWireFrame::ToVec3(State.Transform.GetScale3D());
+		Objects.push_back(ffw::CreateSpawnedObject(Reply.Builder, State.Id, Reply.String(State.Asset), State.Stencil, &Pose, &Scale));
+	}
+
+	Reply.Set(ffw::CreateListSpawnedObjectsResponse(Reply.Builder, Reply.Builder.CreateVector(Objects)));
+}
+
+void FSimServer::ExportScene(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	FString Yaml;
+	RunOnGameThread(*GameMode.GameMode, [&Yaml](AFlightForgeGameModeBase& Mode) { Yaml = Mode.ExportSceneYaml(); });
+
+	Reply.Set(ffw::CreateExportSceneResponse(Reply.Builder, Reply.String(Yaml)));
+}
+
+void FSimServer::ListAssets(const ffw::Request& Request, FWireReply& Reply)
+{
+	constexpr int32 MaxResults = 5000;
+
+	const ffw::ListAssetsRequest* Ask      = Request.body_as_ListAssetsRequest();
+	const FString                 Prefix   = WireString(Ask->path_prefix());
+	const FString                 Filter   = WireString(Ask->name_filter());
+	const FGameModeLease          GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<FString> Names;
+	bool            bTruncated = false;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { Names = Mode.ListSpawnableAssets(Prefix, Filter, MaxResults, bTruncated); });
+
+	std::vector<flatbuffers::Offset<flatbuffers::String>> Assets;
+	for (const FString& Name : Names)
+	{
+		Assets.push_back(Reply.String(Name));
+	}
+
+	Reply.Set(ffw::CreateListAssetsResponse(Reply.Builder, Reply.Builder.CreateVector(Assets), bTruncated));
+}
+
+void FSimServer::LoadLibrary(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FString Path = WireString(Request.body_as_LoadLibraryRequest()->path());
+
+	std::lock_guard<std::mutex> Lock(WorldMutex);
+	const FGameModeLease        GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool    bLoaded = false;
+	int32   Count   = 0;
+	FString Error;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { bLoaded = Mode.LoadLibrary(Path, Count, Error); });
+
+	if (!bLoaded)
+	{
+		Reply.Fail(Error.IsEmpty() ? FString::Printf(TEXT("could not load the library at %s"), *Path) : Error);
+		return;
+	}
+
+	Reply.Set(ffw::CreateLoadLibraryResponse(Reply.Builder, Count));
+}
+
+void FSimServer::ListLibrary(const ffw::Request& Request, FWireReply& Reply)
+{
+	constexpr uint32 MaxResults = 2000;
+
+	const ffw::ListLibraryRequest* Ask      = Request.body_as_ListLibraryRequest();
+	const FString                  Library  = WireString(Ask->library());
+	const FString                  Class    = WireString(Ask->object_class());
+	const FString                  Filter   = WireString(Ask->filter());
+	const int32                    Offset   = static_cast<int32>(FMath::Min<uint32>(Ask->offset(), MAX_int32));
+	const int32                    Limit    = static_cast<int32>(FMath::Min(Ask->limit(), MaxResults));
+	const FGameModeLease           GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<FLibraryObject> Found;
+	int32                  Total = 0;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { Found = Mode.SearchLibrary(Library, Class, Filter, Offset, Limit, Total); });
+
+	std::vector<flatbuffers::Offset<ffw::LibraryObject>> Objects;
+	for (const FLibraryObject& Object : Found)
+	{
+		Objects.push_back(ffw::CreateLibraryObject(Reply.Builder, Reply.String(Object.Library), Reply.String(Object.Id), Reply.String(Object.SpawnName),
+		                                           Reply.String(Object.Class), Reply.String(Object.Description), Reply.String(Object.License),
+		                                           Reply.String(Object.Thumbnail), Object.Scale, Object.HeightM, Object.bRuntime));
+	}
+
+	Reply.Set(ffw::CreateListLibraryResponse(Reply.Builder, Reply.Builder.CreateVector(Objects), static_cast<uint32>(FMath::Max(Total, 0))));
+}
+
+void FSimServer::GetWorldMesh(const ffw::Request& Request, FWireReply& Reply)
+{
+	constexpr int32 DefaultMaxTriangles = 2000000;
+
+	const ffw::GetWorldMeshRequest* Ask = Request.body_as_GetWorldMeshRequest();
+
+	FBox Bounds(EForceInit::ForceInit);
+	if (Ask->center() && Ask->extent() && Ask->extent()->x() > 0.0 && Ask->extent()->y() > 0.0 && Ask->extent()->z() > 0.0)
+	{
+		const FVector Center = FWireFrame::FromVec3(*Ask->center());
+		const FVector Extent = FWireFrame::FromVec3(*Ask->extent());
+		Bounds += Center - Extent;
+		Bounds += Center + Extent;
+	}
+
+	const int32 MaxTriangles = Ask->max_triangles() > 0 ? static_cast<int32>(FMath::Min<uint32>(Ask->max_triangles(), MAX_int32)) : DefaultMaxTriangles;
+
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	FWorldMeshResult Mesh;
+	bool             bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) {
+		bOk = FWorldMeshExtractor::Extract(Mode.GetWorld(), Mode.GetGroundOrigin(), Bounds, MaxTriangles, Mesh);
+	});
+
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("the world mesh could not be extracted"));
+		return;
+	}
+
+	const auto Vertices = Reply.CopyStructs(reinterpret_cast<const ffw::Vec3f*>(Mesh.Vertices.GetData()), Mesh.Vertices.Num() / 3);
+	const auto Indices  = Reply.CopyVector(Mesh.Indices.GetData(), Mesh.Indices.Num());
+	Reply.Set(ffw::CreateGetWorldMeshResponse(Reply.Builder, Vertices, Indices, Mesh.bTruncated, Mesh.SourceCount));
+}
+
+void FSimServer::GetDistanceBatch(const ffw::Request& Request, FWireReply& Reply)
+{
+	const ffw::GetDistanceBatchRequest* Ask = Request.body_as_GetDistanceBatchRequest();
+
+	TArray<float> Points;
+	if (Ask->points())
+	{
+		Points.SetNumUninitialized(Ask->points()->size() * 3);
+		FMemory::Memcpy(Points.GetData(), Ask->points()->Data(), Points.Num() * sizeof(float));
+	}
+
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<float> Distances;
+	bool          bOk = false;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) {
+		bOk = FDistanceFieldQuery::Batch(Mode.GetWorld(), Mode.GetGroundOrigin(), Points, Ask->max_radius(), Ask->tolerance(), Ask->terrain_only(), Distances);
+	});
+
+	if (!bOk)
+	{
+		Reply.Fail(TEXT("get_distance_batch needs 1 to 2000000 points and a positive max_radius"));
+		return;
+	}
+
+	Reply.Set(ffw::CreateGetDistanceBatchResponse(Reply.Builder, Reply.CopyVector(Distances.GetData(), Distances.Num())));
+}
+
+/* //} */

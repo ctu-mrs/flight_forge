@@ -4,6 +4,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "FlightForgeCore/RobotPawn.h"
+#include "FlightForgeCore/Server/WireReply.h"
 #include "UObject/ConstructorHelpers.h"
 
 USensor::USensor()
@@ -33,6 +34,21 @@ void USensor::BeginPlay()
 void USensor::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+}
+
+void USensor::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
+{
+	Reply.Fail(FString::Printf(TEXT("sensor %d does not serve this request"), SensorID));
+}
+
+void USensor::GetConfig(FWireReply& Reply)
+{
+	Reply.Fail(FString::Printf(TEXT("sensor %d has no config of this kind"), SensorID));
+}
+
+void USensor::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
+{
+	Reply.Fail(FString::Printf(TEXT("sensor %d has no config of this kind"), SensorID));
 }
 
 int USensor::GetSensorID()

@@ -45,9 +45,8 @@ struct FSpawnedObjectState
   FString Asset;
   int32   Stencil;
 
-  FVector Position;
-  FVector Orientation;
-  FVector Scale;
+  // Unreal cm, at the object's base rather than its pivot, with its scale
+  FTransform Transform;
 };
 
 /* //} */
@@ -83,7 +82,7 @@ public:
   void SetLibrary(const FObjectLibrary* InLibrary) { Library = InLibrary; }
 
   /** Spawns every entry, returning the handles of those that were placed; an on-disk model gets its mesh once Batch drains. */
-  TArray<int32> SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& WorldOrigin, const FSpawnBatchPtr& Batch = nullptr);
+  TArray<int32> SpawnFromConfig(UWorld* World, const FSpawnConfig& Config, const FVector& GroundOrigin, const FSpawnBatchPtr& Batch = nullptr);
 
   bool HasObject(int32 ObjectId) const;
 
@@ -98,13 +97,13 @@ public:
 
   int32 RemoveAllObjects();
 
-  /** Repositions a spawned object; the pose is in the config's ROS frame. */
-  bool MoveObject(int32 ObjectId, const FVector& Position, const FVector& Orientation, const FVector& Scale, const FVector& WorldOrigin);
+  /** Places the object's base at BaseTransform (Unreal cm, scale included). */
+  bool MoveObject(int32 ObjectId, const FTransform& BaseTransform);
 
-  TArray<FSpawnedObjectState> ListObjects(const FVector& WorldOrigin) const;
+  TArray<FSpawnedObjectState> ListObjects() const;
 
-  /** Serializes the current objects back into a spawn configuration document. */
-  FString ExportScene(const FVector& WorldOrigin) const;
+  /** Serializes the current objects back into a spawn configuration document in the ground frame. */
+  FString ExportScene(const FVector& GroundOrigin) const;
 
 private:
   AActor* SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform, FString& OutModelFile);

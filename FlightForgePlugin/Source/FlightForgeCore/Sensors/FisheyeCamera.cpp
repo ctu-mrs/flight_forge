@@ -3,7 +3,7 @@
 #include "Async/ParallelFor.h"
 #include "TextureResource.h"
 
-#include "Serialize.h"
+#include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 #include "RenderingThread.h"
@@ -245,43 +245,41 @@ void UFisheyeCamera::KannalaBrandtCoefficients(const FFisheyeCameraConfig& Confi
 	}
 }
 
-Serializable::Drone::CameraInfo UFisheyeCamera::FisheyeInfo(const FFisheyeCameraConfig& C)
+flightforge::wire::CameraInfoT UFisheyeCamera::FisheyeInfo(const FFisheyeCameraConfig& C)
 {
+	using flightforge::wire::Projection;
+
 	const FCameraIntrinsics K = EffectiveFisheyeIntrinsics(C);
 
-	Serializable::Drone::CameraInfo Info;
-	Info.width_       = C.Width;
-	Info.height_      = C.Height;
+	flightforge::wire::CameraInfoT Info;
+	Info.width  = C.Width;
+	Info.height = C.Height;
 	switch (C.LensModel)
 	{
-		case EFisheyeLensModel::EQUISOLID: Info.projection_ = "fisheye_equisolid"; break;
-		case EFisheyeLensModel::STEREOGRAPHIC: Info.projection_ = "fisheye_stereographic"; break;
-		case EFisheyeLensModel::KANNALA_BRANDT: Info.projection_ = "fisheye_kannala_brandt"; break;
-		default: Info.projection_ = "fisheye_equidistant"; break;
+		case EFisheyeLensModel::EQUISOLID: Info.projection = Projection::FISHEYE_EQUISOLID; break;
+		case EFisheyeLensModel::STEREOGRAPHIC: Info.projection = Projection::FISHEYE_STEREOGRAPHIC; break;
+		case EFisheyeLensModel::KANNALA_BRANDT: Info.projection = Projection::FISHEYE_KANNALA_BRANDT; break;
+		default: Info.projection = Projection::FISHEYE_EQUIDISTANT; break;
 	}
-	Info.distortion_model_ = "equidistant";
-	Info.fx_               = K.Fx;
-	Info.fy_               = K.Fy;
-	Info.cx_               = K.Cx - WirePixelShift;
-	Info.cy_               = K.Cy - WirePixelShift;
-	Info.d_.resize(4);
-	KannalaBrandtCoefficients(C, Info.d_[0], Info.d_[1], Info.d_[2], Info.d_[3]);
-	Info.fov_deg_        = C.FOVAngle;
-	Info.offset_x_       = C.Offset.X;
-	Info.offset_y_       = C.Offset.Y;
-	Info.offset_z_       = C.Offset.Z;
-	Info.rotation_pitch_ = C.Orientation.Pitch;
-	Info.rotation_yaw_   = C.Orientation.Yaw;
-	Info.rotation_roll_  = C.Orientation.Roll;
+	Info.distortion_model = "equidistant";
+	Info.fx               = K.Fx;
+	Info.fy               = K.Fy;
+	Info.cx               = K.Cx - WirePixelShift;
+	Info.cy               = K.Cy - WirePixelShift;
+	Info.d.resize(4);
+	KannalaBrandtCoefficients(C, Info.d[0], Info.d[1], Info.d[2], Info.d[3]);
+	Info.fov   = C.FOVAngle;
+	Info.link  = "base_link";
+	Info.mount = FSensorWire::Mount(C.Offset, C.Orientation);
 	return Info;
 }
 
-void UFisheyeCamera::DescribeCameras(std::vector<Serializable::Drone::CameraInfo>& Out)
+void UFisheyeCamera::DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out)
 {
-	auto Info         = FisheyeInfo(fisheye_camera_config_);
-	Info.sensor_id_   = GetSensorID();
-	Info.sensor_type_ = static_cast<int>(GetSensorType());
-	Out.push_back(Info);
+	auto Info        = FisheyeInfo(fisheye_camera_config_);
+	Info.sensor_id   = GetSensorID();
+	Info.sensor_type = static_cast<flightforge::wire::SensorType>(GetSensorType());
+	Out.push_back(std::move(Info));
 }
 
 //}
@@ -534,7 +532,7 @@ void UFisheyeCamera::DrainReadback()
 
 /* GetFisheyeCameraDataFromServerThread() //{ */
 
-bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArray, double& stamp)
+bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(FCameraFrame& OutFrame)
 {
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
@@ -571,7 +569,7 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArra
 		Size     = PublishedFaceSize;
 		LocalLUT = LUT;
 		OutSize  = LUTSize;
-		stamp    = stamp_;
+		OutFrame.Stamp = stamp_;
 
 		CameraBufferCriticalSection->Unlock();
 	}
@@ -622,7 +620,7 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(TArray<uint8>& OutArra
 		}
 	});
 
-	CompressFrame(OutImage, OutSize, fisheye_camera_config_.Compression, false, OutArray);
+	CompressFrame(OutImage, OutSize, fisheye_camera_config_.Compression, false, OutFrame);
 
 	return true;
 }
@@ -673,116 +671,94 @@ bool UFisheyeCamera::SetFisheyeCameraConfig(const FFisheyeCameraConfig& Config)
 
 //}
 
-/* GetConfig() / SetConfig() //{ */
+/* wire //{ */
 
-void UFisheyeCamera::GetConfig(std::stringstream& OutputStream)
+void UFisheyeCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetFisheyeCameraConfig::Response Response(true);
-	Response.config = Serializable::Drone::FisheyeCameraConfig{};
+	const FFisheyeCameraConfig& C = fisheye_camera_config_;
 
-	Response.config.show_debug_camera_ = fisheye_camera_config_.ShowCameraComponent;
+	flightforge::wire::FisheyeCameraConfigT Table;
+	Table.show_debug_camera = C.ShowCameraComponent;
+	Table.mount             = FSensorWire::Mount(C.Offset, C.Orientation);
+	Table.fov               = C.FOVAngle;
+	Table.width             = C.Width;
+	Table.height            = C.Height;
+	Table.lens              = static_cast<flightforge::wire::FisheyeLens>(C.LensModel);
+	Table.encoding          = FSensorWire::Encoding(C.Compression);
+	Table.full_frame        = C.FullFrame;
+	Table.intrinsics        = FSensorWire::Intrinsics(C.Intrinsics.UseCustom, EffectiveFisheyeIntrinsics(C));
+	Table.kb_k1             = C.K1;
+	Table.kb_k2             = C.K2;
+	Table.kb_k3             = C.K3;
+	Table.kb_k4             = C.K4;
+	Table.capture_rate      = C.CaptureRate;
 
-	Response.config.offset_x_ = fisheye_camera_config_.Offset.X;
-	Response.config.offset_y_ = fisheye_camera_config_.Offset.Y;
-	Response.config.offset_z_ = fisheye_camera_config_.Offset.Z;
-
-	Response.config.rotation_pitch_ = fisheye_camera_config_.Orientation.Pitch;
-	Response.config.rotation_yaw_   = fisheye_camera_config_.Orientation.Yaw;
-	Response.config.rotation_roll_  = fisheye_camera_config_.Orientation.Roll;
-
-	Response.config.fov_        = fisheye_camera_config_.FOVAngle;
-	Response.config.width_      = fisheye_camera_config_.Width;
-	Response.config.capture_rate_ = fisheye_camera_config_.CaptureRate;
-	Response.config.height_     = fisheye_camera_config_.Height;
-	Response.config.lens_model_ = static_cast<int>(fisheye_camera_config_.LensModel);
-	Response.config.full_frame_ = fisheye_camera_config_.FullFrame;
-
-	const FCameraIntrinsics Effective          = EffectiveFisheyeIntrinsics(fisheye_camera_config_);
-	Response.config.intrinsics_.use_custom_ = fisheye_camera_config_.Intrinsics.UseCustom;
-	Response.config.intrinsics_.fx_         = Effective.Fx;
-	Response.config.intrinsics_.fy_         = Effective.Fy;
-	Response.config.intrinsics_.cx_         = Effective.Cx - WirePixelShift;
-	Response.config.intrinsics_.cy_         = Effective.Cy - WirePixelShift;
-	Response.config.kb_k1_                  = fisheye_camera_config_.K1;
-	Response.config.kb_k2_                  = fisheye_camera_config_.K2;
-	Response.config.kb_k3_                  = fisheye_camera_config_.K3;
-	Response.config.kb_k4_                  = fisheye_camera_config_.K4;
-
-	Response.config.compression_.format_ =
-	    fisheye_camera_config_.Compression.bJpeg ? Serializable::Drone::CameraCompression::JPEG : Serializable::Drone::CameraCompression::PNG;
-	Response.config.compression_.quality_ = fisheye_camera_config_.Compression.Quality;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const auto Offset = flightforge::wire::CreateFisheyeCameraConfig(Reply.Builder, &Table);
+	Reply.Set(flightforge::wire::CreateGetFisheyeCameraConfigResponse(Reply.Builder, Offset));
 }
 
-void UFisheyeCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void UFisheyeCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetFisheyeCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
-
-	FFisheyeCameraConfig Config;
-	Config.ShowCameraComponent = Request.config.show_debug_camera_;
-
-	Config.Offset      = FVector(Request.config.offset_x_, Request.config.offset_y_, Request.config.offset_z_);
-	Config.Orientation = FRotator(Request.config.rotation_pitch_, Request.config.rotation_yaw_, Request.config.rotation_roll_);
-
-	Config.FOVAngle  = FMath::Clamp(Request.config.fov_, 10.0, 220.0);
-	Config.Width     = Request.config.width_;
-	Config.CaptureRate = Request.config.capture_rate_;
-	Config.Height    = Request.config.height_;
-	Config.LensModel = static_cast<EFisheyeLensModel>(FMath::Clamp(Request.config.lens_model_, 0, 3));
-	Config.FullFrame = Request.config.full_frame_;
-
-	Config.Intrinsics.UseCustom = Request.config.intrinsics_.use_custom_;
-	Config.Intrinsics.Fx        = Request.config.intrinsics_.fx_;
-	Config.Intrinsics.Fy        = Request.config.intrinsics_.fy_;
-	Config.Intrinsics.Cx        = Request.config.intrinsics_.cx_ + WirePixelShift;
-	Config.Intrinsics.Cy        = Request.config.intrinsics_.cy_ + WirePixelShift;
-	Config.K1                   = Request.config.kb_k1_;
-	Config.K2                   = Request.config.kb_k2_;
-	Config.K3                   = Request.config.kb_k3_;
-	Config.K4                   = Request.config.kb_k4_;
-
-	Config.Compression.bJpeg   = Request.config.compression_.format_ != Serializable::Drone::CameraCompression::PNG;
-	Config.Compression.Quality = Request.config.compression_.quality_;
-
-	bool Status = false;
-
-	auto Instruction      = std::make_shared<FInstruction<UFisheyeCamera>>();
-	Instruction->Function = [&Config, &Status](UFisheyeCamera& _UFisheyeCamera)
+	const flightforge::wire::SetFisheyeCameraConfigRequest* Set = Request.body_as_SetFisheyeCameraConfigRequest();
+	if (!Set || !Set->config())
 	{
-		Status = _UFisheyeCamera.SetFisheyeCameraConfig(Config);
-	};
-	InstructionQueue->Enqueue(Instruction);
-
-	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
-
-	Serializable::Drone::SetFisheyeCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
-}
-
-//}
-
-/* GetData() //{ */
-
-void UFisheyeCamera::GetData(std::stringstream& OutputStream)
-{
-	TArray<uint8> CompressedBitmap;
-	double stamp;
-	bool res = GetFisheyeCameraDataFromServerThread(CompressedBitmap, stamp);
-
-	if (!res) {
-		Serializable::Drone::GetFisheyeCameraData::Response Response(false);
-		Serialization::DeserializeResponse(Response, OutputStream);
+		Reply.Fail(TEXT("set_fisheye_camera_config carries no config"));
 		return;
 	}
 
-	Serializable::Drone::GetFisheyeCameraData::Response Response(true);
+	const std::unique_ptr<flightforge::wire::FisheyeCameraConfigT> In(Set->config()->UnPack());
+	if (!ValidDimensions(static_cast<int32>(FMath::Min<uint32>(In->width, MAX_int32)), static_cast<int32>(FMath::Min<uint32>(In->height, MAX_int32))))
+	{
+		Reply.Fail(FString::Printf(TEXT("%u x %u px is not a valid image size"), In->width, In->height));
+		return;
+	}
 
-	Response.image_.assign(CompressedBitmap.GetData(), CompressedBitmap.GetData() + CompressedBitmap.Num());
-	Response.stamp_ = stamp;
+	FFisheyeCameraConfig Config;
+	Config.ShowCameraComponent = In->show_debug_camera;
+	FSensorWire::Mount(In->mount, Config.Offset, Config.Orientation);
+	Config.FOVAngle    = FMath::Clamp(In->fov, 10.0, 220.0);
+	Config.Width       = In->width;
+	Config.Height      = In->height;
+	Config.LensModel   = static_cast<EFisheyeLensModel>(FMath::Clamp(static_cast<int32>(In->lens), 0, 3));
+	Config.FullFrame   = In->full_frame;
+	Config.Intrinsics  = FSensorWire::Intrinsics(In->intrinsics.get());
+	Config.K1          = In->kb_k1;
+	Config.K2          = In->kb_k2;
+	Config.K3          = In->kb_k3;
+	Config.K4          = In->kb_k4;
+	Config.Compression = FSensorWire::Encoding(In->encoding.get());
+	Config.CaptureRate = In->capture_rate;
 
-	Serialization::DeserializeResponse(Response, OutputStream);
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](UFisheyeCamera& Camera) { bApplied = Camera.SetFisheyeCameraConfig(Config); });
+
+	if (!bApplied)
+	{
+		Reply.Fail(TEXT("the fisheye camera rejected the config"));
+	}
 }
 
-//}
+void UFisheyeCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](UFisheyeCamera& Camera) {
+		FFisheyeCameraConfig Config = Camera.fisheye_camera_config_;
+		Config.Offset               = OffsetCm;
+		Config.Orientation          = Rotation;
+		Camera.SetFisheyeCameraConfig(Config);
+	});
+}
+
+void UFisheyeCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
+{
+	FCameraFrame Frame;
+	if (!GetFisheyeCameraDataFromServerThread(Frame))
+	{
+		Reply.Fail(TEXT("the fisheye camera has no frame yet"));
+		return;
+	}
+
+	const auto Image = FSensorWire::Image(Reply, Frame, FSensorWire::ColourFormat(Frame.Codec));
+	Reply.Set(flightforge::wire::CreateFisheyeCameraDataResponse(Reply.Builder, Frame.Stamp, Image));
+}
+
+/* //} */

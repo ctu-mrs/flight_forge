@@ -11,7 +11,7 @@
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 
-#include "Serialize.h"
+#include "FlightForgeCore/Utils/WireFrame.h"
 
 UCamera::UCamera()
 {
@@ -258,7 +258,7 @@ bool UCamera::TakeRingSlot()
 	return !RingFull();
 }
 
-bool UCamera::WaitForRequestedFrame(const bool& InstructionFinished, const uint64 BaselineFrame, const double TimeoutSeconds)
+bool UCamera::WaitForRequestedFrame(const std::atomic<bool>& InstructionFinished, const uint64 BaselineFrame, const double TimeoutSeconds)
 {
 	const double Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
 
@@ -537,33 +537,28 @@ FCameraIntrinsics UCamera::EffectiveIntrinsics(const FCameraIntrinsics& Intrinsi
 
 /* PinholeInfo() //{ */
 
-Serializable::Drone::CameraInfo UCamera::PinholeInfo(const int SensorId, const ::SensorType Type, const FCameraIntrinsics& Intrinsics,
-                                                     const FCameraDistortion& Distortion, const double FovDeg, const int32 Width, const int32 Height,
-                                                     const FVector& Offset, const FRotator& Orientation)
+flightforge::wire::CameraInfoT UCamera::PinholeInfo(const int SensorId, const ::SensorType Type, const FCameraIntrinsics& Intrinsics,
+                                                    const FCameraDistortion& Distortion, const double FovDeg, const int32 Width, const int32 Height,
+                                                    const FVector& Offset, const FRotator& Orientation)
 {
 	const FCameraIntrinsics K = EffectiveIntrinsics(Intrinsics, FovDeg, Width, Height);
 
-	Serializable::Drone::CameraInfo Info;
-	Info.sensor_id_   = SensorId;
-	Info.sensor_type_ = static_cast<int>(Type);
-	Info.width_       = Width;
-	Info.height_      = Height;
-	Info.projection_       = "pinhole";
-	Info.distortion_model_ = "plumb_bob";
-	Info.fx_               = K.Fx;
-	Info.fy_               = K.Fy;
-	Info.cx_               = K.Cx - WirePixelShift;
-	Info.cy_               = K.Cy - WirePixelShift;
-	Info.d_                = Distortion.Enable ? std::vector<double>{Distortion.K1, Distortion.K2, Distortion.P1, Distortion.P2, Distortion.K3}
-	                                           : std::vector<double>(5, 0.0);
+	flightforge::wire::CameraInfoT Info;
+	Info.sensor_id        = SensorId;
+	Info.sensor_type      = static_cast<flightforge::wire::SensorType>(Type);
+	Info.width            = Width;
+	Info.height           = Height;
+	Info.projection       = flightforge::wire::Projection::PINHOLE;
+	Info.distortion_model = "plumb_bob";
+	Info.fx               = K.Fx;
+	Info.fy               = K.Fy;
+	Info.cx               = K.Cx - WirePixelShift;
+	Info.cy               = K.Cy - WirePixelShift;
+	Info.d = Distortion.Enable ? std::vector<double>{Distortion.K1, Distortion.K2, Distortion.P1, Distortion.P2, Distortion.K3} : std::vector<double>(5, 0.0);
 	// custom K has no single FOV; report the horizontal one the effective fx implies
-	Info.fov_deg_        = K.Fx > 0.0 ? FMath::RadiansToDegrees(2.0 * FMath::Atan(Width * 0.5 / K.Fx)) : FovDeg;
-	Info.offset_x_       = Offset.X;
-	Info.offset_y_       = Offset.Y;
-	Info.offset_z_       = Offset.Z;
-	Info.rotation_pitch_ = Orientation.Pitch;
-	Info.rotation_yaw_   = Orientation.Yaw;
-	Info.rotation_roll_  = Orientation.Roll;
+	Info.fov   = K.Fx > 0.0 ? FMath::RadiansToDegrees(2.0 * FMath::Atan(Width * 0.5 / K.Fx)) : FovDeg;
+	Info.link  = "base_link";
+	Info.mount = std::make_unique<flightforge::wire::Pose>(FWireFrame::ToMountPose(Offset, Orientation));
 	return Info;
 }
 
@@ -942,16 +937,24 @@ void UCamera::ApplyNoise(TArray<FColor>& Pixels, const FIntPoint Size, const FCa
 /* CompressFrame() //{ */
 
 void UCamera::CompressFrame(const TArray<FColor>& Pixels, const FIntPoint Size, const FCameraCompression& Compression, const bool bLossless,
-                            TArray<uint8>& OutBytes)
+                            FCameraFrame& OutFrame)
 {
-	OutBytes.Reset();
+	OutFrame.Bytes.Reset();
+	OutFrame.Size  = Size;
+	OutFrame.Codec = Compression.Codec == ECameraCodec::Jpeg && bLossless ? ECameraCodec::Png : Compression.Codec;
 
 	if (Pixels.Num() < Size.X * Size.Y || Size.X <= 0 || Size.Y <= 0)
 	{
 		return;
 	}
 
-	const bool  bJpeg   = Compression.bJpeg && !bLossless;
+	if (OutFrame.Codec == ECameraCodec::Raw)
+	{
+		OutFrame.Bytes.Append(reinterpret_cast<const uint8*>(Pixels.GetData()), Size.X * Size.Y * sizeof(FColor));
+		return;
+	}
+
+	const bool  bJpeg   = OutFrame.Codec == ECameraCodec::Jpeg;
 	const int32 Quality = FMath::Clamp(Compression.Quality, 1, 100);
 
 	const FImageView Image(Pixels.GetData(), Size.X, Size.Y, EGammaSpace::sRGB);
@@ -959,7 +962,7 @@ void UCamera::CompressFrame(const TArray<FColor>& Pixels, const FIntPoint Size, 
 	TArray64<uint8> Compressed;
 	if (FImageUtils::CompressImage(Compressed, bJpeg ? TEXT("jpg") : TEXT("png"), Image, bJpeg ? Quality : 0))
 	{
-		OutBytes.Append(Compressed.GetData(), Compressed.Num());
+		OutFrame.Bytes.Append(Compressed.GetData(), Compressed.Num());
 	}
 }
 
@@ -988,10 +991,4 @@ void UCamera::TransformImageArray(int32 ImageWidth, int32 ImageHeight, const TAr
 }
 
 void UCamera::UpdateCamera(bool isExternallyLocked, double stamp = 0.0) {}
-
-void UCamera::GetConfig(std::stringstream& OutputStream) {}
-
-void UCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream) {}
-
-void UCamera::GetData(std::stringstream& OutputStream) {}
 

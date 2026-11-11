@@ -4,7 +4,9 @@
 #include "Engine/World.h"
 
 #include "FlightForgeCore/RobotPawn.h"
-#include "Serialize.h"
+#include "FlightForgeCore/Server/WireReply.h"
+
+#include <limits>
 
 URangeFinder::URangeFinder()
 {
@@ -33,8 +35,9 @@ void URangeFinder::TickComponent(float DeltaTime, ELevelTick TickType, FActorCom
 void URangeFinder::GetRangefinderData(double& range) {
 	RangefinderHitsCriticalSection->Lock();
 
-	FVector Start                = Owner->GetActorLocation() + Owner->GetActorRotation().RotateVector(RangefinderConfig.Offset);
-	FVector RangefinderDirection = Owner->GetActorUpVector() * -1;
+	const FQuat   Mount                = Owner->GetActorQuat() * RangefinderConfig.Rotation.Quaternion();
+	const FVector Start                = Owner->GetActorLocation() + Owner->GetActorRotation().RotateVector(RangefinderConfig.Offset);
+	const FVector RangefinderDirection = Mount.GetUpVector() * -1;
 	
 	range = -1;
 
@@ -49,17 +52,24 @@ void URangeFinder::GetRangefinderData(double& range) {
 	RangefinderHitsCriticalSection->Unlock();
 }
 
-void URangeFinder::GetConfig(std::stringstream& OutputStream){}
+/* wire //{ */
 
-void URangeFinder::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream){}
-
-void URangeFinder::GetData(std::stringstream& OutputStream)
+void URangeFinder::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	double range;
-	GetRangefinderData(range);
-	
-	Serializable::Drone::GetRangefinderData::Response Response(true);
-	Response.range = range;
+	double RangeCm = -1.0;
+	GetRangefinderData(RangeCm);
 
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const UWorld* World = GetWorld();
+	const double  Range = RangeCm >= 0.0 ? RangeCm / 100.0 : std::numeric_limits<double>::quiet_NaN();
+	Reply.Set(flightforge::wire::CreateRangefinderDataResponse(Reply.Builder, World ? World->GetTimeSeconds() : 0.0, Range));
 }
+
+void URangeFinder::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	FRangefinderConfig Config = GetRangefinderConfig();
+	Config.Offset             = OffsetCm;
+	Config.Rotation           = Rotation;
+	SetRangefinderConfig(Config);
+}
+
+/* //} */

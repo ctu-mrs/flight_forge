@@ -1,12 +1,12 @@
-﻿#pragma once
+#pragma once
+
+#include <atomic>
 #include <functional>
 
 template <typename T>
 struct FInstruction
 {
-	FInstruction(): Finished(false) {};
-	
-	bool Finished;
+	std::atomic<bool> Finished{false};
 
 	std::function<void(T& Obj)> Function;
 };

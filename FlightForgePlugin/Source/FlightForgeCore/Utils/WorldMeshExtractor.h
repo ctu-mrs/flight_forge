@@ -6,7 +6,7 @@
 
 struct FWorldMeshResult
 {
-	// xyz triplets in the scene frame: right-handed metres relative to the world origin
+	// xyz triplets in the ground frame
 	TArray<float>  Vertices;
 	TArray<uint32> Indices;
 
@@ -27,8 +27,8 @@ struct FWorldMeshResult
 class FLIGHTFORGECORE_API FWorldMeshExtractor
 {
 public:
-	/** SceneBounds is in the scene frame (metres, right-handed); an invalid box disables filtering. */
-	static bool Extract(UWorld* World, const FVector& WorldOrigin, const FBox& SceneBounds, int32 MaxTriangles, FWorldMeshResult& Out);
+	/** SceneBounds is in the ground frame; an invalid box disables filtering. */
+	static bool Extract(UWorld* World, const FVector& GroundOrigin, const FBox& SceneBounds, int32 MaxTriangles, FWorldMeshResult& Out);
 };
 
 /* //} */

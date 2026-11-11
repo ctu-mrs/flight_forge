@@ -7,7 +7,7 @@
 #include "RenderingThread.h"
 #include "TextureResource.h"
 
-#include "Serialize.h"
+#include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 
@@ -799,121 +799,117 @@ bool UEventCamera::SetEventCameraConfig(const FEventCameraConfig& Config)
 
 /* GetConfig() / SetConfig() //{ */
 
-void UEventCamera::GetConfig(std::stringstream& OutputStream)
+void UEventCamera::GetConfig(FWireReply& Reply)
 {
-	Serializable::Drone::GetEventCameraConfig::Response Response(true);
-	Response.config = Serializable::Drone::EventCameraConfig{};
-
 	const FEventCameraConfig& C = event_camera_config_;
-	auto&                     W = Response.config;
 
-	W.show_debug_camera_ = C.ShowCameraComponent;
+	flightforge::wire::EventCameraConfigT Table;
+	Table.show_debug_camera      = C.ShowCameraComponent;
+	Table.mount                  = FSensorWire::Mount(C.Offset, C.Orientation);
+	Table.fov                    = C.FOVAngle;
+	Table.width                  = C.Width;
+	Table.height                 = C.Height;
+	Table.contrast_threshold_pos = C.ContrastThresholdPos;
+	Table.contrast_threshold_neg = C.ContrastThresholdNeg;
+	Table.use_sim_time           = C.UseSimTime;
+	Table.threshold_sigma        = C.ThresholdSigma;
+	Table.refractory_period      = C.RefractoryPeriod;
+	Table.cutoff_hz              = C.CutoffHz;
+	Table.leak_rate_hz           = C.LeakRateHz;
+	Table.shot_noise_rate_hz     = C.ShotNoiseRateHz;
+	Table.hot_pixel_fraction     = C.HotPixelFraction;
+	Table.max_event_rate_hz      = C.MaxEventRateHz;
+	Table.max_events_per_frame   = static_cast<uint32_t>(FMath::Max(C.MaxEventsPerFrame, 0));
+	Table.use_gpu                = C.UseGpu;
+	Table.seed                   = C.Seed;
 
-	W.offset_x_ = C.Offset.X;
-	W.offset_y_ = C.Offset.Y;
-	W.offset_z_ = C.Offset.Z;
-
-	W.rotation_pitch_ = C.Orientation.Pitch;
-	W.rotation_yaw_   = C.Orientation.Yaw;
-	W.rotation_roll_  = C.Orientation.Roll;
-
-	W.fov_    = C.FOVAngle;
-	W.width_  = C.Width;
-	W.height_ = C.Height;
-
-	W.contrast_threshold_pos_ = C.ContrastThresholdPos;
-	W.contrast_threshold_neg_ = C.ContrastThresholdNeg;
-	W.use_sim_time_           = C.UseSimTime;
-
-	W.threshold_sigma_      = C.ThresholdSigma;
-	W.refractory_period_    = C.RefractoryPeriod;
-	W.cutoff_hz_            = C.CutoffHz;
-	W.leak_rate_hz_         = C.LeakRateHz;
-	W.shot_noise_rate_hz_   = C.ShotNoiseRateHz;
-	W.hot_pixel_fraction_   = C.HotPixelFraction;
-	W.max_event_rate_hz_    = C.MaxEventRateHz;
-	W.max_events_per_frame_ = C.MaxEventsPerFrame;
-	W.use_gpu_              = C.UseGpu;
-	W.seed_                 = C.Seed;
-
-	Serialization::DeserializeResponse(Response, OutputStream);
+	const auto Offset = flightforge::wire::CreateEventCameraConfig(Reply.Builder, &Table);
+	Reply.Set(flightforge::wire::CreateGetEventCameraConfigResponse(Reply.Builder, Offset));
 }
 
-void UEventCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std::stringstream> InputStream)
+void UEventCamera::SetConfig(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
-	Serializable::Drone::SetEventCameraConfig::Request Request;
-	Serialization::SerializeRequest(Request, *InputStream);
+	const flightforge::wire::SetEventCameraConfigRequest* Set = Request.body_as_SetEventCameraConfigRequest();
+	if (!Set || !Set->config())
+	{
+		Reply.Fail(TEXT("set_event_camera_config carries no config"));
+		return;
+	}
 
-	const auto& W = Request.config;
+	const std::unique_ptr<flightforge::wire::EventCameraConfigT> In(Set->config()->UnPack());
+	if (!FSensorWire::ValidPinhole(In->fov, In->width, In->height, Reply))
+	{
+		return;
+	}
 
 	FEventCameraConfig Config;
-	Config.ShowCameraComponent = W.show_debug_camera_;
+	Config.ShowCameraComponent = In->show_debug_camera;
+	FSensorWire::Mount(In->mount, Config.Offset, Config.Orientation);
+	Config.FOVAngle             = In->fov;
+	Config.Width                = In->width;
+	Config.Height               = In->height;
+	Config.ContrastThresholdPos = In->contrast_threshold_pos;
+	Config.ContrastThresholdNeg = In->contrast_threshold_neg;
+	Config.UseSimTime           = In->use_sim_time;
+	Config.ThresholdSigma       = In->threshold_sigma;
+	Config.RefractoryPeriod     = In->refractory_period;
+	Config.CutoffHz             = In->cutoff_hz;
+	Config.LeakRateHz           = In->leak_rate_hz;
+	Config.ShotNoiseRateHz      = In->shot_noise_rate_hz;
+	Config.HotPixelFraction     = In->hot_pixel_fraction;
+	Config.MaxEventRateHz       = In->max_event_rate_hz;
+	Config.MaxEventsPerFrame    = static_cast<int>(FMath::Min<uint32>(In->max_events_per_frame, MAX_int32));
+	Config.UseGpu               = In->use_gpu;
+	Config.Seed                 = In->seed;
 
-	Config.Offset      = FVector(W.offset_x_, W.offset_y_, W.offset_z_);
-	Config.Orientation = FRotator(W.rotation_pitch_, W.rotation_yaw_, W.rotation_roll_);
+	bool bApplied = false;
+	RunOnSensorQueue(*this, [&Config, &bApplied](UEventCamera& Camera) { bApplied = Camera.SetEventCameraConfig(Config); });
 
-	Config.FOVAngle = W.fov_;
-	Config.Width    = W.width_;
-	Config.Height   = W.height_;
-
-	Config.ContrastThresholdPos = W.contrast_threshold_pos_;
-	Config.ContrastThresholdNeg = W.contrast_threshold_neg_;
-	Config.UseSimTime           = W.use_sim_time_;
-
-	Config.ThresholdSigma    = W.threshold_sigma_;
-	Config.RefractoryPeriod  = W.refractory_period_;
-	Config.CutoffHz          = W.cutoff_hz_;
-	Config.LeakRateHz        = W.leak_rate_hz_;
-	Config.ShotNoiseRateHz   = W.shot_noise_rate_hz_;
-	Config.HotPixelFraction  = W.hot_pixel_fraction_;
-	Config.MaxEventRateHz    = W.max_event_rate_hz_;
-	Config.MaxEventsPerFrame = W.max_events_per_frame_;
-	Config.UseGpu            = W.use_gpu_;
-	Config.Seed              = W.seed_;
-
-	bool Status = false;
-
-	auto Instruction      = std::make_shared<FInstruction<UEventCamera>>();
-	Instruction->Function = [&Config, &Status](UEventCamera& _UEventCamera)
+	if (!bApplied)
 	{
-		Status = _UEventCamera.SetEventCameraConfig(Config);
-	};
-	InstructionQueue->Enqueue(Instruction);
+		Reply.Fail(TEXT("the event camera rejected the config"));
+	}
+}
 
-	FGenericPlatformProcess::ConditionalSleep([Instruction](){return Instruction->Finished;});
-
-	Serializable::Drone::SetEventCameraConfig::Response Response(Status);
-	Serialization::DeserializeResponse(Response, OutputStream);
+void UEventCamera::SetMount(const FVector& OffsetCm, const FRotator& Rotation)
+{
+	RunOnSensorQueue(*this, [&](UEventCamera& Camera) {
+		FEventCameraConfig Config = Camera.event_camera_config_;
+		Config.Offset             = OffsetCm;
+		Config.Orientation        = Rotation;
+		Camera.SetEventCameraConfig(Config);
+	});
 }
 
 //}
 
 /* GetData() //{ */
 
-void UEventCamera::GetData(std::stringstream& OutputStream)
+void UEventCamera::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
 {
 	// mark the stream as wanted so the tick keeps (or starts) capturing
 	camera_last_request_time_ = FPlatformTime::Seconds();
 
-	Serializable::Drone::GetEventCameraData::Response Response(true);
-
 	EventsCriticalSection->Lock();
 
-	const int32 N = EventBuffer.Num();
+	const int32  N         = EventBuffer.Num();
+	const double BaseStamp = N > 0 ? EventBuffer[0].Stamp : LastFrameStamp;
+	const double Stamp     = LastFrameStamp;
+	const uint32 Lost      = Dropped;
 
-	Response.base_stamp_ = N > 0 ? EventBuffer[0].Stamp : LastFrameStamp;
-	Response.stamp_      = LastFrameStamp;
-	Response.dropped_    = Dropped;
-	Response.width_      = event_camera_config_.Width;
-	Response.height_     = event_camera_config_.Height;
-
-	Response.xyp_.resize(N);
-	Response.t_us_.resize(N);
-
+	// a second vector can move the builder's buffer, so each is filled before the next is made
+	uint32_t*  Xyp  = nullptr;
+	const auto XypV = Reply.Builder.CreateUninitializedVector<uint32_t>(N, &Xyp);
 	for (int32 i = 0; i < N; ++i)
 	{
-		Response.xyp_[i]  = EventBuffer[i].XYP;
-		Response.t_us_[i] = static_cast<uint32_t>(FMath::Clamp(llround((EventBuffer[i].Stamp - Response.base_stamp_) * 1e6), 0ll, (long long)0xFFFFFFFFu));
+		Xyp[i] = EventBuffer[i].XYP;
+	}
+
+	uint32_t*  TUs  = nullptr;
+	const auto TUsV = Reply.Builder.CreateUninitializedVector<uint32_t>(N, &TUs);
+	for (int32 i = 0; i < N; ++i)
+	{
+		TUs[i] = static_cast<uint32_t>(FMath::Clamp(llround((EventBuffer[i].Stamp - BaseStamp) * 1e6), 0ll, (long long)0xFFFFFFFFu));
 	}
 
 	EventBuffer.Reset();
@@ -921,7 +917,8 @@ void UEventCamera::GetData(std::stringstream& OutputStream)
 
 	EventsCriticalSection->Unlock();
 
-	Serialization::DeserializeResponse(Response, OutputStream);
+	Reply.Set(flightforge::wire::CreateEventCameraDataResponse(Reply.Builder, BaseStamp, Stamp, event_camera_config_.Width, event_camera_config_.Height, Lost, XypV,
+	                                                           TUsV));
 }
 
 //}
