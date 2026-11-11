@@ -1,0 +1,392 @@
+include "common.fbs";
+
+namespace flightforge.wire;
+
+// ids are stable and append-only; 3 was LIDAR_LIVOX, sonar and DVL are reserved to append
+enum SensorType : ubyte {
+  RGB_CAMERA = 0,
+  LIDAR = 1,
+  RANGEFINDER = 2,
+  RGB_SEG_CAMERA = 4,
+  STEREO_CAMERA = 5,
+  EVENT_CAMERA = 6,
+  FISHEYE_CAMERA = 7,
+  INSTANCE_SEG_CAMERA = 8,
+  DEPTH_CAMERA = 9,
+}
+
+// sensor requests address Request.sensor_id; absent picks the robot's first sensor of the op's type
+
+/* sensors and devices //{ */
+
+table SensorInfo {
+  id: int;
+  type: SensorType;
+  link: string;
+}
+
+// mount names a description mount and wins over link; empty link is the base link
+table AddSensorRequest {
+  type: SensorType;
+  link: string;
+  mount: string;
+  pose: Pose;  // relative to the link or mount
+}
+
+table AddSensorResponse {
+  sensor_id: int;
+}
+
+table RemoveSensorRequest {}
+
+table ListSensorsRequest {}
+
+table ListSensorsResponse {
+  sensors: [SensorInfo];
+}
+
+table AddDeviceRequest {
+  device_name: string;
+  link: string;
+  mount: string;
+  pose: Pose;  // relative to the link or mount
+  show_mesh: bool;
+}
+
+table AddDeviceResponse {
+  sensors: [SensorInfo];  // creation order
+}
+
+table ListDevicesRequest {}
+
+table DeviceInfo {
+  name: string;
+  description: string;
+}
+
+table ListDevicesResponse {
+  devices: [DeviceInfo];
+}
+
+//}
+
+/* camera blocks //{ */
+
+// OpenCV pixel convention: a centred camera has cx = W/2 - 0.5; with use_custom unset the fov drives the projection
+table CameraIntrinsics {
+  use_custom: bool;
+  fx: double;  // px
+  fy: double;  // px
+  cx: double;  // px
+  cy: double;  // px
+}
+
+// Brown-Conrady, OpenCV convention
+table CameraDistortion {
+  enable: bool;
+  k1: double;
+  k2: double;
+  k3: double;
+  p1: double;
+  p2: double;
+}
+
+// sigma = sqrt(shot_scale * signal + read_sigma^2), signal in [0, 1]
+table CameraNoise {
+  enable: bool;
+  shot_scale: double = 0.0002;
+  read_sigma: double = 0.003;
+  row_sigma: double;
+}
+
+table CameraRollingShutter {
+  enable: bool;
+  readout_time: double = 0.03;  // s, top to bottom
+}
+
+table CameraExposure {
+  manual: bool;
+  shutter_time: double;  // s
+  iso: double;
+  ev_compensation: double;  // EV
+}
+
+table CameraLensEffects {
+  fstop: double;
+  focal_distance: double;  // m, <= 0 disables depth of field
+  sensor_width_mm: double;  // mm
+  vignette_intensity: double;
+  chromatic_aberration: double;
+  bloom_intensity: double;
+  lens_flare_intensity: double;
+  white_temp: double;  // K, <= 0 keeps the engine default
+  white_tint: double;
+  motion_blur_from_shutter: bool;
+}
+
+//}
+
+/* configs //{ */
+
+// also the config of the depth, instance segmentation and legacy segmentation cameras
+table RgbCameraConfig {
+  show_debug_camera: bool;
+  mount: Pose;  // relative to the sensor's link
+  fov: double;  // deg, horizontal
+  width: uint;  // px
+  height: uint;  // px
+  enable_temporal_aa: bool;
+  enable_raytracing: bool;
+  enable_hdr: bool;
+  enable_motion_blur: bool;
+  motion_blur_amount: double;
+  motion_blur_distortion: double;
+  exposure: CameraExposure;
+  lens: CameraLensEffects;
+  intrinsics: CameraIntrinsics;
+  distortion: CameraDistortion;
+  noise: CameraNoise;
+  rolling_shutter: CameraRollingShutter;
+  encoding: ImageEncoding;
+  capture_rate: double;  // Hz, sim; 0 every tick
+}
+
+table StereoCameraConfig {
+  show_debug_camera: bool;
+  mount_left: Pose;  // relative to the sensor's link
+  mount_right: Pose;  // relative to the sensor's link
+  fov: double;  // deg, horizontal
+  width: uint;  // px
+  height: uint;  // px
+  enable_temporal_aa: bool;
+  enable_raytracing: bool;
+  enable_hdr: bool;
+  intrinsics: CameraIntrinsics;  // both eyes
+  distortion: CameraDistortion;  // both eyes
+  encoding: ImageEncoding;
+  capture_rate: double;  // Hz, sim; 0 every tick
+}
+
+enum FisheyeLens : ubyte {
+  EQUIDISTANT = 0,
+  EQUISOLID = 1,
+  STEREOGRAPHIC = 2,
+  KANNALA_BRANDT = 3,
+}
+
+table FisheyeCameraConfig {
+  show_debug_camera: bool;
+  mount: Pose;  // relative to the sensor's link
+  fov: double;  // deg, diagonal, up to 220
+  width: uint;  // px
+  height: uint;  // px
+  lens: FisheyeLens;
+  encoding: ImageEncoding;
+  full_frame: bool;  // image circle fitted to the frame corner instead of the short side
+  intrinsics: CameraIntrinsics;  // f in px per rad of theta; fov then only caps the rendered angle
+  kb_k1: double;
+  kb_k2: double;
+  kb_k3: double;
+  kb_k4: double;
+  capture_rate: double;  // Hz, sim; 0 every tick
+}
+
+table EventCameraConfig {
+  show_debug_camera: bool;
+  mount: Pose;  // relative to the sensor's link
+  fov: double;  // deg, horizontal
+  width: uint;  // px
+  height: uint;  // px
+  contrast_threshold_pos: double;  // log intensity
+  contrast_threshold_neg: double;  // log intensity
+  use_sim_time: bool;
+  threshold_sigma: double;  // log intensity, per-pixel std
+  refractory_period: double;  // s
+  cutoff_hz: double;  // Hz, at full-scale intensity
+  leak_rate_hz: double;  // Hz, ON events per pixel
+  shot_noise_rate_hz: double;  // Hz per pixel at full scale, up to 4x in the dark
+  hot_pixel_fraction: double;
+  max_event_rate_hz: double;  // Hz, 0 unlimited
+  max_events_per_frame: uint;
+  use_gpu: bool;
+  seed: uint;
+}
+
+table LidarConfig {
+  enable: bool;
+  show_beams: bool;
+  range_m: double;  // m
+  horizontal_rays: uint;
+  vertical_rays: uint;
+  frequency: double;  // Hz
+  mount: Pose;  // relative to the sensor's link
+  fov_left: double;  // deg
+  fov_right: double;  // deg
+  fov_up: double;  // deg
+  fov_down: double;  // deg
+  livox: bool;
+  livox_pattern: string;  // Content/Lidar/<name>.ffpat stem, empty for none
+  show_sensor_body: bool;
+}
+
+table GetRgbCameraConfigRequest {}
+table GetRgbCameraConfigResponse { config: RgbCameraConfig; }
+table SetRgbCameraConfigRequest { config: RgbCameraConfig; }
+
+table GetStereoCameraConfigRequest {}
+table GetStereoCameraConfigResponse { config: StereoCameraConfig; }
+table SetStereoCameraConfigRequest { config: StereoCameraConfig; }
+
+table GetFisheyeCameraConfigRequest {}
+table GetFisheyeCameraConfigResponse { config: FisheyeCameraConfig; }
+table SetFisheyeCameraConfigRequest { config: FisheyeCameraConfig; }
+
+table GetEventCameraConfigRequest {}
+table GetEventCameraConfigResponse { config: EventCameraConfig; }
+table SetEventCameraConfigRequest { config: EventCameraConfig; }
+
+table GetLidarConfigRequest {}
+table GetLidarConfigResponse { config: LidarConfig; }
+table SetLidarConfigRequest { config: LidarConfig; }
+
+//}
+
+/* data //{ */
+
+table GetRgbCameraDataRequest {}
+
+table RgbCameraDataResponse {
+  stamp: double;  // s, sim
+  image: Image;
+}
+
+table GetStereoCameraDataRequest {}
+
+table StereoCameraDataResponse {
+  stamp: double;  // s, sim
+  left: Image;
+  right: Image;
+}
+
+table GetFisheyeCameraDataRequest {}
+
+table FisheyeCameraDataResponse {
+  stamp: double;  // s, sim
+  image: Image;
+}
+
+table GetDepthCameraDataRequest {}
+
+// MONO16 millimetres, 0 invalid or too close, 65535 clamped
+table DepthCameraDataResponse {
+  stamp: double;  // s, sim
+  image: Image;
+}
+
+table GetRgbSegCameraDataRequest {}
+
+// label cameras ignore the encoding and send PNG, as a lossy codec would invent ids
+table RgbSegCameraDataResponse {
+  stamp: double;  // s, sim
+  image: Image;
+}
+
+table GetInstanceSegDataRequest {}
+
+// RGBA8: instance id = R + (G << 8) + (B << 16), 0 background; A is the class id
+table InstanceSegDataResponse {
+  stamp: double;  // s, sim
+  image: Image;
+}
+
+table GetInstanceSegMapRequest {}
+
+table InstanceSegEntry {
+  id: uint;
+  actor: string;
+  class_id: int;  // 0 unlabelled
+}
+
+// snapshotted with the last instance image, so the two always agree
+table InstanceSegMapResponse {
+  entries: [InstanceSegEntry];
+}
+
+table GetEventCameraDataRequest {}
+
+// xyp = x | y << 16 | brighter << 31
+table EventCameraDataResponse {
+  base_stamp: double;  // s, sim
+  stamp: double;  // s, sim; the batch is complete up to here
+  width: uint;  // px
+  height: uint;  // px
+  dropped: uint;  // lost to the readout cap or a full buffer since the last drain
+  xyp: [uint];
+  t_us: [uint];  // us after base_stamp
+}
+
+table GetLidarScanRequest {
+  with_intensity: bool;
+  with_labels: bool;
+}
+
+// channels are per point in points order, empty unless requested
+table LidarScanResponse {
+  stamp: double;  // s, sim
+  sensor_pose: Pose;  // at scan time
+  rows: uint;  // 0 when the scan is not organised, as for Livox
+  cols: uint;
+  points: [Vec3f];  // m, sensor frame, NaN for no return
+  intensity: [int];  // physical-material class, -1 for no return
+  class_id: [int];  // -1 for no return, landscape 1
+  instance_id: [uint];  // 0 background, the instance camera's id space
+}
+
+table GetRangefinderDataRequest {}
+
+table RangefinderDataResponse {
+  stamp: double;  // s, sim
+  range: double;  // m, NaN for no return
+}
+
+enum Projection : ubyte {
+  PINHOLE = 0,
+  FISHEYE_EQUIDISTANT = 1,
+  FISHEYE_EQUISOLID = 2,
+  FISHEYE_STEREOGRAPHIC = 3,
+  FISHEYE_KANNALA_BRANDT = 4,
+}
+
+enum Eye : ubyte {
+  LEFT = 0,
+  RIGHT = 1,
+}
+
+// optical frame: z = mount x, x = mount -y, y = mount -z
+table CameraInfo {
+  sensor_id: int;
+  sensor_type: SensorType;
+  eye: Eye;
+  width: uint;  // px
+  height: uint;  // px
+  projection: Projection;
+  distortion_model: string;  // sensor_msgs/CameraInfo: plumb_bob, or equidistant for every fisheye
+  fx: double;  // px; a fisheye's f is px per rad of theta
+  fy: double;  // px
+  cx: double;  // px
+  cy: double;  // px
+  d: [double];  // plumb_bob: k1 k2 p1 p2 k3, equidistant: k1 k2 k3 k4; never empty
+  fov: double;  // deg; pinhole horizontal, fisheye the image circle
+  link: string;
+  mount: Pose;  // relative to the link
+  baseline_m: double;  // m, stereo
+  readout_time: double;  // s, 0 for a global shutter
+}
+
+table GetCameraInfoRequest {}  // without a sensor_id: every camera on the robot
+
+table GetCameraInfoResponse {
+  cameras: [CameraInfo];
+}
+
+//}

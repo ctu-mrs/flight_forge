@@ -1,0 +1,140 @@
+include "common.fbs";
+
+namespace flightforge.wire;
+
+enum RobotKind : ubyte {
+  GENERIC = 0,
+  MULTIROTOR = 1,
+  FIXED_WING = 2,
+  GROUND = 3,
+  SURFACE = 4,
+  UNDERWATER = 5,
+}
+
+enum JointType : ubyte {
+  FIXED = 0,
+  REVOLUTE = 1,
+  CONTINUOUS = 2,
+  PRISMATIC = 3,
+  FLOATING = 4,
+}
+
+table RobotState {
+  base: Pose;
+  joint_positions: [double];  // rad or m, GetDescriptionResponse.joint_names order; empty leaves joints alone
+  joint_velocities: [double];  // rad/s or m/s, animates continuous joints between updates
+  link_poses: [Pose];  // every link in description order or empty; wins over joints
+}
+
+table SpawnRobotRequest {
+  name: string;  // a shipped or project description, a library id or a .glb; ignored with description_yaml
+  description_yaml: string;
+  pose: Pose;
+}
+
+table SpawnRobotResponse {
+  robot_id: int;
+}
+
+table ListRobotsRequest {}
+
+table RobotInfo {
+  id: int;
+  name: string;
+  kind: RobotKind;
+}
+
+table ListRobotsResponse {
+  robots: [RobotInfo];
+}
+
+table RemoveRobotRequest {}
+
+table GetDescriptionRequest {}
+
+table LinkInfo {
+  name: string;
+  parent: string;  // empty for the base link
+  joint_type: JointType;
+  joint_axis: Vec3;  // unit, in the link frame
+  origin: Pose;  // relative to the parent at joint zero
+  mesh: string;
+}
+
+table MountInfo {
+  name: string;
+  link: string;
+  pose: Pose;  // relative to the link
+}
+
+table GetDescriptionResponse {
+  name: string;
+  kind: RobotKind;
+  segmentation_class: string;
+  links: [LinkInfo];
+  joint_names: [string];  // the links with a movable joint, in RobotState joint order
+  mounts: [MountInfo];
+  yaml: string;
+}
+
+table GetStateRequest {}
+
+table GetStateResponse {
+  stamp: double;  // s, sim
+  state: RobotState;
+}
+
+table SetStateRequest {
+  state: RobotState;
+  collide: bool;
+  wait_applied: bool = true;
+}
+
+table SetStateResponse {
+  robot_id: int;
+  base: Pose;  // where the base ended up, short of a hit
+  hit: bool;
+  impact_point: Vec3;  // m
+}
+
+table RobotStateEntry {
+  robot_id: int;
+  state: RobotState;
+}
+
+table SetStatesRequest {
+  states: [RobotStateEntry];
+  collide: bool;
+  wait_applied: bool = true;
+}
+
+table SetStatesResponse {
+  results: [SetStateResponse];  // empty unless wait_applied
+}
+
+table TrajectorySample {
+  t: double;  // s, sim, ascending
+  state: RobotState;
+}
+
+// the robot interpolates along the samples each tick and holds the end states
+table SetTrajectoryRequest {
+  samples: [TrajectorySample];
+}
+
+table GetCollisionRequest {}
+
+table GetCollisionResponse {
+  collided: bool;
+  impact_point: Vec3;  // m
+}
+
+table GetMoveLineVisibleRequest {}
+
+table GetMoveLineVisibleResponse {
+  visible: bool;
+}
+
+table SetMoveLineVisibleRequest {
+  visible: bool;
+}
