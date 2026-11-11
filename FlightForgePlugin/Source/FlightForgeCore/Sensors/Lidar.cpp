@@ -7,7 +7,7 @@
 #include "Engine/World.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "Serialize.h"
 
@@ -336,7 +336,7 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
                 AActor* HitActor = HitResult.GetActor();
 
-                const bool bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != Owner;
+                const bool bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ARobotPawn::StaticClass()) && HitActor != Owner;
 
                 if (!bHiddenDrone && HitResult.Distance >= MinRangeCm) {
                     // Re-expressing the world hit in the reference frame is what bakes the
@@ -471,7 +471,7 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
             if (World->LineTraceSingleByChannel(HitResult, lidarLocation, lidarLocation + raycastWorld, ECC_Visibility, CollisionParams) &&
                 HitResult.bBlockingHit) {
                 const AActor* HitActor     = HitResult.GetActor();
-                const bool    bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ADronePawn::StaticClass()) && HitActor != Owner;
+                const bool    bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ARobotPawn::StaticClass()) && HitActor != Owner;
                 if (!bHiddenDrone) {
                     bHasReturn = true;
                     Distance   = HitResult.Distance;

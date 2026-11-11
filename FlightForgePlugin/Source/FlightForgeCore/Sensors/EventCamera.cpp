@@ -8,7 +8,7 @@
 #include "TextureResource.h"
 
 #include "Serialize.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 
 // a runaway scene (or a stalled client) must not grow the stream unboundedly

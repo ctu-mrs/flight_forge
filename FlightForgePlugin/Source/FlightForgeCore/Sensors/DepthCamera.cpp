@@ -2,7 +2,7 @@
 
 #include "TextureResource.h"
 
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "Serialize.h"
 
 UDepthCamera::UDepthCamera() : UCamera()

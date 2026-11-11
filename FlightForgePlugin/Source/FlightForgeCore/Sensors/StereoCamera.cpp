@@ -3,7 +3,7 @@
 #include "TextureResource.h"
 
 #include "Serialize.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "RenderingThread.h"
 
 UStereoCamera::UStereoCamera() : UCamera()
@@ -435,10 +435,10 @@ void UStereoCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 
 	bool Status = false;
 
-	// auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
+	// auto Instruction = std::make_shared<FInstruction<ARobotPawn>>();
 	//
-	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
-	// 	Status = _ADronePawn.SetStereoCameraConfig(Config, ID);
+	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ARobotPawn& _ARobotPawn) {
+	// 	Status = _ARobotPawn.SetStereoCameraConfig(Config, ID);
 	// };
 	//
 	// Owner->InstructionQueue->Enqueue(Instruction);

@@ -14,7 +14,7 @@
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 
-#include "DronePawn.h"
+#include "RobotPawn.h"
 #include "SimClock.h"
 #include "Server/FlightForgeGameModeServer.h"
 #include "HAL/FileManager.h"
@@ -41,7 +41,7 @@
 struct FPooledDrone
 {
 	APlayerController* Controller;
-	ADronePawn* Pawn;
+	ARobotPawn* Pawn;
 };
 
 UCLASS()
@@ -80,9 +80,9 @@ private:
 
 	//}
 
-	std::unique_ptr<FCriticalSection> DronePawnsCriticalSection = std::make_unique<FCriticalSection>();
+	std::unique_ptr<FCriticalSection> RobotPawnsCriticalSection = std::make_unique<FCriticalSection>();
 
-	TMap<int, std::pair<ADronePawn*, APlayerController*>> DronePawns = TMap<int, std::pair<ADronePawn*, APlayerController*>>();
+	TMap<int, std::pair<ARobotPawn*, APlayerController*>> RobotPawns = TMap<int, std::pair<ARobotPawn*, APlayerController*>>();
 
 	UPROPERTY()
 	TObjectPtr<UWorldObjectSpawner> ObjectSpawner;
@@ -92,12 +92,12 @@ private:
 		PrimaryActorTick.bCanEverTick = true;
 		PrimaryActorTick.bTickEvenWhenPaused = true;  // lockstep parks the world paused
 
-		// Every spawn path casts the default pawn to ADronePawn; without this the class
+		// Every spawn path casts the default pawn to ARobotPawn; without this the class
 		// stays ADefaultPawn and each cast yields null. Blueprint subclasses override it.
-		static ConstructorHelpers::FClassFinder<APawn> DronePawnFinder(TEXT("/FlightForgePlugin/Blueprints/BP_DronePawn"));
-		if (DronePawnFinder.Succeeded())
+		static ConstructorHelpers::FClassFinder<APawn> RobotPawnFinder(TEXT("/FlightForgePlugin/Blueprints/BP_DronePawn"));
+		if (RobotPawnFinder.Succeeded())
 		{
-			DefaultPawnClass = DronePawnFinder.Class;
+			DefaultPawnClass = RobotPawnFinder.Class;
 		}
 
 		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>>();
@@ -132,10 +132,10 @@ private:
 			}
 		}
 
-		// A Blueprint that fills in DronePawnClass wins over the class the constructor found.
-		if (DronePawnClass)
+		// A Blueprint that fills in RobotPawnClass wins over the class the constructor found.
+		if (RobotPawnClass)
 		{
-			DefaultPawnClass = DronePawnClass;
+			DefaultPawnClass = RobotPawnClass;
 		}
 
 		UFlightForgeGameInstance* MyGameInstance = Cast<UFlightForgeGameInstance>(GetGameInstance());
@@ -266,7 +266,7 @@ private:
 			
 		NewDrone.Controller = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 			
-		NewDrone.Pawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(NewDrone.Controller, HideTransform));
+		NewDrone.Pawn = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(NewDrone.Controller, HideTransform));
 
 		if (NewDrone.Pawn)
 		{
@@ -283,10 +283,10 @@ public:
 	{
 		TArray<int> Keys;
 		
-		DronePawnsCriticalSection->Lock();
-		const auto PawnsCount = DronePawns.Num();
-		DronePawns.GetKeys(Keys);
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Lock();
+		const auto PawnsCount = RobotPawns.Num();
+		RobotPawns.GetKeys(Keys);
+		RobotPawnsCriticalSection->Unlock();
 
 		Ports.resize(PawnsCount);
 		std::copy_n(Keys.GetData(), PawnsCount, Ports.begin());
@@ -295,7 +295,7 @@ public:
 	int SpawnDrone()
 	{
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
-		ADronePawn* PlayerPawn = nullptr;
+		ARobotPawn* PlayerPawn = nullptr;
 		auto PlayerController = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
 
 		UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone"));
@@ -308,13 +308,13 @@ public:
 
 		if (PlayerPawn == nullptr)
 		{
-			PlayerPawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
+			PlayerPawn = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(PlayerController, PlayerStart->GetTransform()));
 			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at PlayerStart"));
 		}
 
 		if (PlayerPawn == nullptr)
 		{
-			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: DefaultPawnClass is not an ADronePawn, nothing spawned"));
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDrone: DefaultPawnClass is not an ARobotPawn, nothing spawned"));
 			return -1;
 		}
 
@@ -323,9 +323,9 @@ public:
 		PlayerPawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		PlayerPawn->StartServer();
 
-		DronePawnsCriticalSection->Lock();
-		DronePawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Lock();
+		RobotPawns.Add(DronePort, std::make_pair(PlayerPawn, PlayerController));
+		RobotPawnsCriticalSection->Unlock();
 
 		return PlayerPawn->droneServer->GetPort();
 	}
@@ -397,13 +397,13 @@ public:
 		else
 		{
 			ReadyDrone.Controller = SpawnPlayerController(ENetRole::ROLE_MAX, FString());
-			ReadyDrone.Pawn = Cast<ADronePawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Location)));
+			ReadyDrone.Pawn = Cast<ARobotPawn>(SpawnDefaultPawnAtTransform(ReadyDrone.Controller, FTransform(Location)));
 			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::SpawnDrone at defined Location"));
 		}
 
 		if (ReadyDrone.Pawn == nullptr)
 		{
-			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation: DefaultPawnClass is not an ADronePawn, nothing spawned"));
+			UE_LOG(LogTemp, Error, TEXT("AFlightForgeGameModeBase::SpawnDroneAtLocation: DefaultPawnClass is not an ARobotPawn, nothing spawned"));
 			return -1;
 		}
 
@@ -414,9 +414,9 @@ public:
 		ReadyDrone.Pawn->SetStaticMesh(MeshName);
 		ReadyDrone.Pawn->Simulate_UE_Physics(3.0f);
 		
-		DronePawnsCriticalSection->Lock();
-		DronePawns.Add(DronePort, std::make_pair(ReadyDrone.Pawn, ReadyDrone.Controller));
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Lock();
+		RobotPawns.Add(DronePort, std::make_pair(ReadyDrone.Pawn, ReadyDrone.Controller));
+		RobotPawnsCriticalSection->Unlock();
 
 		if(!bMutualDroneVisibilityEnabled_)
 		{
@@ -431,15 +431,15 @@ public:
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase::RemoveDrone"));
 		
-		DronePawnsCriticalSection->Lock();
-		auto DronePair = DronePawns.Find(Port);
+		RobotPawnsCriticalSection->Lock();
+		auto DronePair = RobotPawns.Find(Port);
 		if(DronePair)
 		{
 			DronePair->second->Destroy();
 			DronePair->first->Destroy();
 		}
-		const bool Success = DronePawns.Remove(Port) > 0;
-		DronePawnsCriticalSection->Unlock();
+		const bool Success = RobotPawns.Remove(Port) > 0;
+		RobotPawnsCriticalSection->Unlock();
 
 		return Success;
 	}
@@ -453,7 +453,7 @@ public:
 	{
 		CameraCaptureMode = CaptureMode;
 
-		for(auto& a : DronePawns)
+		for(auto& a : RobotPawns)
 		{
 			a.Value.first->SetCameraCaptureMode(CaptureMode);
 		}
@@ -586,15 +586,15 @@ public:
 	{
 		FlushRenderingCommands();
 
-		DronePawnsCriticalSection->Lock();
-		TArray<ADronePawn*> Pawns;
-		for (auto& Entry : DronePawns)
+		RobotPawnsCriticalSection->Lock();
+		TArray<ARobotPawn*> Pawns;
+		for (auto& Entry : RobotPawns)
 		{
 			Pawns.Add(Entry.Value.first);
 		}
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Unlock();
 
-		for (ADronePawn* Pawn : Pawns)
+		for (ARobotPawn* Pawn : Pawns)
 		{
 			if (!IsValid(Pawn))
 			{
@@ -614,10 +614,10 @@ public:
 	{
 		double Dt = FixedDtMax;
 
-		DronePawnsCriticalSection->Lock();
-		for (auto& Entry : DronePawns)
+		RobotPawnsCriticalSection->Lock();
+		for (auto& Entry : RobotPawns)
 		{
-			ADronePawn* Pawn = Entry.Value.first;
+			ARobotPawn* Pawn = Entry.Value.first;
 			if (!IsValid(Pawn))
 			{
 				continue;
@@ -630,7 +630,7 @@ public:
 				Dt = FMath::Min(Dt, Camera->SuggestedTimestep(FixedDtMax, AdaptiveMinDt));
 			}
 		}
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Unlock();
 
 		return Dt;
 	}
@@ -653,14 +653,14 @@ public:
 	{
 		TArray<int> DronePorts;
 		
-		DronePawnsCriticalSection->Lock();
-		DronePawns.GetKeys(DronePorts);
+		RobotPawnsCriticalSection->Lock();
+		RobotPawns.GetKeys(DronePorts);
 		for (const auto DronePort : DronePorts)
 		{
-			auto DronePawn = DronePawns.Find(DronePort)->first;
-			Positions.push_back(DronePawn->GetActorLocation());
+			auto RobotPawn = RobotPawns.Find(DronePort)->first;
+			Positions.push_back(RobotPawn->GetActorLocation());
 		}
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Unlock();
 	}
 
 	bool SetGraphicsSettings(const int32 Level)
@@ -739,12 +739,12 @@ public:
 		}
 	}
 
-	ADronePawn* FindDronePawn(const int Port)
+	ARobotPawn* FindRobotPawn(const int Port)
 	{
-		DronePawnsCriticalSection->Lock();
-		const auto* Entry = DronePawns.Find(Port);
-		ADronePawn* Pawn  = Entry ? Entry->first : nullptr;
-		DronePawnsCriticalSection->Unlock();
+		RobotPawnsCriticalSection->Lock();
+		const auto* Entry = RobotPawns.Find(Port);
+		ARobotPawn* Pawn  = Entry ? Entry->first : nullptr;
+		RobotPawnsCriticalSection->Unlock();
 		return Pawn;
 	}
 
@@ -755,7 +755,7 @@ public:
 		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
 		if(!PlayerStart)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("AuedsGameModeBase: no PlayerStart tagged \"UAV\", using the level origin"));
+			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase: no PlayerStart tagged \"UAV\", using the level origin"));
 			return FVector::ZeroVector;
 		}
 
@@ -911,14 +911,14 @@ public:
 
 	void UpdateMutualVisibility()
 	{
-		for (auto DroneToUpdate : DronePawns)
+		for (auto DroneToUpdate : RobotPawns)
 		{
 			TArray<AActor*> DronesToBeHidden;
-			for (auto DronePawn : DronePawns)
+			for (auto RobotPawn : RobotPawns)
 			{
-				if(DroneToUpdate != DronePawn)
+				if(DroneToUpdate != RobotPawn)
 				{
-					DronesToBeHidden.Add(DronePawn.Value.first);
+					DronesToBeHidden.Add(RobotPawn.Value.first);
 				}
 			}
 			// DroneToUpdate.Value.first->SceneCaptureComponent2DRgb->HiddenActors.Empty();
@@ -937,5 +937,5 @@ public:
 	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>> InstructionQueue;
 	
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)
-	TSubclassOf<ADronePawn> DronePawnClass;
+	TSubclassOf<ARobotPawn> RobotPawnClass;
 };

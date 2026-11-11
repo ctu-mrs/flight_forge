@@ -6,7 +6,7 @@
 #include "TextureResource.h"
 
 #include "Serialize.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 
 URgbSegCamera::URgbSegCamera() : UCamera()
 {
@@ -378,10 +378,10 @@ void URgbSegCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<s
 
 	bool Status = false;
 
-	// auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
+	// auto Instruction = std::make_shared<FInstruction<ARobotPawn>>();
 	//
-	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
-	// 	Status = _ADronePawn.SetRgbCameraConfig(Config, ID); //wrong
+	// Instruction->Function = [ID = this->SensorID, &Config, &Status](ARobotPawn& _ARobotPawn) {
+	// 	Status = _ARobotPawn.SetRgbCameraConfig(Config, ID); //wrong
 	// };
 	//
 	// Owner->InstructionQueue->Enqueue(Instruction);

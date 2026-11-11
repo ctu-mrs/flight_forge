@@ -6,7 +6,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Chaos/HeightField.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "StaticMeshResources.h"
 
@@ -128,7 +128,7 @@ bool FWorldMeshExtractor::Extract(UWorld* World, const FVector& WorldOrigin, con
 		AActor* Actor = *It;
 
 		// robots are observers of the world, not part of its ground truth
-		if (Actor->IsA(ADronePawn::StaticClass()) || (Actor->GetParentActor() && Actor->GetParentActor()->IsA(ADronePawn::StaticClass())))
+		if (Actor->IsA(ARobotPawn::StaticClass()) || (Actor->GetParentActor() && Actor->GetParentActor()->IsA(ARobotPawn::StaticClass())))
 		{
 			continue;
 		}

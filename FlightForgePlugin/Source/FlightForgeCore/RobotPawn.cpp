@@ -1,8 +1,8 @@
 /* includes //{ */
 
-#include "DronePawn.h"
+#include "RobotPawn.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(DronePawn)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(RobotPawn)
 
 #include "ImageUtils.h"
 #include "Camera/CameraComponent.h"
@@ -29,16 +29,16 @@
 
 
 // Sets default values
-ADronePawn::ADronePawn() {
+ARobotPawn::ARobotPawn() {
 
-  // UE_LOG(LogTemp, Warning, TEXT("ADronePawn constructor"));
+  // UE_LOG(LogTemp, Warning, TEXT("ARobotPawn constructor"));
 
   PrimaryActorTick.bCanEverTick = true;
   PrimaryActorTick.bTickEvenWhenPaused = true;  // pose requests must land while lockstep holds the world
   
   PrimaryActorTick.TickGroup    = TG_PrePhysics;
 
-  InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>>();
+  InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ARobotPawn>>>>();
 
   SensorsCriticalSection = std::make_unique<FCriticalSection>();
 
@@ -125,7 +125,7 @@ ADronePawn::ADronePawn() {
 /* beginPlay() //{ */
 
 // Called when the game starts or when spawned
-void ADronePawn::BeginPlay() {
+void ARobotPawn::BeginPlay() {
 
   //startTime = FPlatformTime::Seconds();
   
@@ -134,7 +134,7 @@ void ADronePawn::BeginPlay() {
   Super::BeginPlay();
 }
 
-// void ADronePawn::PostInitializeComponents() {
+// void ARobotPawn::PostInitializeComponents() {
 //     Super::PostInitializeComponents();
 //     
 //     // Add default sensors that every drone should have
@@ -147,14 +147,14 @@ void ADronePawn::BeginPlay() {
 // }
 
 
-void ADronePawn::StartServer() {
+void ARobotPawn::StartServer() {
   // UE_LOG(LogTemp, Warning, TEXT("Starting drone server"));
   droneServer->Run();
 }
 
 
-void ADronePawn::DrainInstructions() {
-  std::shared_ptr<FInstruction<ADronePawn>> Instruction;
+void ARobotPawn::DrainInstructions() {
+  std::shared_ptr<FInstruction<ARobotPawn>> Instruction;
   while (InstructionQueue->Dequeue(Instruction)) {
     Instruction->Function(*this);
     Instruction->Finished = true;
@@ -169,7 +169,7 @@ void ADronePawn::DrainInstructions() {
   SensorsCriticalSection->Unlock();
 }
 
-void ADronePawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
+void ARobotPawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   // the server thread may be mid-request, spinning on an instruction only this thread can run
   droneServer->Stop([this]() { DrainInstructions(); });
 
@@ -186,17 +186,17 @@ void ADronePawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
 }
 
 // Called to bind functionality to input
-void ADronePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) {
+void ARobotPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) {
   Super::SetupPlayerInputComponent(PlayerInputComponent);
 }
 
-bool ADronePawn::GetCrashState(void) {
+bool ARobotPawn::GetCrashState(void) {
 
-  // UE_LOG(LogTemp, Warning, TEXT("ADronePawn::GetCrashState"));
+  // UE_LOG(LogTemp, Warning, TEXT("ARobotPawn::GetCrashState"));
   return uav_crashed_;
 }
 
-// void ADronePawn::UpdateCamera(int ID, bool isExternallyLocked, double stamp = 0.0)
+// void ARobotPawn::UpdateCamera(int ID, bool isExternallyLocked, double stamp = 0.0)
 // {
 //   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
 //   {
@@ -208,7 +208,7 @@ bool ADronePawn::GetCrashState(void) {
 //   }
 // }
 
-void ADronePawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden)
+void ARobotPawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBeHidden)
 {
   for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
   {
@@ -223,7 +223,7 @@ void ADronePawn::UpdateCameraSensorsMutualVisibility(TArray<AActor*>& DronesToBe
   }
 }
 
-void ADronePawn::SetPropellersTransform(const std::string& frame_name) {
+void ARobotPawn::SetPropellersTransform(const std::string& frame_name) {
   
   FString frame_name_ = FString(frame_name.c_str());
   const FramePropellersTransform* Transforms = FramePropellersTransforms.GetData();
@@ -260,7 +260,7 @@ FString PredefinedFramePath(const FString &FrameName) {
 }
 }  // namespace
 
-void ADronePawn::SetStaticMesh(const std::string &frame_name) {
+void ARobotPawn::SetStaticMesh(const std::string &frame_name) {
 
   const FString FrameName = FString(UTF8_TO_TCHAR(frame_name.c_str()));
 
@@ -309,7 +309,7 @@ void ADronePawn::SetStaticMesh(const std::string &frame_name) {
 
 /* LoadExternalModel() //{ */
 
-bool ADronePawn::LoadExternalModel(const FString &ModelName) {
+bool ARobotPawn::LoadExternalModel(const FString &ModelName) {
 
   if (!ExternalModelResolver) {
     ExternalModelResolver = NewObject<UAssetResolver>(this);
@@ -344,7 +344,7 @@ bool ADronePawn::LoadExternalModel(const FString &ModelName) {
   if (ExternalModelConfig::Load(FPaths::ChangeExtension(ModelFilePath, TEXT("yaml")), Config, Error)) {
     ApplyExternalPropellers(Config);
   } else {
-    UE_LOG(LogTemp, Warning, TEXT("[DronePawn] \"%s\" has no usable propeller sidecar: %s"), *ModelName, *Error);
+    UE_LOG(LogTemp, Warning, TEXT("[RobotPawn] \"%s\" has no usable propeller sidecar: %s"), *ModelName, *Error);
   }
 
   return true;
@@ -354,7 +354,7 @@ bool ADronePawn::LoadExternalModel(const FString &ModelName) {
 
 /* ApplyExternalPropellers() //{ */
 
-void ADronePawn::ApplyExternalPropellers(const FExternalModelConfig &Config) {
+void ARobotPawn::ApplyExternalPropellers(const FExternalModelConfig &Config) {
 
   ClearDynamicPropellers();
 
@@ -367,7 +367,7 @@ void ADronePawn::ApplyExternalPropellers(const FExternalModelConfig &Config) {
 
   UStaticMesh *PropellerMesh = LoadObject<UStaticMesh>(nullptr, *PropellerMeshPath);
   if (!PropellerMesh) {
-    UE_LOG(LogTemp, Error, TEXT("[DronePawn] the propeller mesh \"%s\" could not be loaded"), *PropellerMeshPath);
+    UE_LOG(LogTemp, Error, TEXT("[RobotPawn] the propeller mesh \"%s\" could not be loaded"), *PropellerMeshPath);
     return;
   }
 
@@ -391,7 +391,7 @@ void ADronePawn::ApplyExternalPropellers(const FExternalModelConfig &Config) {
 
 /* ClearDynamicPropellers() //{ */
 
-void ADronePawn::ClearDynamicPropellers() {
+void ARobotPawn::ClearDynamicPropellers() {
 
   for (const TObjectPtr<UStaticMeshComponent> &Propeller : DynamicPropellers) {
     if (IsValid(Propeller)) {
@@ -404,9 +404,9 @@ void ADronePawn::ClearDynamicPropellers() {
 
 /* //} */
 
-void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
+void ARobotPawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
   // RootMeshComponent->SetSimulatePhysics(true);
-  GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ADronePawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
+  GetWorldTimerManager().SetTimer(TimerHandle_Disabled_Physics, this, &ARobotPawn::DisabledPhysics_StartRotatePropellers, stop_simulation_delay, false);
 }
 
 
@@ -418,7 +418,7 @@ void ADronePawn::Simulate_UE_Physics(const float& stop_simulation_delay) {
  *
  * - false -- RL purpose, UAVs do not see each others
  */
-void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
+void ARobotPawn::SetVisibilityOtherDrones(bool bEnable)
 {
   if (bEnable)
   {
@@ -480,7 +480,7 @@ void ADronePawn::SetVisibilityOtherDrones(bool bEnable)
   }
 }
 
-void ADronePawn::DisabledPhysics_StartRotatePropellers()
+void ARobotPawn::DisabledPhysics_StartRotatePropellers()
 {
   UE_LOG(LogTemp, Warning, TEXT("Disabled physics after a 3 second delay"));
 
@@ -488,7 +488,7 @@ void ADronePawn::DisabledPhysics_StartRotatePropellers()
   this->propellers_rotate = true;
 }
 
-void ADronePawn::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
+void ARobotPawn::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
   CameraCaptureMode = CaptureMode;
   UE_LOG(LogTemp, Log, TEXT("drone Pawm setting all camera's capture mode"));
   
@@ -501,12 +501,12 @@ void ADronePawn::SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode) {
   }
 }
 
-CameraCaptureModeEnum ADronePawn::GetCameraCaptureMode()
+CameraCaptureModeEnum ARobotPawn::GetCameraCaptureMode()
 {
   return CameraCaptureMode;
 }
 
-// bool ADronePawn::SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID)
+// bool ARobotPawn::SetRgbCameraConfig(const FRgbCameraConfig& Config, int ID)
 // {
 //   bool ret = false;
 //   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
@@ -521,7 +521,7 @@ CameraCaptureModeEnum ADronePawn::GetCameraCaptureMode()
 //   return ret;
 // }
 //
-// bool ADronePawn::SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID)
+// bool ARobotPawn::SetStereoCameraConfig(const FStereoCameraConfig& Config, int ID)
 // {
 //   bool ret = false;
 //   if (TObjectPtr<USensor>* SensorPtr = Sensors.Find(ID))
@@ -536,12 +536,12 @@ CameraCaptureModeEnum ADronePawn::GetCameraCaptureMode()
 //   return ret;
 // }
 
-bool ADronePawn::GetVisibilityOtherDrones()
+bool ARobotPawn::GetVisibilityOtherDrones()
 {
 	return bCanSeeOtherDrone;
 }
 
-void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult) {
+void ARobotPawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, bool CheckCollisions, FHitResult& HitResult) {
 
   bool DrawLine      = DrawMovementLine;
   auto StartLocation = DrawLine ? GetActorLocation() : FVector();
@@ -556,7 +556,7 @@ void ADronePawn::SetLocation(FVector& Location, FVector& TeleportedToLocation, b
 
 /* pose trajectory //{ */
 
-void ADronePawn::SetPoseTrajectory(TArray<FPoseSample>&& Samples) {
+void ARobotPawn::SetPoseTrajectory(TArray<FPoseSample>&& Samples) {
 
   if (!TrajectoryCriticalSection) {
     TrajectoryCriticalSection = std::make_unique<FCriticalSection>();
@@ -567,7 +567,7 @@ void ADronePawn::SetPoseTrajectory(TArray<FPoseSample>&& Samples) {
   TrajectoryCriticalSection->Unlock();
 }
 
-void ADronePawn::ApplyTrajectory(double SimTime) {
+void ARobotPawn::ApplyTrajectory(double SimTime) {
 
   if (!TrajectoryCriticalSection) {
     return;
@@ -619,7 +619,7 @@ void ADronePawn::ApplyTrajectory(double SimTime) {
 
 //}
 
-void ADronePawn::Tick(float DeltaSeconds) {
+void ARobotPawn::Tick(float DeltaSeconds) {
 
   if (const UWorld* World = GetWorld()) {
     ApplyTrajectory(World->GetTimeSeconds());
@@ -658,7 +658,7 @@ void ADronePawn::Tick(float DeltaSeconds) {
   // UE_LOG(LogTemp, Warning, TEXT("Tick(), delta %f, took %f s"), DeltaSeconds, FPlatformTime::Seconds() - start);
 }
 
-int ADronePawn::AddSensor(int SensorTypeNum){
+int ARobotPawn::AddSensor(int SensorTypeNum){
   if (SensorTypeNum < 0 || SensorTypeNum >= static_cast<int>(SensorType::MAX_SENSOR_TYPE))
   {
     UE_LOG(LogTemp, Error, TEXT("Invalid sensor type index"));
@@ -715,7 +715,7 @@ int ADronePawn::AddSensor(int SensorTypeNum){
   return ret;
 }
 
-bool ADronePawn::RemoveSensor(int32 sensorID)
+bool ARobotPawn::RemoveSensor(int32 sensorID)
 {
   USensor* Sensor = nullptr;
 
@@ -750,7 +750,7 @@ bool ADronePawn::RemoveSensor(int32 sensorID)
   return false;
 }
 
-USensor* ADronePawn::FindSensorById(int SensorID)
+USensor* ARobotPawn::FindSensorById(int SensorID)
 {
   SensorsCriticalSection->Lock();
   TObjectPtr<USensor>* Found = Sensors.Find(SensorID);
@@ -760,7 +760,7 @@ USensor* ADronePawn::FindSensorById(int SensorID)
   return Sensor;
 }
 
-int ADronePawn::ResolveSensorId(SensorType Type, int RequestedID)
+int ARobotPawn::ResolveSensorId(SensorType Type, int RequestedID)
 {
   // the generic lidar messages also drive a dedicated livox instance, and the rgb
   // config messages also address seg cameras (same config struct on the wire) so
@@ -798,7 +798,7 @@ int ADronePawn::ResolveSensorId(SensorType Type, int RequestedID)
   return AddSensorFromServerThread(static_cast<int>(Type));
 }
 
-void ADronePawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes)
+void ARobotPawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTypes)
 {
   SensorsCriticalSection->Lock();
   for (const TPair<int32, TObjectPtr<USensor>>& Pair : Sensors)
@@ -814,7 +814,7 @@ void ADronePawn::GetSensorList(std::vector<int>& OutIds, std::vector<int>& OutTy
 
 /* addDevice() //{ */
 
-bool ADronePawn::AddDevice(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh, std::vector<int>& OutIds,
+bool ARobotPawn::AddDevice(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh, std::vector<int>& OutIds,
                            std::vector<int>& OutTypes)
 {
   const FSensorDeviceSpec* Device = FSensorDeviceLibrary::Find(DeviceName);
@@ -882,7 +882,7 @@ bool ADronePawn::AddDevice(const FString& DeviceName, const FVector& MountOffset
 
 /* DeviceMeshPath() //{ */
 
-FString ADronePawn::DeviceMeshPath(const FSensorDeviceSpec& Device) const
+FString ARobotPawn::DeviceMeshPath(const FSensorDeviceSpec& Device) const
 {
   if (Device.MeshFile.IsEmpty())
   {
@@ -912,13 +912,13 @@ FString ADronePawn::DeviceMeshPath(const FSensorDeviceSpec& Device) const
 
 //}
 
-bool ADronePawn::AddDeviceFromServerThread(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh,
+bool ARobotPawn::AddDeviceFromServerThread(const FString& DeviceName, const FVector& MountOffset, const FRotator& MountRotation, bool bShowMesh,
                                            std::vector<int>& OutIds, std::vector<int>& OutTypes)
 {
   bool bAdded = false;
 
-  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-  Instruction->Function = [&](ADronePawn& Pawn) { bAdded = Pawn.AddDevice(DeviceName, MountOffset, MountRotation, bShowMesh, OutIds, OutTypes); };
+  auto Instruction      = std::make_shared<FInstruction<ARobotPawn>>();
+  Instruction->Function = [&](ARobotPawn& Pawn) { bAdded = Pawn.AddDevice(DeviceName, MountOffset, MountRotation, bShowMesh, OutIds, OutTypes); };
   InstructionQueue->Enqueue(Instruction);
 
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
@@ -928,12 +928,12 @@ bool ADronePawn::AddDeviceFromServerThread(const FString& DeviceName, const FVec
 
 //}
 
-int ADronePawn::AddSensorFromServerThread(int SensorTypeNum)
+int ARobotPawn::AddSensorFromServerThread(int SensorTypeNum)
 {
   int NewID = -1;
 
-  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-  Instruction->Function = [SensorTypeNum, &NewID](ADronePawn& Pawn) { NewID = Pawn.AddSensor(SensorTypeNum); };
+  auto Instruction      = std::make_shared<FInstruction<ARobotPawn>>();
+  Instruction->Function = [SensorTypeNum, &NewID](ARobotPawn& Pawn) { NewID = Pawn.AddSensor(SensorTypeNum); };
   InstructionQueue->Enqueue(Instruction);
 
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
@@ -941,12 +941,12 @@ int ADronePawn::AddSensorFromServerThread(int SensorTypeNum)
   return NewID;
 }
 
-bool ADronePawn::RemoveSensorFromServerThread(int SensorID)
+bool ARobotPawn::RemoveSensorFromServerThread(int SensorID)
 {
   bool bRemoved = false;
 
-  auto Instruction      = std::make_shared<FInstruction<ADronePawn>>();
-  Instruction->Function = [SensorID, &bRemoved](ADronePawn& Pawn) { bRemoved = Pawn.RemoveSensor(SensorID); };
+  auto Instruction      = std::make_shared<FInstruction<ARobotPawn>>();
+  Instruction->Function = [SensorID, &bRemoved](ARobotPawn& Pawn) { bRemoved = Pawn.RemoveSensor(SensorID); };
   InstructionQueue->Enqueue(Instruction);
 
   FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished; });
@@ -957,7 +957,7 @@ bool ADronePawn::RemoveSensorFromServerThread(int SensorID)
 
 /* allPropellers() //{ */
 
-TArray<UStaticMeshComponent*> ADronePawn::AllPropellers() const
+TArray<UStaticMeshComponent*> ARobotPawn::AllPropellers() const
 {
   TArray<UStaticMeshComponent*> Propellers;
 
@@ -986,7 +986,7 @@ TArray<UStaticMeshComponent*> ADronePawn::AllPropellers() const
 
 /* setPropellerSpeeds() //{ */
 
-bool ADronePawn::SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount)
+bool ARobotPawn::SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount)
 {
   const TArray<UStaticMeshComponent*> Propellers = AllPropellers();
   OutCount                                       = Propellers.Num();

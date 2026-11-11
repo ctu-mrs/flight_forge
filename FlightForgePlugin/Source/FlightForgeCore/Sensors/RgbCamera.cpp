@@ -4,7 +4,7 @@
 #include "TextureResource.h"
 
 #include "Serialize.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 
 static TAutoConsoleVariable<int32> CVarHdrTargetBits(TEXT("FlightForge.Camera.HdrTargetBits"), 16,
                                                      TEXT("Float bits per channel of the HDR capture target: 16 or 32."));
@@ -499,10 +499,10 @@ void URgbCamera::SetConfig(std::stringstream& OutputStream, std::shared_ptr<std:
 
 	bool Status = false;
 
-	// auto Instruction = std::make_shared<FInstruction<ADronePawn>>();
+	// auto Instruction = std::make_shared<FInstruction<ARobotPawn>>();
 	//
-	//  Instruction->Function = [ID = this->SensorID, &Config, &Status](ADronePawn& _ADronePawn) {
-	//  	Status = _ADronePawn.SetRgbCameraConfig(Config, ID);
+	//  Instruction->Function = [ID = this->SensorID, &Config, &Status](ARobotPawn& _ARobotPawn) {
+	//  	Status = _ARobotPawn.SetRgbCameraConfig(Config, ID);
 	//  };
 	//
 	//  Owner->InstructionQueue->Enqueue(Instruction);

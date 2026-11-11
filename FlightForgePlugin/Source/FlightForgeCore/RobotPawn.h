@@ -25,7 +25,7 @@
 #include "Utils/AssetResolver.h"
 #include "Utils/ExternalModelConfig.h"
 
-#include "DronePawn.generated.h"
+#include "RobotPawn.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
@@ -65,7 +65,7 @@ public:
 using Serializable::GameMode::CameraCaptureModeEnum;
 
 UCLASS()
-class FLIGHTFORGECORE_API ADronePawn : public APawn {
+class FLIGHTFORGECORE_API ARobotPawn : public APawn {
   GENERATED_BODY()
 
 public:
@@ -83,7 +83,7 @@ public:
    */
   bool SetPropellerSpeeds(const std::vector<double>& Speeds, int32& OutCount);
 
-  ADronePawn();
+  ARobotPawn();
   
   std::shared_ptr<DroneServer> droneServer;
 
@@ -114,7 +114,7 @@ public:
   UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* PropellerFrontRight;
 
-  std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ADronePawn>>>> InstructionQueue;
+  std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ARobotPawn>>>> InstructionQueue;
 
 protected:
   virtual void BeginPlay() override;

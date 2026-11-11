@@ -22,7 +22,7 @@ enum class SensorType : int
 	MAX_SENSOR_TYPE
 };
 
-class ADronePawn;
+class ARobotPawn;
 
 UCLASS()
 class FLIGHTFORGECORE_API USensor : public USceneComponent
@@ -62,7 +62,7 @@ protected:
 	UPROPERTY()
 	UStaticMeshComponent* SensorBody = nullptr;
 
-	ADronePawn* Owner;
+	ARobotPawn* Owner;
 	
 	int SensorID;
 	SensorType SensorType;

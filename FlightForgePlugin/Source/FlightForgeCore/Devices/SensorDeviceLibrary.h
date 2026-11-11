@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "FlightForgeCore/Sensors/Sensor.h"
 
-class ADronePawn;
+class ARobotPawn;
 class USensor;
 
 /* FSensorDeviceSpec //{ */

@@ -3,7 +3,7 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "Landscape.h"
 
 namespace
@@ -61,7 +61,7 @@ bool FDistanceFieldQuery::Batch(UWorld* World, const FVector& WorldOrigin, const
 	// only registers against simple collision, so the inside test uses its own params
 	FCollisionQueryParams Params(FName(TEXT("FlightForgeDistanceQuery")), /*bTraceComplex=*/true);
 	FCollisionQueryParams InsideParams(FName(TEXT("FlightForgeInsideQuery")), /*bTraceComplex=*/false);
-	for (TActorIterator<ADronePawn> It(World); It; ++It)
+	for (TActorIterator<ARobotPawn> It(World); It; ++It)
 	{
 		Params.AddIgnoredActor(*It);
 		InsideParams.AddIgnoredActor(*It);

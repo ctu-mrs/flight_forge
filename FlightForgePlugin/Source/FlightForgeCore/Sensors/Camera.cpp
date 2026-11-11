@@ -8,7 +8,7 @@
 #include "UnrealEngine.h"
 #include "RenderingThread.h"
 #include "TextureResource.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 
 #include "Serialize.h"

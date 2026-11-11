@@ -4,7 +4,7 @@
 #include "TextureResource.h"
 
 #include "Serialize.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
 #include "RenderingThread.h"
 

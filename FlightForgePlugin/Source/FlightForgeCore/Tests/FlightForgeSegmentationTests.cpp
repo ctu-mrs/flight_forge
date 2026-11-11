@@ -16,7 +16,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/Sensors/DepthCamera.h"
 #include "FlightForgeCore/FlightForgeGameModeBase.h"
 #include "FlightForgeCore/Sensors/SegIdCamera.h"
@@ -28,7 +28,7 @@ namespace
 struct FSegDiffRig
 {
 	TWeakObjectPtr<AFlightForgeGameModeBase> GameMode;
-	TWeakObjectPtr<ADronePawn>               Pawn;
+	TWeakObjectPtr<ARobotPawn>               Pawn;
 	TWeakObjectPtr<USegIdCamera>             Camera;
 	TWeakObjectPtr<UDepthCamera>             Depth;  // the render's own depth: a trace hit that is not at it is a hull, not a surface
 	TArray<FFloat16>                         DepthCm;
@@ -105,7 +105,7 @@ bool FSegDiffSpawn::Update()
 	Rig->GameMode = GameMode;
 	Rig->Port     = GameMode->SpawnDroneAtLocation(GameMode->GetWorldOrigin() + FVector(0, 0, 150), "x500");
 
-	ADronePawn* Pawn = Rig->Port >= 0 ? GameMode->FindDronePawn(Rig->Port) : nullptr;
+	ARobotPawn* Pawn = Rig->Port >= 0 ? GameMode->FindRobotPawn(Rig->Port) : nullptr;
 	if (!Pawn)
 	{
 		return true;

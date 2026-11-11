@@ -3,19 +3,19 @@
 #include "MessageSerialization/Public/SerializableExtended.h"
 #include "TcpServer.h"
 
-class ADronePawn;
+class ARobotPawn;
 
 class DroneServer : public TcpServer {
 public:
-  DroneServer(ADronePawn& _DronePawn) : TcpServer(1235), DronePawn(&_DronePawn){};
-  DroneServer(ADronePawn& _DronePawn, const int Port) : TcpServer(Port), DronePawn(&_DronePawn){};
+  DroneServer(ARobotPawn& _RobotPawn) : TcpServer(1235), RobotPawn(&_RobotPawn){};
+  DroneServer(ARobotPawn& _RobotPawn, const int Port) : TcpServer(Port), RobotPawn(&_RobotPawn){};
   ~DroneServer() = default;
 
 protected:
   virtual bool Route(const FTCPClient& Client, std::shared_ptr<std::stringstream> InputStream) override;
 
 private:
-  ADronePawn* DronePawn;
+  ARobotPawn* RobotPawn;
 
   bool uav_crashed_ = false;
 

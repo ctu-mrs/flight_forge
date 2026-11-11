@@ -3,7 +3,7 @@
 #include "Async/TaskGraphInterfaces.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
-#include "FlightForgeCore/DronePawn.h"
+#include "FlightForgeCore/RobotPawn.h"
 #include "UObject/ConstructorHelpers.h"
 
 USensor::USensor()
@@ -21,11 +21,11 @@ void USensor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	Owner = Cast<ADronePawn>(GetOwner());
+	Owner = Cast<ARobotPawn>(GetOwner());
 
 	if (!Owner)
 	{
-		UE_LOG(LogTemp, Error, TEXT("USensor::BeginPlay - Owner is not a valid ADronePawn"));
+		UE_LOG(LogTemp, Error, TEXT("USensor::BeginPlay - Owner is not a valid ARobotPawn"));
 	}
 }
 
