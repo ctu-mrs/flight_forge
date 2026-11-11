@@ -24,12 +24,15 @@ table RobotState {
   joint_positions: [double];  // rad or m, GetDescriptionResponse.joint_names order; empty leaves joints alone
   joint_velocities: [double];  // rad/s or m/s, animates continuous joints between updates
   link_poses: [Pose];  // every link in description order or empty; wins over joints
+  base_linear_velocity: Vec3;  // m/s, ground frame
+  base_angular_velocity: Vec3;  // rad/s, body frame
 }
 
 table SpawnRobotRequest {
   name: string;  // a shipped or project description, a library id or a .glb; ignored with description_yaml
   description_yaml: string;
   pose: Pose;
+  label: string;  // the client's instance name, e.g. uav1; may be empty
 }
 
 table SpawnRobotResponse {
@@ -42,6 +45,7 @@ table RobotInfo {
   id: int;
   name: string;
   kind: RobotKind;
+  label: string;
 }
 
 table ListRobotsResponse {

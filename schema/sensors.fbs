@@ -334,8 +334,8 @@ table GetLidarScanRequest {
 table LidarScanResponse {
   stamp: double;  // s, sim
   sensor_pose: Pose;  // at scan time
-  rows: uint;  // 0 when the scan is not organised, as for Livox
-  cols: uint;
+  rows: uint;  // 0 when the scan is not organised, as for Livox; row-major, row 0 the top beam
+  cols: uint;  // column 0 the leftmost
   points: [Vec3f];  // m, sensor frame, NaN for no return
   intensity: [int];  // physical-material class, -1 for no return
   class_id: [int];  // -1 for no return, landscape 1

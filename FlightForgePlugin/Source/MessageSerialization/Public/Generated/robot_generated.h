@@ -256,6 +256,8 @@ struct RobotStateT : public ::flatbuffers::NativeTable {
   std::vector<double> joint_positions{};
   std::vector<double> joint_velocities{};
   std::vector<flightforge::wire::Pose> link_poses{};
+  std::unique_ptr<flightforge::wire::Vec3> base_linear_velocity{};
+  std::unique_ptr<flightforge::wire::Vec3> base_angular_velocity{};
   RobotStateT() = default;
   RobotStateT(const RobotStateT &o);
   RobotStateT(RobotStateT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -270,7 +272,9 @@ struct RobotState FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_BASE = 4,
     VT_JOINT_POSITIONS = 6,
     VT_JOINT_VELOCITIES = 8,
-    VT_LINK_POSES = 10
+    VT_LINK_POSES = 10,
+    VT_BASE_LINEAR_VELOCITY = 12,
+    VT_BASE_ANGULAR_VELOCITY = 14
   };
   const flightforge::wire::Pose *base() const {
     return GetStruct<const flightforge::wire::Pose *>(VT_BASE);
@@ -284,6 +288,12 @@ struct RobotState FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<const flightforge::wire::Pose *> *link_poses() const {
     return GetPointer<const ::flatbuffers::Vector<const flightforge::wire::Pose *> *>(VT_LINK_POSES);
   }
+  const flightforge::wire::Vec3 *base_linear_velocity() const {
+    return GetStruct<const flightforge::wire::Vec3 *>(VT_BASE_LINEAR_VELOCITY);
+  }
+  const flightforge::wire::Vec3 *base_angular_velocity() const {
+    return GetStruct<const flightforge::wire::Vec3 *>(VT_BASE_ANGULAR_VELOCITY);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -294,6 +304,8 @@ struct RobotState FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyVector(joint_velocities()) &&
            VerifyOffset(verifier, VT_LINK_POSES) &&
            verifier.VerifyVector(link_poses()) &&
+           VerifyField<flightforge::wire::Vec3>(verifier, VT_BASE_LINEAR_VELOCITY, 8) &&
+           VerifyField<flightforge::wire::Vec3>(verifier, VT_BASE_ANGULAR_VELOCITY, 8) &&
            verifier.EndTable();
   }
   RobotStateT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -317,6 +329,12 @@ struct RobotStateBuilder {
   void add_link_poses(::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Pose *>> link_poses) {
     fbb_.AddOffset(RobotState::VT_LINK_POSES, link_poses);
   }
+  void add_base_linear_velocity(const flightforge::wire::Vec3 *base_linear_velocity) {
+    fbb_.AddStruct(RobotState::VT_BASE_LINEAR_VELOCITY, base_linear_velocity);
+  }
+  void add_base_angular_velocity(const flightforge::wire::Vec3 *base_angular_velocity) {
+    fbb_.AddStruct(RobotState::VT_BASE_ANGULAR_VELOCITY, base_angular_velocity);
+  }
   explicit RobotStateBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -333,8 +351,12 @@ inline ::flatbuffers::Offset<RobotState> CreateRobotState(
     const flightforge::wire::Pose *base = nullptr,
     ::flatbuffers::Offset<::flatbuffers::Vector<double>> joint_positions = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<double>> joint_velocities = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Pose *>> link_poses = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Pose *>> link_poses = 0,
+    const flightforge::wire::Vec3 *base_linear_velocity = nullptr,
+    const flightforge::wire::Vec3 *base_angular_velocity = nullptr) {
   RobotStateBuilder builder_(_fbb);
+  builder_.add_base_angular_velocity(base_angular_velocity);
+  builder_.add_base_linear_velocity(base_linear_velocity);
   builder_.add_link_poses(link_poses);
   builder_.add_joint_velocities(joint_velocities);
   builder_.add_joint_positions(joint_positions);
@@ -352,7 +374,9 @@ inline ::flatbuffers::Offset<RobotState> CreateRobotStateDirect(
     const flightforge::wire::Pose *base = nullptr,
     const std::vector<double> *joint_positions = nullptr,
     const std::vector<double> *joint_velocities = nullptr,
-    const std::vector<flightforge::wire::Pose> *link_poses = nullptr) {
+    const std::vector<flightforge::wire::Pose> *link_poses = nullptr,
+    const flightforge::wire::Vec3 *base_linear_velocity = nullptr,
+    const flightforge::wire::Vec3 *base_angular_velocity = nullptr) {
   auto joint_positions__ = joint_positions ? _fbb.CreateVector<double>(*joint_positions) : 0;
   auto joint_velocities__ = joint_velocities ? _fbb.CreateVector<double>(*joint_velocities) : 0;
   auto link_poses__ = link_poses ? _fbb.CreateVectorOfStructs<flightforge::wire::Pose>(*link_poses) : 0;
@@ -361,7 +385,9 @@ inline ::flatbuffers::Offset<RobotState> CreateRobotStateDirect(
       base,
       joint_positions__,
       joint_velocities__,
-      link_poses__);
+      link_poses__,
+      base_linear_velocity,
+      base_angular_velocity);
 }
 
 ::flatbuffers::Offset<RobotState> CreateRobotState(::flatbuffers::FlatBufferBuilder &_fbb, const RobotStateT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -371,6 +397,7 @@ struct SpawnRobotRequestT : public ::flatbuffers::NativeTable {
   std::string name{};
   std::string description_yaml{};
   std::unique_ptr<flightforge::wire::Pose> pose{};
+  std::string label{};
   SpawnRobotRequestT() = default;
   SpawnRobotRequestT(const SpawnRobotRequestT &o);
   SpawnRobotRequestT(SpawnRobotRequestT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -384,7 +411,8 @@ struct SpawnRobotRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
     VT_DESCRIPTION_YAML = 6,
-    VT_POSE = 8
+    VT_POSE = 8,
+    VT_LABEL = 10
   };
   const ::flatbuffers::String *name() const {
     return GetPointer<const ::flatbuffers::String *>(VT_NAME);
@@ -395,6 +423,9 @@ struct SpawnRobotRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   const flightforge::wire::Pose *pose() const {
     return GetStruct<const flightforge::wire::Pose *>(VT_POSE);
   }
+  const ::flatbuffers::String *label() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_LABEL);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -403,6 +434,8 @@ struct SpawnRobotRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
            VerifyOffset(verifier, VT_DESCRIPTION_YAML) &&
            verifier.VerifyString(description_yaml()) &&
            VerifyField<flightforge::wire::Pose>(verifier, VT_POSE, 8) &&
+           VerifyOffset(verifier, VT_LABEL) &&
+           verifier.VerifyString(label()) &&
            verifier.EndTable();
   }
   SpawnRobotRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -423,6 +456,9 @@ struct SpawnRobotRequestBuilder {
   void add_pose(const flightforge::wire::Pose *pose) {
     fbb_.AddStruct(SpawnRobotRequest::VT_POSE, pose);
   }
+  void add_label(::flatbuffers::Offset<::flatbuffers::String> label) {
+    fbb_.AddOffset(SpawnRobotRequest::VT_LABEL, label);
+  }
   explicit SpawnRobotRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -438,8 +474,10 @@ inline ::flatbuffers::Offset<SpawnRobotRequest> CreateSpawnRobotRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::String> name = 0,
     ::flatbuffers::Offset<::flatbuffers::String> description_yaml = 0,
-    const flightforge::wire::Pose *pose = nullptr) {
+    const flightforge::wire::Pose *pose = nullptr,
+    ::flatbuffers::Offset<::flatbuffers::String> label = 0) {
   SpawnRobotRequestBuilder builder_(_fbb);
+  builder_.add_label(label);
   builder_.add_pose(pose);
   builder_.add_description_yaml(description_yaml);
   builder_.add_name(name);
@@ -455,14 +493,17 @@ inline ::flatbuffers::Offset<SpawnRobotRequest> CreateSpawnRobotRequestDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     const char *description_yaml = nullptr,
-    const flightforge::wire::Pose *pose = nullptr) {
+    const flightforge::wire::Pose *pose = nullptr,
+    const char *label = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto description_yaml__ = description_yaml ? _fbb.CreateString(description_yaml) : 0;
+  auto label__ = label ? _fbb.CreateString(label) : 0;
   return flightforge::wire::CreateSpawnRobotRequest(
       _fbb,
       name__,
       description_yaml__,
-      pose);
+      pose,
+      label__);
 }
 
 ::flatbuffers::Offset<SpawnRobotRequest> CreateSpawnRobotRequest(::flatbuffers::FlatBufferBuilder &_fbb, const SpawnRobotRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -577,6 +618,7 @@ struct RobotInfoT : public ::flatbuffers::NativeTable {
   int32_t id = 0;
   std::string name{};
   flightforge::wire::RobotKind kind = flightforge::wire::RobotKind::GENERIC;
+  std::string label{};
 };
 
 struct RobotInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -586,7 +628,8 @@ struct RobotInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ID = 4,
     VT_NAME = 6,
-    VT_KIND = 8
+    VT_KIND = 8,
+    VT_LABEL = 10
   };
   int32_t id() const {
     return GetField<int32_t>(VT_ID, 0);
@@ -597,6 +640,9 @@ struct RobotInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   flightforge::wire::RobotKind kind() const {
     return static_cast<flightforge::wire::RobotKind>(GetField<uint8_t>(VT_KIND, 0));
   }
+  const ::flatbuffers::String *label() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_LABEL);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -604,6 +650,8 @@ struct RobotInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
            VerifyField<uint8_t>(verifier, VT_KIND, 1) &&
+           VerifyOffset(verifier, VT_LABEL) &&
+           verifier.VerifyString(label()) &&
            verifier.EndTable();
   }
   RobotInfoT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -624,6 +672,9 @@ struct RobotInfoBuilder {
   void add_kind(flightforge::wire::RobotKind kind) {
     fbb_.AddElement<uint8_t>(RobotInfo::VT_KIND, static_cast<uint8_t>(kind), 0);
   }
+  void add_label(::flatbuffers::Offset<::flatbuffers::String> label) {
+    fbb_.AddOffset(RobotInfo::VT_LABEL, label);
+  }
   explicit RobotInfoBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -639,8 +690,10 @@ inline ::flatbuffers::Offset<RobotInfo> CreateRobotInfo(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t id = 0,
     ::flatbuffers::Offset<::flatbuffers::String> name = 0,
-    flightforge::wire::RobotKind kind = flightforge::wire::RobotKind::GENERIC) {
+    flightforge::wire::RobotKind kind = flightforge::wire::RobotKind::GENERIC,
+    ::flatbuffers::Offset<::flatbuffers::String> label = 0) {
   RobotInfoBuilder builder_(_fbb);
+  builder_.add_label(label);
   builder_.add_name(name);
   builder_.add_id(id);
   builder_.add_kind(kind);
@@ -656,13 +709,16 @@ inline ::flatbuffers::Offset<RobotInfo> CreateRobotInfoDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t id = 0,
     const char *name = nullptr,
-    flightforge::wire::RobotKind kind = flightforge::wire::RobotKind::GENERIC) {
+    flightforge::wire::RobotKind kind = flightforge::wire::RobotKind::GENERIC,
+    const char *label = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto label__ = label ? _fbb.CreateString(label) : 0;
   return flightforge::wire::CreateRobotInfo(
       _fbb,
       id,
       name__,
-      kind);
+      kind,
+      label__);
 }
 
 ::flatbuffers::Offset<RobotInfo> CreateRobotInfo(::flatbuffers::FlatBufferBuilder &_fbb, const RobotInfoT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2231,7 +2287,9 @@ inline bool operator==(const RobotStateT &lhs, const RobotStateT &rhs) {
       ((lhs.base == rhs.base) || (lhs.base && rhs.base && *lhs.base == *rhs.base)) &&
       (lhs.joint_positions == rhs.joint_positions) &&
       (lhs.joint_velocities == rhs.joint_velocities) &&
-      (lhs.link_poses == rhs.link_poses);
+      (lhs.link_poses == rhs.link_poses) &&
+      ((lhs.base_linear_velocity == rhs.base_linear_velocity) || (lhs.base_linear_velocity && rhs.base_linear_velocity && *lhs.base_linear_velocity == *rhs.base_linear_velocity)) &&
+      ((lhs.base_angular_velocity == rhs.base_angular_velocity) || (lhs.base_angular_velocity && rhs.base_angular_velocity && *lhs.base_angular_velocity == *rhs.base_angular_velocity));
 }
 
 inline bool operator!=(const RobotStateT &lhs, const RobotStateT &rhs) {
@@ -2243,7 +2301,9 @@ inline RobotStateT::RobotStateT(const RobotStateT &o)
       : base((o.base) ? new flightforge::wire::Pose(*o.base) : nullptr),
         joint_positions(o.joint_positions),
         joint_velocities(o.joint_velocities),
-        link_poses(o.link_poses) {
+        link_poses(o.link_poses),
+        base_linear_velocity((o.base_linear_velocity) ? new flightforge::wire::Vec3(*o.base_linear_velocity) : nullptr),
+        base_angular_velocity((o.base_angular_velocity) ? new flightforge::wire::Vec3(*o.base_angular_velocity) : nullptr) {
 }
 
 inline RobotStateT &RobotStateT::operator=(RobotStateT o) FLATBUFFERS_NOEXCEPT {
@@ -2251,6 +2311,8 @@ inline RobotStateT &RobotStateT::operator=(RobotStateT o) FLATBUFFERS_NOEXCEPT {
   std::swap(joint_positions, o.joint_positions);
   std::swap(joint_velocities, o.joint_velocities);
   std::swap(link_poses, o.link_poses);
+  std::swap(base_linear_velocity, o.base_linear_velocity);
+  std::swap(base_angular_velocity, o.base_angular_velocity);
   return *this;
 }
 
@@ -2267,6 +2329,8 @@ inline void RobotState::UnPackTo(RobotStateT *_o, const ::flatbuffers::resolver_
   { auto _e = joint_positions(); if (_e) { _o->joint_positions.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->joint_positions[_i] = _e->Get(_i); } } else { _o->joint_positions.resize(0); } }
   { auto _e = joint_velocities(); if (_e) { _o->joint_velocities.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->joint_velocities[_i] = _e->Get(_i); } } else { _o->joint_velocities.resize(0); } }
   { auto _e = link_poses(); if (_e) { _o->link_poses.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->link_poses[_i] = *_e->Get(_i); } } else { _o->link_poses.resize(0); } }
+  { auto _e = base_linear_velocity(); if (_e) _o->base_linear_velocity = std::unique_ptr<flightforge::wire::Vec3>(new flightforge::wire::Vec3(*_e)); }
+  { auto _e = base_angular_velocity(); if (_e) _o->base_angular_velocity = std::unique_ptr<flightforge::wire::Vec3>(new flightforge::wire::Vec3(*_e)); }
 }
 
 inline ::flatbuffers::Offset<RobotState> CreateRobotState(::flatbuffers::FlatBufferBuilder &_fbb, const RobotStateT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -2281,12 +2345,16 @@ inline ::flatbuffers::Offset<RobotState> RobotState::Pack(::flatbuffers::FlatBuf
   auto _joint_positions = _o->joint_positions.size() ? _fbb.CreateVector(_o->joint_positions) : 0;
   auto _joint_velocities = _o->joint_velocities.size() ? _fbb.CreateVector(_o->joint_velocities) : 0;
   auto _link_poses = _o->link_poses.size() ? _fbb.CreateVectorOfStructs(_o->link_poses) : 0;
+  auto _base_linear_velocity = _o->base_linear_velocity ? _o->base_linear_velocity.get() : nullptr;
+  auto _base_angular_velocity = _o->base_angular_velocity ? _o->base_angular_velocity.get() : nullptr;
   return flightforge::wire::CreateRobotState(
       _fbb,
       _base,
       _joint_positions,
       _joint_velocities,
-      _link_poses);
+      _link_poses,
+      _base_linear_velocity,
+      _base_angular_velocity);
 }
 
 
@@ -2294,7 +2362,8 @@ inline bool operator==(const SpawnRobotRequestT &lhs, const SpawnRobotRequestT &
   return
       (lhs.name == rhs.name) &&
       (lhs.description_yaml == rhs.description_yaml) &&
-      ((lhs.pose == rhs.pose) || (lhs.pose && rhs.pose && *lhs.pose == *rhs.pose));
+      ((lhs.pose == rhs.pose) || (lhs.pose && rhs.pose && *lhs.pose == *rhs.pose)) &&
+      (lhs.label == rhs.label);
 }
 
 inline bool operator!=(const SpawnRobotRequestT &lhs, const SpawnRobotRequestT &rhs) {
@@ -2305,13 +2374,15 @@ inline bool operator!=(const SpawnRobotRequestT &lhs, const SpawnRobotRequestT &
 inline SpawnRobotRequestT::SpawnRobotRequestT(const SpawnRobotRequestT &o)
       : name(o.name),
         description_yaml(o.description_yaml),
-        pose((o.pose) ? new flightforge::wire::Pose(*o.pose) : nullptr) {
+        pose((o.pose) ? new flightforge::wire::Pose(*o.pose) : nullptr),
+        label(o.label) {
 }
 
 inline SpawnRobotRequestT &SpawnRobotRequestT::operator=(SpawnRobotRequestT o) FLATBUFFERS_NOEXCEPT {
   std::swap(name, o.name);
   std::swap(description_yaml, o.description_yaml);
   std::swap(pose, o.pose);
+  std::swap(label, o.label);
   return *this;
 }
 
@@ -2327,6 +2398,7 @@ inline void SpawnRobotRequest::UnPackTo(SpawnRobotRequestT *_o, const ::flatbuff
   { auto _e = name(); if (_e) _o->name = _e->str(); }
   { auto _e = description_yaml(); if (_e) _o->description_yaml = _e->str(); }
   { auto _e = pose(); if (_e) _o->pose = std::unique_ptr<flightforge::wire::Pose>(new flightforge::wire::Pose(*_e)); }
+  { auto _e = label(); if (_e) _o->label = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<SpawnRobotRequest> CreateSpawnRobotRequest(::flatbuffers::FlatBufferBuilder &_fbb, const SpawnRobotRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -2340,11 +2412,13 @@ inline ::flatbuffers::Offset<SpawnRobotRequest> SpawnRobotRequest::Pack(::flatbu
   auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
   auto _description_yaml = _o->description_yaml.empty() ? 0 : _fbb.CreateString(_o->description_yaml);
   auto _pose = _o->pose ? _o->pose.get() : nullptr;
+  auto _label = _o->label.empty() ? 0 : _fbb.CreateString(_o->label);
   return flightforge::wire::CreateSpawnRobotRequest(
       _fbb,
       _name,
       _description_yaml,
-      _pose);
+      _pose,
+      _label);
 }
 
 
@@ -2422,7 +2496,8 @@ inline bool operator==(const RobotInfoT &lhs, const RobotInfoT &rhs) {
   return
       (lhs.id == rhs.id) &&
       (lhs.name == rhs.name) &&
-      (lhs.kind == rhs.kind);
+      (lhs.kind == rhs.kind) &&
+      (lhs.label == rhs.label);
 }
 
 inline bool operator!=(const RobotInfoT &lhs, const RobotInfoT &rhs) {
@@ -2442,6 +2517,7 @@ inline void RobotInfo::UnPackTo(RobotInfoT *_o, const ::flatbuffers::resolver_fu
   { auto _e = id(); _o->id = _e; }
   { auto _e = name(); if (_e) _o->name = _e->str(); }
   { auto _e = kind(); _o->kind = _e; }
+  { auto _e = label(); if (_e) _o->label = _e->str(); }
 }
 
 inline ::flatbuffers::Offset<RobotInfo> CreateRobotInfo(::flatbuffers::FlatBufferBuilder &_fbb, const RobotInfoT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -2455,11 +2531,13 @@ inline ::flatbuffers::Offset<RobotInfo> RobotInfo::Pack(::flatbuffers::FlatBuffe
   auto _id = _o->id;
   auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
   auto _kind = _o->kind;
+  auto _label = _o->label.empty() ? 0 : _fbb.CreateString(_o->label);
   return flightforge::wire::CreateRobotInfo(
       _fbb,
       _id,
       _name,
-      _kind);
+      _kind,
+      _label);
 }
 
 
