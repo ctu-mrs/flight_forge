@@ -274,4 +274,14 @@ table GetDistanceBatchResponse {
   distances: [float];  // m, max_radius when nothing is nearer, 0 inside geometry
 }
 
+// one trace straight down per point, against what blocks a robot's airframe; geometry a trace starts inside is skipped
+table GetSurfaceHeightRequest {
+  points: [Vec3];  // m; a NaN z traces from the top of the world
+  ignore_robots: bool = true;
+}
+
+table GetSurfaceHeightResponse {
+  heights: [double];  // m, of the first surface below each point, NaN where there is none
+}
+
 //}

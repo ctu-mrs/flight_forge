@@ -126,7 +126,9 @@ table SetTrajectoryRequest {
   samples: [TrajectorySample];
 }
 
-table GetCollisionRequest {}
+table GetCollisionRequest {
+  clear: bool;  // the next read then reports only collisions after this one
+}
 
 table GetCollisionResponse {
   collided: bool;

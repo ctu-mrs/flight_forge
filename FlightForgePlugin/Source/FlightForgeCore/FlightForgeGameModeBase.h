@@ -399,6 +399,7 @@ public:
 		Pawn->RobotName    = Name;
 		Pawn->Label        = Label;
 		Pawn->GroundOrigin = GroundOrigin;
+		Pawn->uav_crashed_ = false;
 		Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		Pawn->SetStaticMesh(std::string(TCHAR_TO_UTF8(*Name)));
 		RestOnSurface(*Pawn);

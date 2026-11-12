@@ -512,7 +512,7 @@ void FSimServer::GetCollision(const ffw::Request& Request, FWireReply& Reply)
 		return;
 	}
 
-	const bool      bCollided = Robot->GetCrashState();
+	const bool      bCollided = Request.body_as_GetCollisionRequest()->clear() ? Robot->uav_crashed_.exchange(false) : Robot->GetCrashState();
 	const ffw::Vec3 Impact    = FWireFrame::ToVec3(FWireFrame::ToGround(Robot->LastImpactPoint, Robot->GroundOriginCm()));
 	Reply.Set(ffw::CreateGetCollisionResponse(Reply.Builder, bCollided, bCollided ? &Impact : nullptr));
 }

@@ -193,6 +193,7 @@ private:
 	void ListLibrary(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void GetWorldMesh(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void GetDistanceBatch(const flightforge::wire::Request& Request, FWireReply& Reply);
+	void GetSurfaceHeight(const flightforge::wire::Request& Request, FWireReply& Reply);
 
 	void SpawnRobot(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void ListRobots(const flightforge::wire::Request& Request, FWireReply& Reply);

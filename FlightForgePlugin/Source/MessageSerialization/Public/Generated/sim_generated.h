@@ -219,6 +219,14 @@ struct GetDistanceBatchResponse;
 struct GetDistanceBatchResponseBuilder;
 struct GetDistanceBatchResponseT;
 
+struct GetSurfaceHeightRequest;
+struct GetSurfaceHeightRequestBuilder;
+struct GetSurfaceHeightRequestT;
+
+struct GetSurfaceHeightResponse;
+struct GetSurfaceHeightResponseBuilder;
+struct GetSurfaceHeightResponseT;
+
 bool operator==(const PingRequestT &lhs, const PingRequestT &rhs);
 bool operator!=(const PingRequestT &lhs, const PingRequestT &rhs);
 bool operator==(const GetInfoRequestT &lhs, const GetInfoRequestT &rhs);
@@ -319,6 +327,10 @@ bool operator==(const GetDistanceBatchRequestT &lhs, const GetDistanceBatchReque
 bool operator!=(const GetDistanceBatchRequestT &lhs, const GetDistanceBatchRequestT &rhs);
 bool operator==(const GetDistanceBatchResponseT &lhs, const GetDistanceBatchResponseT &rhs);
 bool operator!=(const GetDistanceBatchResponseT &lhs, const GetDistanceBatchResponseT &rhs);
+bool operator==(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightRequestT &rhs);
+bool operator!=(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightRequestT &rhs);
+bool operator==(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs);
+bool operator!=(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs);
 
 enum class Weather : uint8_t {
   SUNNY = 0,
@@ -4016,6 +4028,157 @@ inline ::flatbuffers::Offset<GetDistanceBatchResponse> CreateGetDistanceBatchRes
 
 ::flatbuffers::Offset<GetDistanceBatchResponse> CreateGetDistanceBatchResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetDistanceBatchResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct GetSurfaceHeightRequestT : public ::flatbuffers::NativeTable {
+  typedef GetSurfaceHeightRequest TableType;
+  std::vector<flightforge::wire::Vec3> points{};
+  bool ignore_robots = true;
+};
+
+struct GetSurfaceHeightRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef GetSurfaceHeightRequestT NativeTableType;
+  typedef GetSurfaceHeightRequestBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_POINTS = 4,
+    VT_IGNORE_ROBOTS = 6
+  };
+  const ::flatbuffers::Vector<const flightforge::wire::Vec3 *> *points() const {
+    return GetPointer<const ::flatbuffers::Vector<const flightforge::wire::Vec3 *> *>(VT_POINTS);
+  }
+  bool ignore_robots() const {
+    return GetField<uint8_t>(VT_IGNORE_ROBOTS, 1) != 0;
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_POINTS) &&
+           verifier.VerifyVector(points()) &&
+           VerifyField<uint8_t>(verifier, VT_IGNORE_ROBOTS, 1) &&
+           verifier.EndTable();
+  }
+  GetSurfaceHeightRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GetSurfaceHeightRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<GetSurfaceHeightRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GetSurfaceHeightRequestBuilder {
+  typedef GetSurfaceHeightRequest Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_points(::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Vec3 *>> points) {
+    fbb_.AddOffset(GetSurfaceHeightRequest::VT_POINTS, points);
+  }
+  void add_ignore_robots(bool ignore_robots) {
+    fbb_.AddElement<uint8_t>(GetSurfaceHeightRequest::VT_IGNORE_ROBOTS, static_cast<uint8_t>(ignore_robots), 1);
+  }
+  explicit GetSurfaceHeightRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<GetSurfaceHeightRequest> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<GetSurfaceHeightRequest>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<GetSurfaceHeightRequest> CreateGetSurfaceHeightRequest(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Vec3 *>> points = 0,
+    bool ignore_robots = true) {
+  GetSurfaceHeightRequestBuilder builder_(_fbb);
+  builder_.add_points(points);
+  builder_.add_ignore_robots(ignore_robots);
+  return builder_.Finish();
+}
+
+struct GetSurfaceHeightRequest::Traits {
+  using type = GetSurfaceHeightRequest;
+  static auto constexpr Create = CreateGetSurfaceHeightRequest;
+};
+
+inline ::flatbuffers::Offset<GetSurfaceHeightRequest> CreateGetSurfaceHeightRequestDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<flightforge::wire::Vec3> *points = nullptr,
+    bool ignore_robots = true) {
+  auto points__ = points ? _fbb.CreateVectorOfStructs<flightforge::wire::Vec3>(*points) : 0;
+  return flightforge::wire::CreateGetSurfaceHeightRequest(
+      _fbb,
+      points__,
+      ignore_robots);
+}
+
+::flatbuffers::Offset<GetSurfaceHeightRequest> CreateGetSurfaceHeightRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct GetSurfaceHeightResponseT : public ::flatbuffers::NativeTable {
+  typedef GetSurfaceHeightResponse TableType;
+  std::vector<double> heights{};
+};
+
+struct GetSurfaceHeightResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef GetSurfaceHeightResponseT NativeTableType;
+  typedef GetSurfaceHeightResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_HEIGHTS = 4
+  };
+  const ::flatbuffers::Vector<double> *heights() const {
+    return GetPointer<const ::flatbuffers::Vector<double> *>(VT_HEIGHTS);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_HEIGHTS) &&
+           verifier.VerifyVector(heights()) &&
+           verifier.EndTable();
+  }
+  GetSurfaceHeightResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GetSurfaceHeightResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<GetSurfaceHeightResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GetSurfaceHeightResponseBuilder {
+  typedef GetSurfaceHeightResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_heights(::flatbuffers::Offset<::flatbuffers::Vector<double>> heights) {
+    fbb_.AddOffset(GetSurfaceHeightResponse::VT_HEIGHTS, heights);
+  }
+  explicit GetSurfaceHeightResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<GetSurfaceHeightResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<GetSurfaceHeightResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<double>> heights = 0) {
+  GetSurfaceHeightResponseBuilder builder_(_fbb);
+  builder_.add_heights(heights);
+  return builder_.Finish();
+}
+
+struct GetSurfaceHeightResponse::Traits {
+  using type = GetSurfaceHeightResponse;
+  static auto constexpr Create = CreateGetSurfaceHeightResponse;
+};
+
+inline ::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<double> *heights = nullptr) {
+  auto heights__ = heights ? _fbb.CreateVector<double>(*heights) : 0;
+  return flightforge::wire::CreateGetSurfaceHeightResponse(
+      _fbb,
+      heights__);
+}
+
+::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 
 inline bool operator==(const PingRequestT &, const PingRequestT &) {
   return true;
@@ -6074,6 +6237,84 @@ inline ::flatbuffers::Offset<GetDistanceBatchResponse> GetDistanceBatchResponse:
   return flightforge::wire::CreateGetDistanceBatchResponse(
       _fbb,
       _distances);
+}
+
+
+inline bool operator==(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightRequestT &rhs) {
+  return
+      (lhs.points == rhs.points) &&
+      (lhs.ignore_robots == rhs.ignore_robots);
+}
+
+inline bool operator!=(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightRequestT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GetSurfaceHeightRequestT *GetSurfaceHeightRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<GetSurfaceHeightRequestT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GetSurfaceHeightRequest::UnPackTo(GetSurfaceHeightRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = points(); if (_e) { _o->points.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->points[_i] = *_e->Get(_i); } } else { _o->points.resize(0); } }
+  { auto _e = ignore_robots(); _o->ignore_robots = _e; }
+}
+
+inline ::flatbuffers::Offset<GetSurfaceHeightRequest> CreateGetSurfaceHeightRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return GetSurfaceHeightRequest::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<GetSurfaceHeightRequest> GetSurfaceHeightRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetSurfaceHeightRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _points = _o->points.size() ? _fbb.CreateVectorOfStructs(_o->points) : 0;
+  auto _ignore_robots = _o->ignore_robots;
+  return flightforge::wire::CreateGetSurfaceHeightRequest(
+      _fbb,
+      _points,
+      _ignore_robots);
+}
+
+
+inline bool operator==(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs) {
+  return
+      (lhs.heights == rhs.heights);
+}
+
+inline bool operator!=(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GetSurfaceHeightResponseT *GetSurfaceHeightResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<GetSurfaceHeightResponseT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GetSurfaceHeightResponse::UnPackTo(GetSurfaceHeightResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = heights(); if (_e) { _o->heights.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->heights[_i] = _e->Get(_i); } } else { _o->heights.resize(0); } }
+}
+
+inline ::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return GetSurfaceHeightResponse::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<GetSurfaceHeightResponse> GetSurfaceHeightResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetSurfaceHeightResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _heights = _o->heights.size() ? _fbb.CreateVector(_o->heights) : 0;
+  return flightforge::wire::CreateGetSurfaceHeightResponse(
+      _fbb,
+      _heights);
 }
 
 }  // namespace wire

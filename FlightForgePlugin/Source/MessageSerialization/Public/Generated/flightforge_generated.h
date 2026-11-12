@@ -102,11 +102,12 @@ enum class RequestBody : uint8_t {
   GetEventCameraDataRequest = 64,
   GetLidarScanRequest = 65,
   GetRangefinderDataRequest = 66,
+  GetSurfaceHeightRequest = 67,
   MIN = NONE,
-  MAX = GetRangefinderDataRequest
+  MAX = GetSurfaceHeightRequest
 };
 
-inline const RequestBody (&EnumValuesRequestBody())[67] {
+inline const RequestBody (&EnumValuesRequestBody())[68] {
   static const RequestBody values[] = {
     RequestBody::NONE,
     RequestBody::PingRequest,
@@ -174,13 +175,14 @@ inline const RequestBody (&EnumValuesRequestBody())[67] {
     RequestBody::GetInstanceSegMapRequest,
     RequestBody::GetEventCameraDataRequest,
     RequestBody::GetLidarScanRequest,
-    RequestBody::GetRangefinderDataRequest
+    RequestBody::GetRangefinderDataRequest,
+    RequestBody::GetSurfaceHeightRequest
   };
   return values;
 }
 
 inline const char * const *EnumNamesRequestBody() {
-  static const char * const names[68] = {
+  static const char * const names[69] = {
     "NONE",
     "PingRequest",
     "GetInfoRequest",
@@ -248,13 +250,14 @@ inline const char * const *EnumNamesRequestBody() {
     "GetEventCameraDataRequest",
     "GetLidarScanRequest",
     "GetRangefinderDataRequest",
+    "GetSurfaceHeightRequest",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameRequestBody(RequestBody e) {
-  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetRangefinderDataRequest)) return "";
+  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetSurfaceHeightRequest)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesRequestBody()[index];
 }
@@ -527,6 +530,10 @@ template<> struct RequestBodyTraits<flightforge::wire::GetRangefinderDataRequest
   static const RequestBody enum_value = RequestBody::GetRangefinderDataRequest;
 };
 
+template<> struct RequestBodyTraits<flightforge::wire::GetSurfaceHeightRequest> {
+  static const RequestBody enum_value = RequestBody::GetSurfaceHeightRequest;
+};
+
 template<typename T> struct RequestBodyUnionTraits {
   static const RequestBody enum_value = RequestBody::NONE;
 };
@@ -793,6 +800,10 @@ template<> struct RequestBodyUnionTraits<flightforge::wire::GetLidarScanRequestT
 
 template<> struct RequestBodyUnionTraits<flightforge::wire::GetRangefinderDataRequestT> {
   static const RequestBody enum_value = RequestBody::GetRangefinderDataRequest;
+};
+
+template<> struct RequestBodyUnionTraits<flightforge::wire::GetSurfaceHeightRequestT> {
+  static const RequestBody enum_value = RequestBody::GetSurfaceHeightRequest;
 };
 
 struct RequestBodyUnion {
@@ -1353,6 +1364,14 @@ struct RequestBodyUnion {
     return type == RequestBody::GetRangefinderDataRequest ?
       reinterpret_cast<const flightforge::wire::GetRangefinderDataRequestT *>(value) : nullptr;
   }
+  flightforge::wire::GetSurfaceHeightRequestT *AsGetSurfaceHeightRequest() {
+    return type == RequestBody::GetSurfaceHeightRequest ?
+      reinterpret_cast<flightforge::wire::GetSurfaceHeightRequestT *>(value) : nullptr;
+  }
+  const flightforge::wire::GetSurfaceHeightRequestT *AsGetSurfaceHeightRequest() const {
+    return type == RequestBody::GetSurfaceHeightRequest ?
+      reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(value) : nullptr;
+  }
 };
 
 
@@ -1626,6 +1645,10 @@ inline bool operator==(const RequestBodyUnion &lhs, const RequestBodyUnion &rhs)
       return *(reinterpret_cast<const flightforge::wire::GetRangefinderDataRequestT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetRangefinderDataRequestT *>(rhs.value));
     }
+    case RequestBody::GetSurfaceHeightRequest: {
+      return *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(rhs.value));
+    }
     default: {
       return false;
     }
@@ -1689,11 +1712,12 @@ enum class ResponseBody : uint8_t {
   EventCameraDataResponse = 44,
   LidarScanResponse = 45,
   RangefinderDataResponse = 46,
+  GetSurfaceHeightResponse = 47,
   MIN = NONE,
-  MAX = RangefinderDataResponse
+  MAX = GetSurfaceHeightResponse
 };
 
-inline const ResponseBody (&EnumValuesResponseBody())[47] {
+inline const ResponseBody (&EnumValuesResponseBody())[48] {
   static const ResponseBody values[] = {
     ResponseBody::NONE,
     ResponseBody::GetInfoResponse,
@@ -1741,13 +1765,14 @@ inline const ResponseBody (&EnumValuesResponseBody())[47] {
     ResponseBody::InstanceSegMapResponse,
     ResponseBody::EventCameraDataResponse,
     ResponseBody::LidarScanResponse,
-    ResponseBody::RangefinderDataResponse
+    ResponseBody::RangefinderDataResponse,
+    ResponseBody::GetSurfaceHeightResponse
   };
   return values;
 }
 
 inline const char * const *EnumNamesResponseBody() {
-  static const char * const names[48] = {
+  static const char * const names[49] = {
     "NONE",
     "GetInfoResponse",
     "GetTimeResponse",
@@ -1795,13 +1820,14 @@ inline const char * const *EnumNamesResponseBody() {
     "EventCameraDataResponse",
     "LidarScanResponse",
     "RangefinderDataResponse",
+    "GetSurfaceHeightResponse",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameResponseBody(ResponseBody e) {
-  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::RangefinderDataResponse)) return "";
+  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::GetSurfaceHeightResponse)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesResponseBody()[index];
 }
@@ -1994,6 +2020,10 @@ template<> struct ResponseBodyTraits<flightforge::wire::RangefinderDataResponse>
   static const ResponseBody enum_value = ResponseBody::RangefinderDataResponse;
 };
 
+template<> struct ResponseBodyTraits<flightforge::wire::GetSurfaceHeightResponse> {
+  static const ResponseBody enum_value = ResponseBody::GetSurfaceHeightResponse;
+};
+
 template<typename T> struct ResponseBodyUnionTraits {
   static const ResponseBody enum_value = ResponseBody::NONE;
 };
@@ -2180,6 +2210,10 @@ template<> struct ResponseBodyUnionTraits<flightforge::wire::LidarScanResponseT>
 
 template<> struct ResponseBodyUnionTraits<flightforge::wire::RangefinderDataResponseT> {
   static const ResponseBody enum_value = ResponseBody::RangefinderDataResponse;
+};
+
+template<> struct ResponseBodyUnionTraits<flightforge::wire::GetSurfaceHeightResponseT> {
+  static const ResponseBody enum_value = ResponseBody::GetSurfaceHeightResponse;
 };
 
 struct ResponseBodyUnion {
@@ -2580,6 +2614,14 @@ struct ResponseBodyUnion {
     return type == ResponseBody::RangefinderDataResponse ?
       reinterpret_cast<const flightforge::wire::RangefinderDataResponseT *>(value) : nullptr;
   }
+  flightforge::wire::GetSurfaceHeightResponseT *AsGetSurfaceHeightResponse() {
+    return type == ResponseBody::GetSurfaceHeightResponse ?
+      reinterpret_cast<flightforge::wire::GetSurfaceHeightResponseT *>(value) : nullptr;
+  }
+  const flightforge::wire::GetSurfaceHeightResponseT *AsGetSurfaceHeightResponse() const {
+    return type == ResponseBody::GetSurfaceHeightResponse ?
+      reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(value) : nullptr;
+  }
 };
 
 
@@ -2772,6 +2814,10 @@ inline bool operator==(const ResponseBodyUnion &lhs, const ResponseBodyUnion &rh
     case ResponseBody::RangefinderDataResponse: {
       return *(reinterpret_cast<const flightforge::wire::RangefinderDataResponseT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::RangefinderDataResponseT *>(rhs.value));
+    }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      return *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(rhs.value));
     }
     default: {
       return false;
@@ -3020,6 +3066,9 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const flightforge::wire::GetRangefinderDataRequest *body_as_GetRangefinderDataRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetRangefinderDataRequest ? static_cast<const flightforge::wire::GetRangefinderDataRequest *>(body()) : nullptr;
+  }
+  const flightforge::wire::GetSurfaceHeightRequest *body_as_GetSurfaceHeightRequest() const {
+    return body_type() == flightforge::wire::RequestBody::GetSurfaceHeightRequest ? static_cast<const flightforge::wire::GetSurfaceHeightRequest *>(body()) : nullptr;
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -3301,6 +3350,10 @@ template<> inline const flightforge::wire::GetRangefinderDataRequest *Request::b
   return body_as_GetRangefinderDataRequest();
 }
 
+template<> inline const flightforge::wire::GetSurfaceHeightRequest *Request::body_as<flightforge::wire::GetSurfaceHeightRequest>() const {
+  return body_as_GetSurfaceHeightRequest();
+}
+
 struct RequestBuilder {
   typedef Request Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
@@ -3527,6 +3580,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::RangefinderDataResponse *body_as_RangefinderDataResponse() const {
     return body_type() == flightforge::wire::ResponseBody::RangefinderDataResponse ? static_cast<const flightforge::wire::RangefinderDataResponse *>(body()) : nullptr;
   }
+  const flightforge::wire::GetSurfaceHeightResponse *body_as_GetSurfaceHeightResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::GetSurfaceHeightResponse ? static_cast<const flightforge::wire::GetSurfaceHeightResponse *>(body()) : nullptr;
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3726,6 +3782,10 @@ template<> inline const flightforge::wire::LidarScanResponse *Response::body_as<
 
 template<> inline const flightforge::wire::RangefinderDataResponse *Response::body_as<flightforge::wire::RangefinderDataResponse>() const {
   return body_as_RangefinderDataResponse();
+}
+
+template<> inline const flightforge::wire::GetSurfaceHeightResponse *Response::body_as<flightforge::wire::GetSurfaceHeightResponse>() const {
+  return body_as_GetSurfaceHeightResponse();
 }
 
 struct ResponseBuilder {
@@ -4172,6 +4232,10 @@ inline bool VerifyRequestBody(::flatbuffers::VerifierTemplate<B> &verifier, cons
       auto ptr = reinterpret_cast<const flightforge::wire::GetRangefinderDataRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case RequestBody::GetSurfaceHeightRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequest *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -4456,6 +4520,10 @@ inline void *RequestBodyUnion::UnPack(const void *obj, RequestBody type, const :
       auto ptr = reinterpret_cast<const flightforge::wire::GetRangefinderDataRequest *>(obj);
       return ptr->UnPack(resolver);
     }
+    case RequestBody::GetSurfaceHeightRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequest *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -4727,6 +4795,10 @@ inline ::flatbuffers::Offset<void> RequestBodyUnion::Pack(::flatbuffers::FlatBuf
       auto ptr = reinterpret_cast<const flightforge::wire::GetRangefinderDataRequestT *>(value);
       return CreateGetRangefinderDataRequest(_fbb, ptr, _rehasher).Union();
     }
+    case RequestBody::GetSurfaceHeightRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(value);
+      return CreateGetSurfaceHeightRequest(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -4995,6 +5067,10 @@ inline RequestBodyUnion::RequestBodyUnion(const RequestBodyUnion &u) : type(u.ty
     }
     case RequestBody::GetRangefinderDataRequest: {
       value = new flightforge::wire::GetRangefinderDataRequestT(*reinterpret_cast<flightforge::wire::GetRangefinderDataRequestT *>(u.value));
+      break;
+    }
+    case RequestBody::GetSurfaceHeightRequest: {
+      value = new flightforge::wire::GetSurfaceHeightRequestT(*reinterpret_cast<flightforge::wire::GetSurfaceHeightRequestT *>(u.value));
       break;
     }
     default:
@@ -5334,6 +5410,11 @@ inline void RequestBodyUnion::Reset() {
       delete ptr;
       break;
     }
+    case RequestBody::GetSurfaceHeightRequest: {
+      auto ptr = reinterpret_cast<flightforge::wire::GetSurfaceHeightRequestT *>(value);
+      delete ptr;
+      break;
+    }
     default: break;
   }
   value = nullptr;
@@ -5528,6 +5609,10 @@ inline bool VerifyResponseBody(::flatbuffers::VerifierTemplate<B> &verifier, con
     }
     case ResponseBody::RangefinderDataResponse: {
       auto ptr = reinterpret_cast<const flightforge::wire::RangefinderDataResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -5734,6 +5819,10 @@ inline void *ResponseBodyUnion::UnPack(const void *obj, ResponseBody type, const
       auto ptr = reinterpret_cast<const flightforge::wire::RangefinderDataResponse *>(obj);
       return ptr->UnPack(resolver);
     }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponse *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -5925,6 +6014,10 @@ inline ::flatbuffers::Offset<void> ResponseBodyUnion::Pack(::flatbuffers::FlatBu
       auto ptr = reinterpret_cast<const flightforge::wire::RangefinderDataResponseT *>(value);
       return CreateRangefinderDataResponse(_fbb, ptr, _rehasher).Union();
     }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(value);
+      return CreateGetSurfaceHeightResponse(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6113,6 +6206,10 @@ inline ResponseBodyUnion::ResponseBodyUnion(const ResponseBodyUnion &u) : type(u
     }
     case ResponseBody::RangefinderDataResponse: {
       value = new flightforge::wire::RangefinderDataResponseT(*reinterpret_cast<flightforge::wire::RangefinderDataResponseT *>(u.value));
+      break;
+    }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      value = new flightforge::wire::GetSurfaceHeightResponseT(*reinterpret_cast<flightforge::wire::GetSurfaceHeightResponseT *>(u.value));
       break;
     }
     default:
@@ -6349,6 +6446,11 @@ inline void ResponseBodyUnion::Reset() {
     }
     case ResponseBody::RangefinderDataResponse: {
       auto ptr = reinterpret_cast<flightforge::wire::RangefinderDataResponseT *>(value);
+      delete ptr;
+      break;
+    }
+    case ResponseBody::GetSurfaceHeightResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::GetSurfaceHeightResponseT *>(value);
       delete ptr;
       break;
     }

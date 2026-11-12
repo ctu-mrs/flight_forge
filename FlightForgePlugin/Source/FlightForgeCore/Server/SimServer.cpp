@@ -564,6 +564,7 @@ const FSimServer::FHandler* FSimServer::Handlers()
 		Add(B::ListLibraryRequest, &FSimServer::ListLibrary);
 		Add(B::GetWorldMeshRequest, &FSimServer::GetWorldMesh);
 		Add(B::GetDistanceBatchRequest, &FSimServer::GetDistanceBatch);
+		Add(B::GetSurfaceHeightRequest, &FSimServer::GetSurfaceHeight);
 
 		Add(B::SpawnRobotRequest, &FSimServer::SpawnRobot);
 		Add(B::ListRobotsRequest, &FSimServer::ListRobots);

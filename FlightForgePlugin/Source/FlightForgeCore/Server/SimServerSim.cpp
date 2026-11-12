@@ -9,10 +9,11 @@
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "FlightForgeCore/Utils/DistanceFieldQuery.h"
 #include "FlightForgeCore/Utils/SkyControl.h"
+#include "FlightForgeCore/Utils/SurfaceHeightQuery.h"
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 0;
+static constexpr uint16 ApiMinor = 1;
 
 /* connection //{ */
 
@@ -668,6 +669,50 @@ void FSimServer::GetDistanceBatch(const ffw::Request& Request, FWireReply& Reply
 	}
 
 	Reply.Set(ffw::CreateGetDistanceBatchResponse(Reply.Builder, Reply.CopyVector(Distances.GetData(), Distances.Num())));
+}
+
+void FSimServer::GetSurfaceHeight(const ffw::Request& Request, FWireReply& Reply)
+{
+	constexpr uint32 MaxPoints = 100000;
+
+	const ffw::GetSurfaceHeightRequest* Ask = Request.body_as_GetSurfaceHeightRequest();
+
+	TArray<FVector> Points;
+	if (Ask->points())
+	{
+		if (Ask->points()->size() > MaxPoints)
+		{
+			Reply.Fail(FString::Printf(TEXT("get_surface_height takes at most %u points, got %u"), MaxPoints, Ask->points()->size()));
+			return;
+		}
+		Points.Reserve(Ask->points()->size());
+		for (const ffw::Vec3* Point : *Ask->points())
+		{
+			Points.Add(FWireFrame::FromVec3(*Point));
+		}
+	}
+
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	TArray<double> Heights;
+	if (Points.Num() > 0)
+	{
+		const bool bIgnoreRobots = Ask->ignore_robots();
+		RunOnGameThread(*GameMode.GameMode, [&Points, &Heights, bIgnoreRobots](AFlightForgeGameModeBase& Mode) {
+			FSurfaceHeightQuery::Batch(Mode.GetWorld(), Mode.GetGroundOrigin(), Points, bIgnoreRobots, Heights);
+		});
+		if (Heights.Num() != Points.Num())
+		{
+			Reply.Fail(TEXT("get_surface_height did not run on the game thread"));
+			return;
+		}
+	}
+
+	Reply.Set(ffw::CreateGetSurfaceHeightResponse(Reply.Builder, Reply.CopyVector(Heights.GetData(), Heights.Num())));
 }
 
 /* //} */

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include "Instruction.h"
@@ -175,7 +176,7 @@ public:
 
   bool DrawMovementLine = false;
 
-  bool uav_crashed_ = false;
+  std::atomic<bool> uav_crashed_{false};
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FlightForge|Drone")
   bool propellers_rotate = false;

@@ -7,7 +7,6 @@ include "sim.fbs";
 namespace flightforge.wire;
 
 // members are append-only: never reorder, remove or insert, so older clients keep their type ids
-// reserved to append: GetSurfaceHeightRequest, a batch water-surface query for external buoyancy
 union RequestBody {
   PingRequest,
   GetInfoRequest,
@@ -82,6 +81,8 @@ union RequestBody {
   GetEventCameraDataRequest,
   GetLidarScanRequest,
   GetRangefinderDataRequest,
+
+  GetSurfaceHeightRequest,
 }
 
 // members are append-only, as for RequestBody; ops that return nothing answer NONE
@@ -139,6 +140,8 @@ union ResponseBody {
   EventCameraDataResponse,
   LidarScanResponse,
   RangefinderDataResponse,
+
+  GetSurfaceHeightResponse,
 }
 
 // a frame carries one Request; robot ops need robot_id, sensor ops robot_id and optionally sensor_id

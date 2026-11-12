@@ -1999,15 +1999,23 @@ inline ::flatbuffers::Offset<SetTrajectoryRequest> CreateSetTrajectoryRequestDir
 
 struct GetCollisionRequestT : public ::flatbuffers::NativeTable {
   typedef GetCollisionRequest TableType;
+  bool clear = false;
 };
 
 struct GetCollisionRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef GetCollisionRequestT NativeTableType;
   typedef GetCollisionRequestBuilder Builder;
   struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CLEAR = 4
+  };
+  bool clear() const {
+    return GetField<uint8_t>(VT_CLEAR, 0) != 0;
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_CLEAR, 1) &&
            verifier.EndTable();
   }
   GetCollisionRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2019,6 +2027,9 @@ struct GetCollisionRequestBuilder {
   typedef GetCollisionRequest Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
+  void add_clear(bool clear) {
+    fbb_.AddElement<uint8_t>(GetCollisionRequest::VT_CLEAR, static_cast<uint8_t>(clear), 0);
+  }
   explicit GetCollisionRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2031,8 +2042,10 @@ struct GetCollisionRequestBuilder {
 };
 
 inline ::flatbuffers::Offset<GetCollisionRequest> CreateGetCollisionRequest(
-    ::flatbuffers::FlatBufferBuilder &_fbb) {
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    bool clear = false) {
   GetCollisionRequestBuilder builder_(_fbb);
+  builder_.add_clear(clear);
   return builder_.Finish();
 }
 
@@ -3336,8 +3349,9 @@ inline ::flatbuffers::Offset<SetTrajectoryRequest> SetTrajectoryRequest::Pack(::
 }
 
 
-inline bool operator==(const GetCollisionRequestT &, const GetCollisionRequestT &) {
-  return true;
+inline bool operator==(const GetCollisionRequestT &lhs, const GetCollisionRequestT &rhs) {
+  return
+      (lhs.clear == rhs.clear);
 }
 
 inline bool operator!=(const GetCollisionRequestT &lhs, const GetCollisionRequestT &rhs) {
@@ -3354,6 +3368,7 @@ inline GetCollisionRequestT *GetCollisionRequest::UnPack(const ::flatbuffers::re
 inline void GetCollisionRequest::UnPackTo(GetCollisionRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
+  { auto _e = clear(); _o->clear = _e; }
 }
 
 inline ::flatbuffers::Offset<GetCollisionRequest> CreateGetCollisionRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetCollisionRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -3364,8 +3379,10 @@ inline ::flatbuffers::Offset<GetCollisionRequest> GetCollisionRequest::Pack(::fl
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetCollisionRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _clear = _o->clear;
   return flightforge::wire::CreateGetCollisionRequest(
-      _fbb);
+      _fbb,
+      _clear);
 }
 
 
