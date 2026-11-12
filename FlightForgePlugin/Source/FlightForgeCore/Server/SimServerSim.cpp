@@ -8,6 +8,7 @@
 
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "FlightForgeCore/Utils/DistanceFieldQuery.h"
+#include "FlightForgeCore/Utils/SkyControl.h"
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
 
 static constexpr uint16 ApiMajor = 1;
@@ -221,34 +222,35 @@ void FSimServer::SetWeather(const ffw::Request& Request, FWireReply& Reply)
 		return;
 	}
 
-	bool bOk = false;
-	RunOnGameThread(*GameMode.GameMode, [Weather, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetWeather(Weather); });
+	bool    bOk = false;
+	FString Error;
+	RunOnGameThread(*GameMode.GameMode, [Weather, &bOk, &Error](AFlightForgeGameModeBase& Mode) {
+		bOk = Mode.GetWorld()->GetSubsystem<USkyControl>()->SetWeather(Weather, Error);
+	});
 	if (!bOk)
 	{
-		Reply.Fail(TEXT("this world does not implement set_weather"));
+		Reply.Fail(Error.IsEmpty() ? TEXT("set_weather did not run on the game thread") : Error);
 	}
 }
 
 void FSimServer::SetDaytime(const ffw::Request& Request, FWireReply& Reply)
 {
-	const ffw::SetDaytimeRequest* Ask = Request.body_as_SetDaytimeRequest();
-	if (Ask->hour() > 23 || Ask->minute() > 59)
-	{
-		Reply.Fail(FString::Printf(TEXT("%u:%02u is not a time of day"), Ask->hour(), Ask->minute()));
-		return;
-	}
-
+	const int32          Hour     = Request.body_as_SetDaytimeRequest()->hour();
+	const int32          Minute   = Request.body_as_SetDaytimeRequest()->minute();
 	const FGameModeLease GameMode = LeaseGameMode(Reply);
 	if (!GameMode)
 	{
 		return;
 	}
 
-	bool bOk = false;
-	RunOnGameThread(*GameMode.GameMode, [Ask, &bOk](AFlightForgeGameModeBase& Mode) { bOk = Mode.SetDaytime(Ask->hour(), Ask->minute()); });
+	bool    bOk = false;
+	FString Error;
+	RunOnGameThread(*GameMode.GameMode, [Hour, Minute, &bOk, &Error](AFlightForgeGameModeBase& Mode) {
+		bOk = Mode.GetWorld()->GetSubsystem<USkyControl>()->SetDaytime(Hour, Minute, Error);
+	});
 	if (!bOk)
 	{
-		Reply.Fail(TEXT("this world does not implement set_daytime"));
+		Reply.Fail(Error.IsEmpty() ? TEXT("set_daytime did not run on the game thread") : Error);
 	}
 }
 

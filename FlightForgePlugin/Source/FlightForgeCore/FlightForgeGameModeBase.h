@@ -919,12 +919,6 @@ public:
 		}
 	}
 		
-	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "FlightForge|Environment")
-	bool SetWeather(int TypeId);
-
-	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "FlightForge|Environment")
-	bool SetDaytime(int hour, int minute);
-
 	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>> InstructionQueue;
 	
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)
