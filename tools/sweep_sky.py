@@ -53,18 +53,47 @@ def wait_alive(port, budget):
     return False
 
 
-def switch(port, level, budget):
-    """None once the level runs, else why not."""
+def ticking(port):
+    """A world is loaded and its clock moved over the last two seconds."""
     sim = connect(port)
     if sim is None:
-        return "the simulator is not answering"
+        return False
     try:
         before = sim.time().sim_time
-        sim.switch_world(level)
-    except Exception as error:
-        return f"switch_world failed: {error}"
+        time.sleep(2.0)
+        return sim.time().sim_time > before and sim.fps() > 0.0
+    except Exception:
+        return False
     finally:
         sim.close()
+
+
+def wait_ticking(port, budget):
+    """Three good polls in a row: a first load can stall the game thread for minutes building textures."""
+    deadline = time.time() + budget
+    streak = 0
+    while time.time() < deadline and streak < 3:
+        streak = streak + 1 if ticking(port) else 0
+        if streak == 0:
+            time.sleep(3.0)
+    return streak >= 3
+
+
+def switch(port, level, budget):
+    """None once the level runs, else why not."""
+    for attempt in range(2):
+        sim = connect(port)
+        if sim is None:
+            return "the simulator is not answering"
+        try:
+            before = sim.time().sim_time
+            sim.switch_world(level)
+            break
+        except Exception as error:
+            if attempt == 1 or not wait_ticking(port, budget):
+                return f"switch_world failed: {error}"
+        finally:
+            sim.close()
 
     reset = False
     deadline = time.time() + budget
@@ -77,7 +106,7 @@ def switch(port, level, budget):
             now = sim.time().sim_time
             reset = reset or now < before
             if reset and now > 3.0 and sim.fps() > 0.0:
-                return None
+                return None if wait_ticking(port, budget) else f"loaded but stopped ticking within {budget:.0f} s"
         except Exception:
             pass
         finally:
@@ -236,9 +265,16 @@ def main():
 
         try:
             result = measure(args.port)
-        except Exception as error:
-            emit(f"{level} | loaded in {load_s:.0f} s, measuring failed: {error}")
-            continue
+        except Exception as first:
+            # a level that streams or opens another one can pull the robot away mid-measurement
+            if not wait_ticking(args.port, args.load_timeout):
+                emit(f"{level} | loaded in {load_s:.0f} s, measuring failed ({first}) and the world never settled")
+                continue
+            try:
+                result = measure(args.port)
+            except Exception as error:
+                emit(f"{level} | loaded in {load_s:.0f} s, measuring failed twice: {first}; {error}")
+                continue
 
         systems = []
         if args.log and args.log.exists():
