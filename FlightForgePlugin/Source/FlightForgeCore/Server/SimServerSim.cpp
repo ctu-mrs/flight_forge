@@ -383,21 +383,46 @@ void FSimServer::SpawnObjectsFromYaml(const ffw::Request& Request, FWireReply& R
 
 	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { SpawnedIds = Mode.SpawnObjectsFromYaml(Document, Error, Batch); });
 
-	// models import off the game thread, so the reply waits here and the sim keeps ticking
-	if (Batch->Pending.load() > 0)
-	{
-		const double Deadline = FPlatformTime::Seconds() + 300.0;
-		FGenericPlatformProcess::ConditionalSleep([&Batch, Deadline]() { return Batch->Pending.load() <= 0 || FPlatformTime::Seconds() > Deadline; }, 0.01f);
-
-		RunOnGameThread(*GameMode.GameMode, [&SpawnedIds](AFlightForgeGameModeBase& Mode) {
-			SpawnedIds.RemoveAll([&Mode](const int32 Id) { return !Mode.GetObjectSpawner()->HasObject(Id); });
-		});
-	}
-
-	// a config that placed nothing still succeeded; only one that could not be read failed
 	if (!Error.IsEmpty())
 	{
 		Reply.Fail(Error);
+		return;
+	}
+
+	bool bPending = false;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) { bPending = Batch->Failed.IsEmpty() && Batch->Pending.load() > 0; });
+
+	// models import off the game thread, so the reply waits here and the sim keeps ticking
+	if (bPending)
+	{
+		const double Deadline = FPlatformTime::Seconds() + 300.0;
+		FGenericPlatformProcess::ConditionalSleep([&Batch, Deadline]() { return Batch->Pending.load() <= 0 || FPlatformTime::Seconds() > Deadline; }, 0.01f);
+	}
+
+	// all or nothing: a scene with a hole in it is worse than no scene
+	TArray<FString> Failed;
+	const bool      bTimedOut = Batch->Pending.load() > 0;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) {
+		Failed = Batch->Failed;
+		if (Failed.IsEmpty() && !bTimedOut)
+		{
+			return;
+		}
+		for (const int32 Id : SpawnedIds)
+		{
+			Mode.RemoveSpawnedObject(Id);
+		}
+		SpawnedIds.Reset();
+	});
+
+	if (!Failed.IsEmpty())
+	{
+		Reply.Fail(FString::Printf(TEXT("spawned nothing: could not place %s"), *FString::Join(Failed, TEXT(", "))));
+		return;
+	}
+	if (bTimedOut)
+	{
+		Reply.Fail(TEXT("spawned nothing: the models did not import within 300 s"));
 		return;
 	}
 

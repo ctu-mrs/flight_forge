@@ -70,12 +70,12 @@ AActor* UWorldObjectSpawner::SpawnEntry(UWorld* World, const FSpawnObjectEntry& 
 
 /* OnModelImported() / TaggedStencil() //{ */
 
-void UWorldObjectSpawner::OnModelImported(const int32 ObjectId, UStaticMesh* Mesh, const bool bExplicitStencil)
+bool UWorldObjectSpawner::OnModelImported(const int32 ObjectId, UStaticMesh* Mesh, const bool bExplicitStencil)
 {
   FSpawnedObjectRecord* Record = SpawnedObjects.Find(ObjectId);
   if (!Record || !IsValid(Record->Actor))
   {
-    return;
+    return true;
   }
 
   AStaticMeshActor* MeshActor = Cast<AStaticMeshActor>(Record->Actor);
@@ -85,7 +85,7 @@ void UWorldObjectSpawner::OnModelImported(const int32 ObjectId, UStaticMesh* Mes
     UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] removed '%s': its model did not import"), *Record->Asset);
     Record->Actor->Destroy();
     SpawnedObjects.Remove(ObjectId);
-    return;
+    return false;
   }
 
   MeshActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
@@ -98,6 +98,7 @@ void UWorldObjectSpawner::OnModelImported(const int32 ObjectId, UStaticMesh* Mes
     }
     Record->Stencil = TaggedStencil(MeshActor);
   }
+  return true;
 }
 
 int32 UWorldObjectSpawner::TaggedStencil(const AActor* Actor)
@@ -134,9 +135,17 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
   // library heights are metres, the unreal frame's positions centimetres
   const double BaseUnit = Config.bUnrealFrame ? 100.0 : 1.0;
 
-  for (const FSpawnObjectEntry& Requested : Config.Objects)
+  const auto NoteFailure = [&Batch](const int32 Index, const FString& Asset) {
+    if (Batch)
+    {
+      Batch->Failed.Add(FString::Printf(TEXT("objects[%d] '%s'"), Index, *Asset));
+    }
+  };
+
+  for (int32 Index = 0; Index < Config.Objects.Num(); ++Index)
   {
-    FSpawnObjectEntry Entry = Requested;
+    const FSpawnObjectEntry& Requested = Config.Objects[Index];
+    FSpawnObjectEntry        Entry     = Requested;
     double            BaseZ = 0.0;
 
     if (const FLibraryObject* Object = Library ? Library->Find(Requested.Asset) : nullptr)
@@ -154,6 +163,7 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     else if (Requested.Asset.StartsWith(FObjectLibrary::Prefix))
     {
       UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] no library object '%s'"), *Requested.Asset);
+      NoteFailure(Index, Requested.Asset);
       continue;
     }
 
@@ -164,6 +174,7 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
     if (!Actor)
     {
       UE_LOG(LogTemp, Warning, TEXT("[WorldObjectSpawner] skipped '%s'"), *Entry.Asset);
+      NoteFailure(Index, Requested.Asset);
       continue;
     }
 
@@ -207,10 +218,13 @@ TArray<int32> UWorldObjectSpawner::SpawnFromConfig(UWorld* World, const FSpawnCo
 
       TWeakObjectPtr<UWorldObjectSpawner> WeakThis(this);
 
-      Resolver->ImportGltfAsync(ModelFile, World, FOnGltfImported::CreateLambda([WeakThis, ObjectId, Batch, bExplicitStencil](UStaticMesh* Mesh) {
-                                  if (UWorldObjectSpawner* Self = WeakThis.Get())
+      const FString Failure = FString::Printf(TEXT("objects[%d] '%s'"), Index, *Requested.Asset);
+
+      Resolver->ImportGltfAsync(ModelFile, World, FOnGltfImported::CreateLambda([WeakThis, ObjectId, Batch, bExplicitStencil, Failure](UStaticMesh* Mesh) {
+                                  UWorldObjectSpawner* Self = WeakThis.Get();
+                                  if (Self && !Self->OnModelImported(ObjectId, Mesh, bExplicitStencil) && Batch)
                                   {
-                                    Self->OnModelImported(ObjectId, Mesh, bExplicitStencil);
+                                    Batch->Failed.Add(Failure);
                                   }
                                   if (Batch)
                                   {

@@ -57,6 +57,7 @@ struct FSpawnedObjectState
 struct FSpawnBatch
 {
   std::atomic<int32> Pending{0};
+  TArray<FString>    Failed;  // game thread
 };
 
 using FSpawnBatchPtr = TSharedPtr<FSpawnBatch, ESPMode::ThreadSafe>;
@@ -108,7 +109,7 @@ public:
 private:
   AActor* SpawnEntry(UWorld* World, const FSpawnObjectEntry& Entry, const FSpawnConfig& Config, const FTransform& Transform, FString& OutModelFile);
 
-  void OnModelImported(int32 ObjectId, UStaticMesh* Mesh, bool bExplicitStencil);
+  bool OnModelImported(int32 ObjectId, UStaticMesh* Mesh, bool bExplicitStencil);
 
   static int32 TaggedStencil(const AActor* Actor);
 
