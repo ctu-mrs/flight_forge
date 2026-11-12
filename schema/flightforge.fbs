@@ -83,6 +83,7 @@ union RequestBody {
   GetRangefinderDataRequest,
 
   GetSurfaceHeightRequest,
+  GetDaytimeRequest,
 }
 
 // members are append-only, as for RequestBody; ops that return nothing answer NONE
@@ -142,6 +143,7 @@ union ResponseBody {
   RangefinderDataResponse,
 
   GetSurfaceHeightResponse,
+  GetDaytimeResponse,
 }
 
 // a frame carries one Request; robot ops need robot_id, sensor ops robot_id and optionally sensor_id

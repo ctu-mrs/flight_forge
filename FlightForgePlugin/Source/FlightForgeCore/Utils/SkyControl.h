@@ -27,12 +27,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FlightForge|Environment")
 	bool SetDaytime(int32 Hour, int32 Minute, FString& Error);
 
+	// runs or stops the sky's own day cycle at the level's day length; only Ultra Dynamic Sky has one
+	UFUNCTION(BlueprintCallable, Category = "FlightForge|Environment")
+	bool SetDaytimeAnimated(bool bAnimate, FString& Error);
+
+	// Hours is NaN on a world lit by its own lights until SetDaytime
+	UFUNCTION(BlueprintCallable, Category = "FlightForge|Environment")
+	bool GetDaytime(double& Hours, bool& bAnimated, FString& Sky, FString& Error);
+
 	// Weather is a flightforge.wire.Weather value
 	UFUNCTION(BlueprintCallable, Category = "FlightForge|Environment")
 	bool SetWeather(int32 Weather, FString& Error);
 
 private:
 	bool SetLightsDaytime(double Hours, FString& Error);
+	bool LightsReachCameras(FString& Error);
 
 	struct FLightBaseline
 	{
@@ -44,6 +53,7 @@ private:
 	};
 
 	FLightBaseline Baseline;
+	double         LightsHours = std::numeric_limits<double>::quiet_NaN();
 };
 
 /* //} */

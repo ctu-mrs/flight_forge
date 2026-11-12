@@ -103,11 +103,12 @@ enum class RequestBody : uint8_t {
   GetLidarScanRequest = 65,
   GetRangefinderDataRequest = 66,
   GetSurfaceHeightRequest = 67,
+  GetDaytimeRequest = 68,
   MIN = NONE,
-  MAX = GetSurfaceHeightRequest
+  MAX = GetDaytimeRequest
 };
 
-inline const RequestBody (&EnumValuesRequestBody())[68] {
+inline const RequestBody (&EnumValuesRequestBody())[69] {
   static const RequestBody values[] = {
     RequestBody::NONE,
     RequestBody::PingRequest,
@@ -176,13 +177,14 @@ inline const RequestBody (&EnumValuesRequestBody())[68] {
     RequestBody::GetEventCameraDataRequest,
     RequestBody::GetLidarScanRequest,
     RequestBody::GetRangefinderDataRequest,
-    RequestBody::GetSurfaceHeightRequest
+    RequestBody::GetSurfaceHeightRequest,
+    RequestBody::GetDaytimeRequest
   };
   return values;
 }
 
 inline const char * const *EnumNamesRequestBody() {
-  static const char * const names[69] = {
+  static const char * const names[70] = {
     "NONE",
     "PingRequest",
     "GetInfoRequest",
@@ -251,13 +253,14 @@ inline const char * const *EnumNamesRequestBody() {
     "GetLidarScanRequest",
     "GetRangefinderDataRequest",
     "GetSurfaceHeightRequest",
+    "GetDaytimeRequest",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameRequestBody(RequestBody e) {
-  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetSurfaceHeightRequest)) return "";
+  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetDaytimeRequest)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesRequestBody()[index];
 }
@@ -534,6 +537,10 @@ template<> struct RequestBodyTraits<flightforge::wire::GetSurfaceHeightRequest> 
   static const RequestBody enum_value = RequestBody::GetSurfaceHeightRequest;
 };
 
+template<> struct RequestBodyTraits<flightforge::wire::GetDaytimeRequest> {
+  static const RequestBody enum_value = RequestBody::GetDaytimeRequest;
+};
+
 template<typename T> struct RequestBodyUnionTraits {
   static const RequestBody enum_value = RequestBody::NONE;
 };
@@ -804,6 +811,10 @@ template<> struct RequestBodyUnionTraits<flightforge::wire::GetRangefinderDataRe
 
 template<> struct RequestBodyUnionTraits<flightforge::wire::GetSurfaceHeightRequestT> {
   static const RequestBody enum_value = RequestBody::GetSurfaceHeightRequest;
+};
+
+template<> struct RequestBodyUnionTraits<flightforge::wire::GetDaytimeRequestT> {
+  static const RequestBody enum_value = RequestBody::GetDaytimeRequest;
 };
 
 struct RequestBodyUnion {
@@ -1372,6 +1383,14 @@ struct RequestBodyUnion {
     return type == RequestBody::GetSurfaceHeightRequest ?
       reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(value) : nullptr;
   }
+  flightforge::wire::GetDaytimeRequestT *AsGetDaytimeRequest() {
+    return type == RequestBody::GetDaytimeRequest ?
+      reinterpret_cast<flightforge::wire::GetDaytimeRequestT *>(value) : nullptr;
+  }
+  const flightforge::wire::GetDaytimeRequestT *AsGetDaytimeRequest() const {
+    return type == RequestBody::GetDaytimeRequest ?
+      reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(value) : nullptr;
+  }
 };
 
 
@@ -1649,6 +1668,10 @@ inline bool operator==(const RequestBodyUnion &lhs, const RequestBodyUnion &rhs)
       return *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(rhs.value));
     }
+    case RequestBody::GetDaytimeRequest: {
+      return *(reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(rhs.value));
+    }
     default: {
       return false;
     }
@@ -1713,11 +1736,12 @@ enum class ResponseBody : uint8_t {
   LidarScanResponse = 45,
   RangefinderDataResponse = 46,
   GetSurfaceHeightResponse = 47,
+  GetDaytimeResponse = 48,
   MIN = NONE,
-  MAX = GetSurfaceHeightResponse
+  MAX = GetDaytimeResponse
 };
 
-inline const ResponseBody (&EnumValuesResponseBody())[48] {
+inline const ResponseBody (&EnumValuesResponseBody())[49] {
   static const ResponseBody values[] = {
     ResponseBody::NONE,
     ResponseBody::GetInfoResponse,
@@ -1766,13 +1790,14 @@ inline const ResponseBody (&EnumValuesResponseBody())[48] {
     ResponseBody::EventCameraDataResponse,
     ResponseBody::LidarScanResponse,
     ResponseBody::RangefinderDataResponse,
-    ResponseBody::GetSurfaceHeightResponse
+    ResponseBody::GetSurfaceHeightResponse,
+    ResponseBody::GetDaytimeResponse
   };
   return values;
 }
 
 inline const char * const *EnumNamesResponseBody() {
-  static const char * const names[49] = {
+  static const char * const names[50] = {
     "NONE",
     "GetInfoResponse",
     "GetTimeResponse",
@@ -1821,13 +1846,14 @@ inline const char * const *EnumNamesResponseBody() {
     "LidarScanResponse",
     "RangefinderDataResponse",
     "GetSurfaceHeightResponse",
+    "GetDaytimeResponse",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameResponseBody(ResponseBody e) {
-  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::GetSurfaceHeightResponse)) return "";
+  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::GetDaytimeResponse)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesResponseBody()[index];
 }
@@ -2024,6 +2050,10 @@ template<> struct ResponseBodyTraits<flightforge::wire::GetSurfaceHeightResponse
   static const ResponseBody enum_value = ResponseBody::GetSurfaceHeightResponse;
 };
 
+template<> struct ResponseBodyTraits<flightforge::wire::GetDaytimeResponse> {
+  static const ResponseBody enum_value = ResponseBody::GetDaytimeResponse;
+};
+
 template<typename T> struct ResponseBodyUnionTraits {
   static const ResponseBody enum_value = ResponseBody::NONE;
 };
@@ -2214,6 +2244,10 @@ template<> struct ResponseBodyUnionTraits<flightforge::wire::RangefinderDataResp
 
 template<> struct ResponseBodyUnionTraits<flightforge::wire::GetSurfaceHeightResponseT> {
   static const ResponseBody enum_value = ResponseBody::GetSurfaceHeightResponse;
+};
+
+template<> struct ResponseBodyUnionTraits<flightforge::wire::GetDaytimeResponseT> {
+  static const ResponseBody enum_value = ResponseBody::GetDaytimeResponse;
 };
 
 struct ResponseBodyUnion {
@@ -2622,6 +2656,14 @@ struct ResponseBodyUnion {
     return type == ResponseBody::GetSurfaceHeightResponse ?
       reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(value) : nullptr;
   }
+  flightforge::wire::GetDaytimeResponseT *AsGetDaytimeResponse() {
+    return type == ResponseBody::GetDaytimeResponse ?
+      reinterpret_cast<flightforge::wire::GetDaytimeResponseT *>(value) : nullptr;
+  }
+  const flightforge::wire::GetDaytimeResponseT *AsGetDaytimeResponse() const {
+    return type == ResponseBody::GetDaytimeResponse ?
+      reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(value) : nullptr;
+  }
 };
 
 
@@ -2818,6 +2860,10 @@ inline bool operator==(const ResponseBodyUnion &lhs, const ResponseBodyUnion &rh
     case ResponseBody::GetSurfaceHeightResponse: {
       return *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(rhs.value));
+    }
+    case ResponseBody::GetDaytimeResponse: {
+      return *(reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(rhs.value));
     }
     default: {
       return false;
@@ -3069,6 +3115,9 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const flightforge::wire::GetSurfaceHeightRequest *body_as_GetSurfaceHeightRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetSurfaceHeightRequest ? static_cast<const flightforge::wire::GetSurfaceHeightRequest *>(body()) : nullptr;
+  }
+  const flightforge::wire::GetDaytimeRequest *body_as_GetDaytimeRequest() const {
+    return body_type() == flightforge::wire::RequestBody::GetDaytimeRequest ? static_cast<const flightforge::wire::GetDaytimeRequest *>(body()) : nullptr;
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -3354,6 +3403,10 @@ template<> inline const flightforge::wire::GetSurfaceHeightRequest *Request::bod
   return body_as_GetSurfaceHeightRequest();
 }
 
+template<> inline const flightforge::wire::GetDaytimeRequest *Request::body_as<flightforge::wire::GetDaytimeRequest>() const {
+  return body_as_GetDaytimeRequest();
+}
+
 struct RequestBuilder {
   typedef Request Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
@@ -3583,6 +3636,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::GetSurfaceHeightResponse *body_as_GetSurfaceHeightResponse() const {
     return body_type() == flightforge::wire::ResponseBody::GetSurfaceHeightResponse ? static_cast<const flightforge::wire::GetSurfaceHeightResponse *>(body()) : nullptr;
   }
+  const flightforge::wire::GetDaytimeResponse *body_as_GetDaytimeResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::GetDaytimeResponse ? static_cast<const flightforge::wire::GetDaytimeResponse *>(body()) : nullptr;
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3786,6 +3842,10 @@ template<> inline const flightforge::wire::RangefinderDataResponse *Response::bo
 
 template<> inline const flightforge::wire::GetSurfaceHeightResponse *Response::body_as<flightforge::wire::GetSurfaceHeightResponse>() const {
   return body_as_GetSurfaceHeightResponse();
+}
+
+template<> inline const flightforge::wire::GetDaytimeResponse *Response::body_as<flightforge::wire::GetDaytimeResponse>() const {
+  return body_as_GetDaytimeResponse();
 }
 
 struct ResponseBuilder {
@@ -4236,6 +4296,10 @@ inline bool VerifyRequestBody(::flatbuffers::VerifierTemplate<B> &verifier, cons
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case RequestBody::GetDaytimeRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequest *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -4524,6 +4588,10 @@ inline void *RequestBodyUnion::UnPack(const void *obj, RequestBody type, const :
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequest *>(obj);
       return ptr->UnPack(resolver);
     }
+    case RequestBody::GetDaytimeRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequest *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -4799,6 +4867,10 @@ inline ::flatbuffers::Offset<void> RequestBodyUnion::Pack(::flatbuffers::FlatBuf
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightRequestT *>(value);
       return CreateGetSurfaceHeightRequest(_fbb, ptr, _rehasher).Union();
     }
+    case RequestBody::GetDaytimeRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(value);
+      return CreateGetDaytimeRequest(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -5071,6 +5143,10 @@ inline RequestBodyUnion::RequestBodyUnion(const RequestBodyUnion &u) : type(u.ty
     }
     case RequestBody::GetSurfaceHeightRequest: {
       value = new flightforge::wire::GetSurfaceHeightRequestT(*reinterpret_cast<flightforge::wire::GetSurfaceHeightRequestT *>(u.value));
+      break;
+    }
+    case RequestBody::GetDaytimeRequest: {
+      value = new flightforge::wire::GetDaytimeRequestT(*reinterpret_cast<flightforge::wire::GetDaytimeRequestT *>(u.value));
       break;
     }
     default:
@@ -5415,6 +5491,11 @@ inline void RequestBodyUnion::Reset() {
       delete ptr;
       break;
     }
+    case RequestBody::GetDaytimeRequest: {
+      auto ptr = reinterpret_cast<flightforge::wire::GetDaytimeRequestT *>(value);
+      delete ptr;
+      break;
+    }
     default: break;
   }
   value = nullptr;
@@ -5613,6 +5694,10 @@ inline bool VerifyResponseBody(::flatbuffers::VerifierTemplate<B> &verifier, con
     }
     case ResponseBody::GetSurfaceHeightResponse: {
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case ResponseBody::GetDaytimeResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -5823,6 +5908,10 @@ inline void *ResponseBodyUnion::UnPack(const void *obj, ResponseBody type, const
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponse *>(obj);
       return ptr->UnPack(resolver);
     }
+    case ResponseBody::GetDaytimeResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponse *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -6018,6 +6107,10 @@ inline ::flatbuffers::Offset<void> ResponseBodyUnion::Pack(::flatbuffers::FlatBu
       auto ptr = reinterpret_cast<const flightforge::wire::GetSurfaceHeightResponseT *>(value);
       return CreateGetSurfaceHeightResponse(_fbb, ptr, _rehasher).Union();
     }
+    case ResponseBody::GetDaytimeResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(value);
+      return CreateGetDaytimeResponse(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6210,6 +6303,10 @@ inline ResponseBodyUnion::ResponseBodyUnion(const ResponseBodyUnion &u) : type(u
     }
     case ResponseBody::GetSurfaceHeightResponse: {
       value = new flightforge::wire::GetSurfaceHeightResponseT(*reinterpret_cast<flightforge::wire::GetSurfaceHeightResponseT *>(u.value));
+      break;
+    }
+    case ResponseBody::GetDaytimeResponse: {
+      value = new flightforge::wire::GetDaytimeResponseT(*reinterpret_cast<flightforge::wire::GetDaytimeResponseT *>(u.value));
       break;
     }
     default:
@@ -6451,6 +6548,11 @@ inline void ResponseBodyUnion::Reset() {
     }
     case ResponseBody::GetSurfaceHeightResponse: {
       auto ptr = reinterpret_cast<flightforge::wire::GetSurfaceHeightResponseT *>(value);
+      delete ptr;
+      break;
+    }
+    case ResponseBody::GetDaytimeResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::GetDaytimeResponseT *>(value);
       delete ptr;
       break;
     }

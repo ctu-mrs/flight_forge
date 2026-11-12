@@ -94,6 +94,16 @@ table SetWeatherRequest {
 table SetDaytimeRequest {
   hour: ubyte;  // 0-23
   minute: ubyte;  // 0-59
+  animate: bool = null;  // absent keeps the level's setting; true runs the sky's own day cycle at the level's day length
+}
+
+table GetDaytimeRequest {}
+
+// the sky's clock; where the level animates it, it advances per simulated second and holds while the world is paused
+table GetDaytimeResponse {
+  hour: double;  // since midnight, 0-24; NaN on a world lit by its own lights until set_daytime
+  animated: bool;
+  sky: string;  // ultra_dynamic_sky, sun_sky or lights
 }
 
 enum GraphicsQuality : ubyte {

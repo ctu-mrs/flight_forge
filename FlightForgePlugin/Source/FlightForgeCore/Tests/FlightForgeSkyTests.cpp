@@ -1,4 +1,4 @@
-// Time of day and weather on a world with no sky actor: the light fallback and the refusals.
+// Time of day and weather on a world with no sky actor: the light fallback, hidden lights and the refusals.
 //   UnrealEditor-Cmd <project> -ExecCmds="Automation RunTests FlightForge.Api" -unattended -nopause
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -67,6 +67,27 @@ bool FFlightForgeApiSkyControlTest::RunTest(const FString& Parameters)
 
 		TestTrue(TEXT("noon again"), Fresh->SetDaytime(12, 0, Error));
 		TestEqual(TEXT("lit again from the first baseline"), Sun->Intensity, 7.0f);
+
+		double  Hours     = 0.0;
+		bool    bAnimated = true;
+		FString Kind;
+		TestTrue(TEXT("the clock reads back"), Fresh->GetDaytime(Hours, bAnimated, Kind, Error));
+		TestEqual(TEXT("at what was set"), Hours, 12.0);
+		TestFalse(TEXT("standing still"), bAnimated);
+		TestEqual(TEXT("from the level's lights"), Kind, FString(TEXT("lights")));
+		TestFalse(TEXT("the lights have no day cycle to run"), Fresh->SetDaytimeAnimated(true, Error));
+		TestTrue(TEXT("saying so"), Error.Contains(TEXT("no day cycle")));
+		TestTrue(TEXT("nor one to stop"), Fresh->SetDaytimeAnimated(false, Error));
+
+		Sun->SetVisibility(false);
+		USkyControl* Hidden = NewObject<USkyControl>(World);
+		Error.Reset();
+		TestFalse(TEXT("a hidden sun lights nothing"), Hidden->SetDaytime(12, 0, Error));
+		TestTrue(TEXT("saying the world has no sky"), Error.Contains(USkyControl::NoSkySystem));
+		Error.Reset();
+		TestFalse(TEXT("and has no clock to read"), Hidden->GetDaytime(Hours, bAnimated, Kind, Error));
+		TestTrue(TEXT("for the same reason"), Error.Contains(USkyControl::NoSkySystem));
+		Sun->SetVisibility(true);
 
 		Sun->SetMobility(EComponentMobility::Static);
 		USkyControl* Static = NewObject<USkyControl>(World);

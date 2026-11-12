@@ -72,6 +72,25 @@ bool SetNumber(UObject* Object, const TCHAR* Name, const double Value)
 	return true;
 }
 
+bool GetNumber(UObject* Object, const TCHAR* Name, double& Value)
+{
+	const FNumericProperty* Property = CastField<FNumericProperty>(FindPropertyNamed(Object->GetClass(), Name));
+	if (!Property)
+	{
+		return false;
+	}
+
+	const void* Address = Property->ContainerPtrToValuePtr<void>(Object);
+	Value = Property->IsFloatingPoint() ? Property->GetFloatingPointPropertyValue(Address) : static_cast<double>(Property->GetSignedIntPropertyValue(Address));
+	return true;
+}
+
+bool GetBool(UObject* Object, const TCHAR* Name)
+{
+	const FBoolProperty* Property = CastField<FBoolProperty>(FindPropertyNamed(Object->GetClass(), Name));
+	return Property && Property->GetPropertyValue_InContainer(Object);
+}
+
 void SetBool(UObject* Object, const TCHAR* Name, const bool bValue)
 {
 	if (FBoolProperty* Property = CastField<FBoolProperty>(FindPropertyNamed(Object->GetClass(), Name)))
@@ -160,9 +179,46 @@ bool USkyControl::SetDaytime(const int32 Hour, const int32 Minute, FString& Erro
 
 /* //} */
 
-/* SetLightsDaytime() //{ */
+/* SetDaytimeAnimated() //{ */
 
-bool USkyControl::SetLightsDaytime(const double Hours, FString& Error)
+bool USkyControl::SetDaytimeAnimated(const bool bAnimate, FString& Error)
+{
+	UWorld* World = GetWorld();
+	if (AActor* UltraSky = FindActorOfClassNamed(World, TEXT("Ultra_Dynamic_Sky_C")))
+	{
+		if (!FindPropertyNamed(UltraSky->GetClass(), TEXT("Animate Time of Day")))
+		{
+			Error = FString::Printf(TEXT("%s has no Animate Time of Day property"), *UltraSky->GetName());
+			return false;
+		}
+		SetBool(UltraSky, TEXT("Animate Time of Day"), bAnimate);
+		double DayMinutes = 0.0, NightMinutes = 0.0;
+		GetNumber(UltraSky, TEXT("Day Length"), DayMinutes);
+		GetNumber(UltraSky, TEXT("Night Length"), NightMinutes);
+		UE_LOG(LogTemp, Display, TEXT("FlightForge sky: day cycle %s through %s (day %g min, night %g min)"), bAnimate ? TEXT("on") : TEXT("off"),
+		       *UltraSky->GetClass()->GetName(), DayMinutes, NightMinutes);
+		return true;
+	}
+
+	if (bAnimate)
+	{
+		double  Hours     = 0.0;
+		bool    bAnimated = false;
+		FString Sky;
+		if (GetDaytime(Hours, bAnimated, Sky, Error))
+		{
+			Error = FString::Printf(TEXT("this world's sky (%s) has no day cycle of its own; only Ultra Dynamic Sky animates time of day"), *Sky);
+		}
+		return false;
+	}
+	return true;
+}
+
+/* //} */
+
+/* LightsReachCameras() //{ */
+
+bool USkyControl::LightsReachCameras(FString& Error)
 {
 	UWorld* World = GetWorld();
 
@@ -204,23 +260,48 @@ bool USkyControl::SetLightsDaytime(const double Hours, FString& Error)
 		}
 	}
 
+	// a hidden light lights nothing, as the cave's sun and sky light are
+	const auto CanLight = [](const ULightComponentBase* Light) {
+		return Light && Light->Mobility != EComponentMobility::Static && Light->IsVisible() && Light->bAffectsWorld;
+	};
+
+	bool bCanChange = CanLight(Baseline.Sun.Get());
+	for (const TPair<TWeakObjectPtr<USkyLightComponent>, float>& Entry : Baseline.SkyLights)
+	{
+		bCanChange |= CanLight(Entry.Key.Get());
+	}
+	if (!bCanChange)
+	{
+		Error = FString::Printf(TEXT("this world %s: no Ultra_Dynamic_Sky or SunSky actor and no visible directional or sky light that can change at runtime"),
+		                        NoSkySystem);
+	}
+	return bCanChange;
+}
+
+/* //} */
+
+/* SetLightsDaytime() //{ */
+
+bool USkyControl::SetLightsDaytime(const double Hours, FString& Error)
+{
+	if (!LightsReachCameras(Error))
+	{
+		return false;
+	}
+
 	// the sun rises at 6:00 in the light's own azimuth, stands overhead at 12:00 and sets at 18:00
 	const double Elevation = (Hours - 6.0) * 15.0;
 	const double SinElev   = FMath::Sin(FMath::DegreesToRadians(Elevation));
 	const double SkyScale  = FMath::Clamp(SinElev * 4.0 + 0.2, 0.02, 1.0);
 
-	bool bChanged = false;
-
 	UDirectionalLightComponent* Sun = Baseline.Sun.Get();
 	if (Sun && Sun->Mobility == EComponentMobility::Movable)
 	{
 		Sun->SetWorldRotation(FRotator(-Elevation, Baseline.SunRotation.Yaw, Baseline.SunRotation.Roll));
-		bChanged = true;
 	}
 	if (Sun && Sun->Mobility != EComponentMobility::Static)
 	{
 		Sun->SetIntensity(SinElev > 0.0 ? Baseline.SunIntensity : 0.0f);
-		bChanged = true;
 	}
 
 	for (const TPair<TWeakObjectPtr<USkyLightComponent>, float>& Entry : Baseline.SkyLights)
@@ -232,16 +313,55 @@ bool USkyControl::SetLightsDaytime(const double Hours, FString& Error)
 			{
 				SkyLight->RecaptureSky();
 			}
-			bChanged = true;
 		}
 	}
 
-	if (!bChanged)
+	LightsHours = Hours;
+	return true;
+}
+
+/* //} */
+
+/* GetDaytime() //{ */
+
+bool USkyControl::GetDaytime(double& Hours, bool& bAnimated, FString& Sky, FString& Error)
+{
+	UWorld* World = GetWorld();
+	bAnimated     = false;
+
+	if (AActor* UltraSky = FindActorOfClassNamed(World, TEXT("Ultra_Dynamic_Sky_C")))
 	{
-		Error = FString::Printf(TEXT("this world %s: no Ultra_Dynamic_Sky or SunSky actor and no directional or sky light that can change at runtime"),
-		                        NoSkySystem);
+		double TimeOfDay = 0.0;
+		if (!GetNumber(UltraSky, TEXT("Time of Day"), TimeOfDay))
+		{
+			Error = FString::Printf(TEXT("%s has no Time of Day property"), *UltraSky->GetName());
+			return false;
+		}
+		// 100 per hour, past 2400 until the sky rolls the date over
+		Hours     = FMath::Fmod(TimeOfDay / 100.0, 24.0);
+		bAnimated = GetBool(UltraSky, TEXT("Animate Time of Day"));
+		Sky       = TEXT("ultra_dynamic_sky");
+		return true;
 	}
-	return bChanged;
+
+	if (AActor* SunSky = FindActorOfClassNamed(World, TEXT("SunSky_C")))
+	{
+		if (!GetNumber(SunSky, TEXT("SolarTime"), Hours))
+		{
+			Error = FString::Printf(TEXT("%s has no SolarTime property"), *SunSky->GetName());
+			return false;
+		}
+		Sky = TEXT("sun_sky");
+		return true;
+	}
+
+	if (!LightsReachCameras(Error))
+	{
+		return false;
+	}
+	Hours = LightsHours;
+	Sky   = TEXT("lights");
+	return true;
 }
 
 /* //} */

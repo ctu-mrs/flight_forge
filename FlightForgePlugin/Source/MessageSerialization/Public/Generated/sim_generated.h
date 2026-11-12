@@ -87,6 +87,14 @@ struct SetDaytimeRequest;
 struct SetDaytimeRequestBuilder;
 struct SetDaytimeRequestT;
 
+struct GetDaytimeRequest;
+struct GetDaytimeRequestBuilder;
+struct GetDaytimeRequestT;
+
+struct GetDaytimeResponse;
+struct GetDaytimeResponseBuilder;
+struct GetDaytimeResponseT;
+
 struct SetGraphicsSettingsRequest;
 struct SetGraphicsSettingsRequestBuilder;
 struct SetGraphicsSettingsRequestT;
@@ -261,6 +269,10 @@ bool operator==(const SetWeatherRequestT &lhs, const SetWeatherRequestT &rhs);
 bool operator!=(const SetWeatherRequestT &lhs, const SetWeatherRequestT &rhs);
 bool operator==(const SetDaytimeRequestT &lhs, const SetDaytimeRequestT &rhs);
 bool operator!=(const SetDaytimeRequestT &lhs, const SetDaytimeRequestT &rhs);
+bool operator==(const GetDaytimeRequestT &lhs, const GetDaytimeRequestT &rhs);
+bool operator!=(const GetDaytimeRequestT &lhs, const GetDaytimeRequestT &rhs);
+bool operator==(const GetDaytimeResponseT &lhs, const GetDaytimeResponseT &rhs);
+bool operator!=(const GetDaytimeResponseT &lhs, const GetDaytimeResponseT &rhs);
 bool operator==(const SetGraphicsSettingsRequestT &lhs, const SetGraphicsSettingsRequestT &rhs);
 bool operator!=(const SetGraphicsSettingsRequestT &lhs, const SetGraphicsSettingsRequestT &rhs);
 bool operator==(const SetForestDensityRequestT &lhs, const SetForestDensityRequestT &rhs);
@@ -1447,6 +1459,7 @@ struct SetDaytimeRequestT : public ::flatbuffers::NativeTable {
   typedef SetDaytimeRequest TableType;
   uint8_t hour = 0;
   uint8_t minute = 0;
+  ::flatbuffers::Optional<bool> animate = ::flatbuffers::nullopt;
 };
 
 struct SetDaytimeRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1455,7 +1468,8 @@ struct SetDaytimeRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   struct Traits;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_HOUR = 4,
-    VT_MINUTE = 6
+    VT_MINUTE = 6,
+    VT_ANIMATE = 8
   };
   uint8_t hour() const {
     return GetField<uint8_t>(VT_HOUR, 0);
@@ -1463,11 +1477,15 @@ struct SetDaytimeRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   uint8_t minute() const {
     return GetField<uint8_t>(VT_MINUTE, 0);
   }
+  ::flatbuffers::Optional<bool> animate() const {
+    return GetOptional<uint8_t, bool>(VT_ANIMATE);
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_HOUR, 1) &&
            VerifyField<uint8_t>(verifier, VT_MINUTE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_ANIMATE, 1) &&
            verifier.EndTable();
   }
   SetDaytimeRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1485,6 +1503,9 @@ struct SetDaytimeRequestBuilder {
   void add_minute(uint8_t minute) {
     fbb_.AddElement<uint8_t>(SetDaytimeRequest::VT_MINUTE, minute, 0);
   }
+  void add_animate(bool animate) {
+    fbb_.AddElement<uint8_t>(SetDaytimeRequest::VT_ANIMATE, static_cast<uint8_t>(animate));
+  }
   explicit SetDaytimeRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1499,8 +1520,10 @@ struct SetDaytimeRequestBuilder {
 inline ::flatbuffers::Offset<SetDaytimeRequest> CreateSetDaytimeRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     uint8_t hour = 0,
-    uint8_t minute = 0) {
+    uint8_t minute = 0,
+    ::flatbuffers::Optional<bool> animate = ::flatbuffers::nullopt) {
   SetDaytimeRequestBuilder builder_(_fbb);
+  if(animate) { builder_.add_animate(*animate); }
   builder_.add_minute(minute);
   builder_.add_hour(hour);
   return builder_.Finish();
@@ -1512,6 +1535,147 @@ struct SetDaytimeRequest::Traits {
 };
 
 ::flatbuffers::Offset<SetDaytimeRequest> CreateSetDaytimeRequest(::flatbuffers::FlatBufferBuilder &_fbb, const SetDaytimeRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct GetDaytimeRequestT : public ::flatbuffers::NativeTable {
+  typedef GetDaytimeRequest TableType;
+};
+
+struct GetDaytimeRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef GetDaytimeRequestT NativeTableType;
+  typedef GetDaytimeRequestBuilder Builder;
+  struct Traits;
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  GetDaytimeRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GetDaytimeRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<GetDaytimeRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GetDaytimeRequestBuilder {
+  typedef GetDaytimeRequest Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit GetDaytimeRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<GetDaytimeRequest> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<GetDaytimeRequest>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<GetDaytimeRequest> CreateGetDaytimeRequest(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  GetDaytimeRequestBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+struct GetDaytimeRequest::Traits {
+  using type = GetDaytimeRequest;
+  static auto constexpr Create = CreateGetDaytimeRequest;
+};
+
+::flatbuffers::Offset<GetDaytimeRequest> CreateGetDaytimeRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct GetDaytimeResponseT : public ::flatbuffers::NativeTable {
+  typedef GetDaytimeResponse TableType;
+  double hour = 0.0;
+  bool animated = false;
+  std::string sky{};
+};
+
+struct GetDaytimeResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef GetDaytimeResponseT NativeTableType;
+  typedef GetDaytimeResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_HOUR = 4,
+    VT_ANIMATED = 6,
+    VT_SKY = 8
+  };
+  double hour() const {
+    return GetField<double>(VT_HOUR, 0.0);
+  }
+  bool animated() const {
+    return GetField<uint8_t>(VT_ANIMATED, 0) != 0;
+  }
+  const ::flatbuffers::String *sky() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_SKY);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<double>(verifier, VT_HOUR, 8) &&
+           VerifyField<uint8_t>(verifier, VT_ANIMATED, 1) &&
+           VerifyOffset(verifier, VT_SKY) &&
+           verifier.VerifyString(sky()) &&
+           verifier.EndTable();
+  }
+  GetDaytimeResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GetDaytimeResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<GetDaytimeResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GetDaytimeResponseBuilder {
+  typedef GetDaytimeResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_hour(double hour) {
+    fbb_.AddElement<double>(GetDaytimeResponse::VT_HOUR, hour, 0.0);
+  }
+  void add_animated(bool animated) {
+    fbb_.AddElement<uint8_t>(GetDaytimeResponse::VT_ANIMATED, static_cast<uint8_t>(animated), 0);
+  }
+  void add_sky(::flatbuffers::Offset<::flatbuffers::String> sky) {
+    fbb_.AddOffset(GetDaytimeResponse::VT_SKY, sky);
+  }
+  explicit GetDaytimeResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<GetDaytimeResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<GetDaytimeResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<GetDaytimeResponse> CreateGetDaytimeResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    double hour = 0.0,
+    bool animated = false,
+    ::flatbuffers::Offset<::flatbuffers::String> sky = 0) {
+  GetDaytimeResponseBuilder builder_(_fbb);
+  builder_.add_hour(hour);
+  builder_.add_sky(sky);
+  builder_.add_animated(animated);
+  return builder_.Finish();
+}
+
+struct GetDaytimeResponse::Traits {
+  using type = GetDaytimeResponse;
+  static auto constexpr Create = CreateGetDaytimeResponse;
+};
+
+inline ::flatbuffers::Offset<GetDaytimeResponse> CreateGetDaytimeResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    double hour = 0.0,
+    bool animated = false,
+    const char *sky = nullptr) {
+  auto sky__ = sky ? _fbb.CreateString(sky) : 0;
+  return flightforge::wire::CreateGetDaytimeResponse(
+      _fbb,
+      hour,
+      animated,
+      sky__);
+}
+
+::flatbuffers::Offset<GetDaytimeResponse> CreateGetDaytimeResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct SetGraphicsSettingsRequestT : public ::flatbuffers::NativeTable {
   typedef SetGraphicsSettingsRequest TableType;
@@ -4783,7 +4947,8 @@ inline ::flatbuffers::Offset<SetWeatherRequest> SetWeatherRequest::Pack(::flatbu
 inline bool operator==(const SetDaytimeRequestT &lhs, const SetDaytimeRequestT &rhs) {
   return
       (lhs.hour == rhs.hour) &&
-      (lhs.minute == rhs.minute);
+      (lhs.minute == rhs.minute) &&
+      (lhs.animate == rhs.animate);
 }
 
 inline bool operator!=(const SetDaytimeRequestT &lhs, const SetDaytimeRequestT &rhs) {
@@ -4802,6 +4967,7 @@ inline void SetDaytimeRequest::UnPackTo(SetDaytimeRequestT *_o, const ::flatbuff
   (void)_resolver;
   { auto _e = hour(); _o->hour = _e; }
   { auto _e = minute(); _o->minute = _e; }
+  { auto _e = animate(); _o->animate = _e; }
 }
 
 inline ::flatbuffers::Offset<SetDaytimeRequest> CreateSetDaytimeRequest(::flatbuffers::FlatBufferBuilder &_fbb, const SetDaytimeRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -4814,10 +4980,90 @@ inline ::flatbuffers::Offset<SetDaytimeRequest> SetDaytimeRequest::Pack(::flatbu
   struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const SetDaytimeRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _hour = _o->hour;
   auto _minute = _o->minute;
+  auto _animate = _o->animate;
   return flightforge::wire::CreateSetDaytimeRequest(
       _fbb,
       _hour,
-      _minute);
+      _minute,
+      _animate);
+}
+
+
+inline bool operator==(const GetDaytimeRequestT &, const GetDaytimeRequestT &) {
+  return true;
+}
+
+inline bool operator!=(const GetDaytimeRequestT &lhs, const GetDaytimeRequestT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GetDaytimeRequestT *GetDaytimeRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<GetDaytimeRequestT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GetDaytimeRequest::UnPackTo(GetDaytimeRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<GetDaytimeRequest> CreateGetDaytimeRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return GetDaytimeRequest::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<GetDaytimeRequest> GetDaytimeRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetDaytimeRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return flightforge::wire::CreateGetDaytimeRequest(
+      _fbb);
+}
+
+
+inline bool operator==(const GetDaytimeResponseT &lhs, const GetDaytimeResponseT &rhs) {
+  return
+      (lhs.hour == rhs.hour) &&
+      (lhs.animated == rhs.animated) &&
+      (lhs.sky == rhs.sky);
+}
+
+inline bool operator!=(const GetDaytimeResponseT &lhs, const GetDaytimeResponseT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GetDaytimeResponseT *GetDaytimeResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<GetDaytimeResponseT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GetDaytimeResponse::UnPackTo(GetDaytimeResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = hour(); _o->hour = _e; }
+  { auto _e = animated(); _o->animated = _e; }
+  { auto _e = sky(); if (_e) _o->sky = _e->str(); }
+}
+
+inline ::flatbuffers::Offset<GetDaytimeResponse> CreateGetDaytimeResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return GetDaytimeResponse::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<GetDaytimeResponse> GetDaytimeResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetDaytimeResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetDaytimeResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _hour = _o->hour;
+  auto _animated = _o->animated;
+  auto _sky = _o->sky.empty() ? 0 : _fbb.CreateString(_o->sky);
+  return flightforge::wire::CreateGetDaytimeResponse(
+      _fbb,
+      _hour,
+      _animated,
+      _sky);
 }
 
 

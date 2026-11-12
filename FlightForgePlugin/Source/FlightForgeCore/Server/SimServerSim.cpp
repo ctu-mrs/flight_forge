@@ -13,7 +13,7 @@
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 1;
+static constexpr uint16 ApiMinor = 2;
 
 /* connection //{ */
 
@@ -236,9 +236,11 @@ void FSimServer::SetWeather(const ffw::Request& Request, FWireReply& Reply)
 
 void FSimServer::SetDaytime(const ffw::Request& Request, FWireReply& Reply)
 {
-	const int32          Hour     = Request.body_as_SetDaytimeRequest()->hour();
-	const int32          Minute   = Request.body_as_SetDaytimeRequest()->minute();
-	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	const ffw::SetDaytimeRequest*     Ask      = Request.body_as_SetDaytimeRequest();
+	const int32                       Hour     = Ask->hour();
+	const int32                       Minute   = Ask->minute();
+	const flatbuffers::Optional<bool> Animate  = Ask->animate();
+	const FGameModeLease              GameMode = LeaseGameMode(Reply);
 	if (!GameMode)
 	{
 		return;
@@ -246,13 +248,38 @@ void FSimServer::SetDaytime(const ffw::Request& Request, FWireReply& Reply)
 
 	bool    bOk = false;
 	FString Error;
-	RunOnGameThread(*GameMode.GameMode, [Hour, Minute, &bOk, &Error](AFlightForgeGameModeBase& Mode) {
-		bOk = Mode.GetWorld()->GetSubsystem<USkyControl>()->SetDaytime(Hour, Minute, Error);
+	RunOnGameThread(*GameMode.GameMode, [Hour, Minute, Animate, &bOk, &Error](AFlightForgeGameModeBase& Mode) {
+		USkyControl* Sky = Mode.GetWorld()->GetSubsystem<USkyControl>();
+		bOk              = (!Animate.has_value() || Sky->SetDaytimeAnimated(*Animate, Error)) && Sky->SetDaytime(Hour, Minute, Error);
 	});
 	if (!bOk)
 	{
 		Reply.Fail(Error.IsEmpty() ? TEXT("set_daytime did not run on the game thread") : Error);
 	}
+}
+
+void FSimServer::GetDaytime(const ffw::Request& Request, FWireReply& Reply)
+{
+	const FGameModeLease GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	bool    bOk       = false;
+	double  Hours     = 0.0;
+	bool    bAnimated = false;
+	FString Sky;
+	FString Error;
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) {
+		bOk = Mode.GetWorld()->GetSubsystem<USkyControl>()->GetDaytime(Hours, bAnimated, Sky, Error);
+	});
+	if (!bOk)
+	{
+		Reply.Fail(Error.IsEmpty() ? TEXT("get_daytime did not run on the game thread") : Error);
+		return;
+	}
+	Reply.Set(ffw::CreateGetDaytimeResponse(Reply.Builder, Hours, bAnimated, Reply.String(Sky)));
 }
 
 void FSimServer::SetGraphicsSettings(const ffw::Request& Request, FWireReply& Reply)
