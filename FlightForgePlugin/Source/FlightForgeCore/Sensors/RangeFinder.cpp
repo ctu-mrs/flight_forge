@@ -42,8 +42,11 @@ void URangeFinder::GetRangefinderData(double& range) {
 	range = -1;
 
 	if (UWorld* World = GetWorld()) {
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(FlightForgeRangefinder), true);
+		Params.AddIgnoredActor(Owner);
+
 		FHitResult HitResult;
-		if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility)
+		if (World->LineTraceSingleByChannel(HitResult, Start, Start + RangefinderConfig.BeamLength * RangefinderDirection, ECollisionChannel::ECC_Visibility, Params)
 		    && HitResult.bBlockingHit) {
 			range = HitResult.Distance;
 		}
