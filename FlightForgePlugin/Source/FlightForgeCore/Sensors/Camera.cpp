@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "UnrealEngine.h"
 #include "RenderingThread.h"
+#include "SceneInterface.h"
 #include "TextureResource.h"
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/SimClock.h"
@@ -310,8 +311,8 @@ bool UCamera::WaitForSlot(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>
 	return true;
 }
 
-bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const double Stamp, const FVector& Omega, const bool bFloat16, const bool bEncodeSrgb,
-                                           const bool bHalfRgba, const double TimeoutSeconds)
+bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const FVector& Omega, const bool bFloat16, const bool bEncodeSrgb, const bool bHalfRgba,
+                                           const double TimeoutSeconds)
 {
 	const double         Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
 	const FRenderTarget* Target   = CachedTargetResource.load();
@@ -324,13 +325,9 @@ bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const dou
 
 	if (!Slot)
 	{
-		Slot = MakeReadbackSlot(RT, Stamp, Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
+		Slot = MakeReadbackSlot(RT, SimNow(), Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
 		PushReadback(Slot);
-	}
-
-	if (Slot->Stamp == Stamp)
-	{
-		FReadbackViewExtension::Get()->SubmitJob(Target, Slot);
+		FReadbackViewExtension::Get()->SubmitJob(Target, Slot, SceneFrame());
 		SceneCaptureComponent2D->CaptureSceneDeferred();
 	}
 
@@ -340,6 +337,32 @@ bool UCamera::RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const dou
 	}
 	PumpReadback();
 	return true;
+}
+
+TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::SubmitCaptureJob(UTextureRenderTarget2D* RT, const FVector& Omega, const bool bFloat16,
+                                                                           const bool bEncodeSrgb, const bool bHalfRgba)
+{
+	const FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Resource)
+	{
+		return nullptr;
+	}
+
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot = MakeReadbackSlot(RT, SimNow(), Omega, bFloat16, bEncodeSrgb, bHalfRgba, false);
+	FReadbackViewExtension::Get()->SubmitJob(Resource, Slot, SceneFrame());
+	return Slot;
+}
+
+uint32 UCamera::SceneFrame() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->Scene ? World->Scene->GetFrameNumber() : 0;
+}
+
+double UCamera::SimNow() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimeSeconds() : 0.0;
 }
 
 void UCamera::DrainReadback()

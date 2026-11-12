@@ -1,5 +1,7 @@
 #include "ReadbackPass.h"
 
+#include "Misc/CoreDelegates.h"
+
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RenderTargetPool.h"
@@ -18,6 +20,12 @@ TSharedPtr<FReadbackViewExtension, ESPMode::ThreadSafe> FReadbackViewExtension::
 	if (!Extension.IsValid())
 	{
 		Extension = FSceneViewExtensions::NewExtension<FReadbackViewExtension>();
+		FCoreDelegates::OnBeginFrame.AddLambda([Weak = TWeakPtr<FReadbackViewExtension, ESPMode::ThreadSafe>(Extension)]() {
+			if (const TSharedPtr<FReadbackViewExtension, ESPMode::ThreadSafe> Pinned = Weak.Pin())
+			{
+				Pinned->ExpireJobs();
+			}
+		});
 	}
 	return Extension;
 }
@@ -27,18 +35,44 @@ bool FReadbackViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensio
 	return PendingJobs.load() > 0;
 }
 
-void FReadbackViewExtension::SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
+void FReadbackViewExtension::SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot, const uint32 SceneFrame)
 {
 	if (!Target || !Slot.IsValid())
 	{
 		return;
 	}
 	FScopeLock Lock(&JobsLock);
-	if (!Jobs.Contains(Target))
+	Jobs.Add(FJob{Target, Slot, GFrameCounter, SceneFrame});
+	PendingJobs = Jobs.Num();
+}
+
+void FReadbackViewExtension::ExpireJobs()
+{
+	// a frame's render has finished by the time the game thread is this many frames on
+	constexpr uint64 RenderedFrames = 4;
+
+	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> Expired;
 	{
-		PendingJobs++;
+		FScopeLock Lock(&JobsLock);
+		for (int32 i = Jobs.Num() - 1; i >= 0; --i)
+		{
+			if (Jobs[i].Frame + RenderedFrames <= GFrameCounter)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("FlightForge: a camera copy from frame %llu expired, its capture never rendered"), Jobs[i].Frame);
+				Expired.Add(Jobs[i].Slot);
+				Jobs.RemoveAt(i);
+			}
+		}
+		PendingJobs = Jobs.Num();
 	}
-	Jobs.Add(Target, Slot);
+
+	for (const auto& Slot : Expired)
+	{
+		if (!Slot->bCopied.exchange(true))
+		{
+			Slot->Copied->Trigger();
+		}
+	}
 }
 
 void FReadbackViewExtension::PostRenderViewFamily_RenderThread(FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily)
@@ -51,12 +85,17 @@ void FReadbackViewExtension::PostRenderViewFamily_RenderThread(FRDGBuilder& Grap
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
 	{
 		FScopeLock Lock(&JobsLock);
-		if (!Jobs.RemoveAndCopyValue(InViewFamily.RenderTarget, Slot))
+		const int32 Index = Jobs.IndexOfByPredicate([&InViewFamily](const FJob& Job) { return Job.Target == InViewFamily.RenderTarget && InViewFamily.FrameNumber > Job.SceneFrame; });
+		if (Index == INDEX_NONE)
 		{
 			return;
 		}
-		PendingJobs--;
+		Slot = Jobs[Index].Slot;
+		Jobs.RemoveAt(Index);
+		PendingJobs = Jobs.Num();
 	}
+
+	Slot->Stamp = InViewFamily.Time.GetWorldTimeSeconds();
 
 	FRHITexture* Texture = InViewFamily.RenderTarget->GetRenderTargetTexture();
 	if (!Texture || !Slot->Readback)

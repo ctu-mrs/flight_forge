@@ -88,13 +88,11 @@ void URgbSegCamera::DrainInstructions()
 
 void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	auto start = FPlatformTime::Seconds();
-
 	DrainInstructions();
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+		const bool bWanted = StreamWanted();
 
 		if (bWanted && !bStreamOn)
 		{
@@ -113,14 +111,8 @@ void URgbSegCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 		}
 		else if (bWanted && ShouldCapture() && CaptureDue())
 		{
-			UpdateCamera(true, start);
+			UpdateCamera(true, SimNow());
 		}
-	}
-
-	if (bReadbackDue)
-	{
-		bReadbackDue = false;
-		PushReadback(EnqueueReadback(RenderTarget2D, DeferredStamp));
 	}
 
 	PumpReadback();
@@ -177,7 +169,7 @@ bool URgbSegCamera::SetRgbSegCameraConfig(const FRgbCameraConfig& Config)
 // readback pipeline instead of stalling on ReadPixels()
 void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 {
-	if (bReadbackDue || !TakeRingSlot()) {
+	if (!TakeRingSlot()) {
 		return;
 	}
 
@@ -212,18 +204,14 @@ void URgbSegCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !bEverRendered)
-	{
-		SceneCaptureComponent2D->CaptureScene();
-	}
-	else if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	if (SceneCaptureComponent2D->bCaptureEveryFrame || bEverRendered)
 	{
 		SceneCaptureComponent2D->CaptureSceneDeferred();
-		DeferredStamp = stamp;
-		bReadbackDue  = true;
+		PushReadback(SubmitCaptureJob(RenderTarget2D));
 		return;
 	}
 
+	SceneCaptureComponent2D->CaptureScene();
 	PushReadback(EnqueueReadback(RenderTarget2D, stamp));
 }
 
@@ -236,7 +224,7 @@ bool URgbSegCamera::GetRgbSegCameraFromServerThread(FCameraFrame& OutFrame) {
 	CameraBufferCriticalSection->Unlock();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !SceneCaptureComponent2D->bCaptureEveryFrame && WarmupCapturesRemaining <= 0 && CachedTargetResource.load() && bEverRendered) {
-		if (!RequestFrameFromServerThread(RenderTarget2D, FPlatformTime::Seconds(), FVector::ZeroVector, false, false, false, 2.0)) {
+		if (!RequestFrameFromServerThread(RenderTarget2D, FVector::ZeroVector, false, false, false, 2.0)) {
 			UE_LOG(LogTemp, Warning, TEXT("URgbSegCamera: timed out waiting for a frame"));
 		}
 	} else if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND || !bHaveFrame) {
@@ -246,7 +234,7 @@ bool URgbSegCamera::GetRgbSegCameraFromServerThread(FCameraFrame& OutFrame) {
 			const uint64 Baseline = FrameCounter.load();
 
 			auto Instruction      = std::make_shared<FInstruction<URgbSegCamera>>();
-			Instruction->Function = [](URgbSegCamera& _URgbSegCamera) { _URgbSegCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
+			Instruction->Function = [](URgbSegCamera& _URgbSegCamera) { _URgbSegCamera.UpdateCamera(true, _URgbSegCamera.SimNow()); };
 			InstructionQueue->Enqueue(Instruction);
 
 			bGot = WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0);

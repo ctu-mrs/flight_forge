@@ -30,7 +30,7 @@ protected:
 
 	TArray<FSegInstanceEntry> InstanceMap;
 
-	double LastSubmitTime = 0.0;
+	double LastSubmitWall = 0.0;
 
 public:
 	virtual void DrainInstructions() override;

@@ -94,13 +94,11 @@ void UStereoCamera::DrainInstructions()
 
 void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	auto start = FPlatformTime::Seconds();
-
 	DrainInstructions();
 	
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+		const bool bWanted = StreamWanted();
 
 		if (bWanted && !bStreamOn)
 		{
@@ -119,7 +117,7 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 		}
 		else if (bWanted && ShouldCapture() && CaptureDue())
 		{
-			UpdateCamera(true, start);
+			UpdateCamera(true, SimNow());
 		}
 	}
 
@@ -192,14 +190,24 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		return;
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame && !SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left;
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right;
+
+	if (SceneCaptureComponent2D->bCaptureEveryFrame && SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
+	{
+		// the components' own every-frame capture does not tick while lockstep holds the world paused
+		SceneCaptureComponent2D->CaptureSceneDeferred();
+		SceneCaptureComponent2DStereoRight->CaptureSceneDeferred();
+		Left  = SubmitCaptureJob(RenderTarget2D);
+		Right = SubmitCaptureJob(RenderTarget2DStereoRight);
+	}
+	else
 	{
 		SceneCaptureComponent2D->CaptureScene();
 		SceneCaptureComponent2DStereoRight->CaptureScene();
+		Left  = EnqueueReadback(RenderTarget2D, stamp);
+		Right = EnqueueReadback(RenderTarget2DStereoRight, stamp);
 	}
-
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left  = EnqueueReadback(RenderTarget2D, stamp);
-	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right = EnqueueReadback(RenderTarget2DStereoRight, stamp);
 
 	if (!Left || !Right) {
 		return;
@@ -283,7 +291,7 @@ bool UStereoCamera::GetStereoCameraDataFromServerThread(FCameraFrame& OutLeft, F
 		const uint64 Baseline = FrameCounter.load();
 
 		auto Instruction      = std::make_shared<FInstruction<UStereoCamera>>();
-		Instruction->Function = [](UStereoCamera& _UStereoCamera) { _UStereoCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
+		Instruction->Function = [](UStereoCamera& _UStereoCamera) { _UStereoCamera.UpdateCamera(true, _UStereoCamera.SimNow()); };
 		InstructionQueue->Enqueue(Instruction);
 
 		if (!WaitForNewFrame(Baseline, 2.0)) {

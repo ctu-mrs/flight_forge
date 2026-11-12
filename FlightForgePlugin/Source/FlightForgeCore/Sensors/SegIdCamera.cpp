@@ -65,17 +65,15 @@ void USegIdCamera::DrainInstructions()
 
 void USegIdCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	const double Start = FPlatformTime::Seconds();
-
 	DrainInstructions();
 
 	// every frame is a job submission, so bCaptureEveryFrame alone cannot drive this
 	// camera - keep capturing while requests are fresh
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && (Start - camera_last_request_time_) < 1.0)
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES && StreamWanted())
 	{
 		if (ShouldCapture() && CaptureDue())
 		{
-			UpdateCamera(true, Start);
+			UpdateCamera(true, SimNow());
 		}
 	}
 
@@ -124,7 +122,7 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	if (RingFull())
 	{
 		// if the pass never consumed the jobs (hook did not fire), do not stay stuck
-		if (stamp - LastSubmitTime < 5.0)
+		if (FPlatformTime::Seconds() - LastSubmitWall < 5.0)
 		{
 			if (!TakeRingSlot())
 			{
@@ -179,7 +177,7 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	}
 
 	PushReadback(Slot);
-	LastSubmitTime = stamp;
+	LastSubmitWall = FPlatformTime::Seconds();
 }
 
 /* //} */
@@ -199,7 +197,7 @@ bool USegIdCamera::GetInstanceSegFromServerThread(FCameraFrame& OutFrame)
 		const uint64 Baseline = FrameCounter.load();
 
 		auto Instruction      = std::make_shared<FInstruction<USegIdCamera>>();
-		Instruction->Function = [](USegIdCamera& _Camera) { _Camera.UpdateCamera(true, FPlatformTime::Seconds()); };
+		Instruction->Function = [](USegIdCamera& _Camera) { _Camera.UpdateCamera(true, _Camera.SimNow()); };
 		InstructionQueue->Enqueue(Instruction);
 
 		if (!WaitForRequestedFrame(Instruction->Finished, Baseline, 2.0))

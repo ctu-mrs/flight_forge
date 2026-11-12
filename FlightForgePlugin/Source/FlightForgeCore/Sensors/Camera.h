@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "CameraReadback.h"
 #include "FlightForgeCore/Instruction.h"
+#include "FlightForgeCore/SimClock.h"
 #include "ImageUtils.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
@@ -170,11 +171,7 @@ protected:
 	int32  MaxInflight  = 3;
 	uint32 FramesFolded = 0;
 
-	// on demand the capture renders inside the next engine frame like a continuous one; the copy is enqueued the tick after, once the target holds it
-	bool    bReadbackDue  = false;
-	bool    bEverRendered = false;  // a component's first deferred capture can precede its registration; the first frame is captured immediately
-	double  DeferredStamp = 0.0;
-	FVector DeferredOmega = FVector::ZeroVector;
+	bool bEverRendered = false;  // a component's first deferred capture can precede its registration; the first frame is captured immediately
 
 	std::atomic<uint64> FrameCounter{0};
 	FEvent* FrameReadyEvent = nullptr;
@@ -267,8 +264,11 @@ protected:
 
 	// server thread, on demand: registers the copy with the frame that will render the capture and
 	// asks for that capture, with no game tick in the loop; polls the fence and publishes itself
-	bool RequestFrameFromServerThread(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, bool bFloat16, bool bEncodeSrgb, bool bHalfRgba,
-	                                  double TimeoutSeconds);
+	bool RequestFrameFromServerThread(UTextureRenderTarget2D* RT, const FVector& Omega, bool bFloat16, bool bEncodeSrgb, bool bHalfRgba, double TimeoutSeconds);
+
+	// game thread: copies the target inside the frame that renders it, stamped by that render
+	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> SubmitCaptureJob(UTextureRenderTarget2D* RT, const FVector& Omega = FVector::ZeroVector, bool bFloat16 = false,
+	                                                                  bool bEncodeSrgb = false, bool bHalfRgba = false);
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> MakeReadbackSlot(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega, bool bFloat16,
 	                                                                  bool bEncodeSrgb, bool bHalfRgba, bool bLuma);
@@ -288,6 +288,16 @@ public:
 	void SetCameraCaptureMode(CameraCaptureModeEnum CaptureMode);
 	
 	virtual void UpdateCamera(bool isExternallyLocked, double stamp);
+
+	double SimNow() const;
+	uint32 SceneFrame() const;
+
+	// in lockstep wall time between steps means nothing, so one request keeps the stream
+	bool StreamWanted() const
+	{
+		const double Last = camera_last_request_time_;
+		return FPlatformTime::Seconds() - Last < 1.0 || (FFlightForgeSimClock::bLockstep.load() && Last > 0.0);
+	}
 
 	// game thread: blocks until the frame in flight has landed
 	virtual void DrainReadback();

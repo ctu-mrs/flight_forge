@@ -373,13 +373,11 @@ void UFisheyeCamera::DrainInstructions()
 
 void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	auto start = FPlatformTime::Seconds();
-
 	DrainInstructions();
 
 	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ALL_FRAMES)
 	{
-		const bool bWanted = (FPlatformTime::Seconds() - camera_last_request_time_) < 1.0;
+		const bool bWanted = StreamWanted();
 
 		if (bWanted && !bStreamOn)
 		{
@@ -398,7 +396,7 @@ void UFisheyeCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 		}
 		else if (bWanted && ShouldCapture() && CaptureDue())
 		{
-			UpdateCamera(true, start);
+			UpdateCamera(true, SimNow());
 		}
 	}
 
@@ -540,7 +538,7 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(FCameraFrame& OutFrame
 		const uint64 Baseline = FrameCounter.load();
 
 		auto Instruction      = std::make_shared<FInstruction<UFisheyeCamera>>();
-		Instruction->Function = [](UFisheyeCamera& _UFisheyeCamera) { _UFisheyeCamera.UpdateCamera(true, FPlatformTime::Seconds()); };
+		Instruction->Function = [](UFisheyeCamera& _UFisheyeCamera) { _UFisheyeCamera.UpdateCamera(true, _UFisheyeCamera.SimNow()); };
 		InstructionQueue->Enqueue(Instruction);
 
 		if (!WaitForNewFrame(Baseline, 2.0)) {

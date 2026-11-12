@@ -26,14 +26,26 @@ public:
 	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
 	virtual void PostRenderViewFamily_RenderThread(FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily) override;
 
-	void SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+	// SceneFrame is the scene's frame number at submission, so a render still in flight from an earlier frame cannot take the job
+	void SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot, uint32 SceneFrame);
 
 	static TSharedPtr<FReadbackViewExtension, ESPMode::ThreadSafe> Get();
 
 private:
-	FCriticalSection                                                          JobsLock;
-	TMap<const FRenderTarget*, TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> Jobs;
-	std::atomic<int32>                                                        PendingJobs{0};
+	struct FJob
+	{
+		const FRenderTarget*                             Target = nullptr;
+		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
+		uint64                                           Frame      = 0;
+		uint32                                           SceneFrame = 0;
+	};
+
+	// game thread, every frame: completes empty the jobs whose frame rendered without them, so no camera waits forever
+	void ExpireJobs();
+
+	FCriticalSection   JobsLock;
+	TArray<FJob>       Jobs;  // in submission order: the render thread trails the game thread by a frame
+	std::atomic<int32> PendingJobs{0};
 };
 
 /* //} */
