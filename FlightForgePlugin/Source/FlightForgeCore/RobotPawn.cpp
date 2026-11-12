@@ -20,6 +20,7 @@
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
+#include "RenderingThread.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 
 #include "NaniteSceneProxy.h"
@@ -160,11 +161,26 @@ void ARobotPawn::DrainInstructions() {
   SensorsCriticalSection->Unlock();
 }
 
+namespace
+{
+// tearing down a capture the GPU still runs faults a shared GPU (Xid 109)
+void WaitForGpuIdle() //{
+{
+  ENQUEUE_RENDER_COMMAND(FlightForgeIdleBeforeSensorTeardown)([](FRHICommandListImmediate& RHICmdList) { RHICmdList.BlockUntilGPUIdle(); });
+  FlushRenderingCommands();
+} //}
+}  // namespace
+
 void ARobotPawn::EndPlay(const EEndPlayReason::Type EndPlayReason) {
   // a connection may be mid-request, spinning on an instruction only this thread can run
   UFlightForgeGameInstance* Instance = Cast<UFlightForgeGameInstance>(GetGameInstance());
   if (Instance && Instance->Server) {
     Instance->Server->ReleaseRobot(this, [this]() { DrainInstructions(); });
+  }
+
+  if (Sensors.Num() > 0)
+  {
+    WaitForGpuIdle();
   }
 
   for (auto& SensorPair : Sensors)
@@ -734,6 +750,7 @@ bool ARobotPawn::RemoveSensor(int32 sensorID)
 
   if (Sensor)
   {
+    WaitForGpuIdle();
     Sensor->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
     Sensor->UnregisterComponent();
     RemoveOwnedComponent(Sensor);
