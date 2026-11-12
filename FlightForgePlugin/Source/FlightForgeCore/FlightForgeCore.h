@@ -10,7 +10,6 @@
 class FFlightForgeCoreModule : public IModuleInterface
 {
 public:
-	// maps /FlightForgePlugin to the plugin's Shaders directory (SegId pass shaders)
 	virtual void StartupModule() override;
 };
 
