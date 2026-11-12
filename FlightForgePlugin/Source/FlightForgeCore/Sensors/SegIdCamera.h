@@ -19,7 +19,7 @@ class FLIGHTFORGECORE_API USegIdCamera : public UCamera
 public:
 	USegIdCamera();
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<USegIdCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<USegIdCamera>> InstructionQueue;
 
 protected:
 	virtual void BeginPlay() override;

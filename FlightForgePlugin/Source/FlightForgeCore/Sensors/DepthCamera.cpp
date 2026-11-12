@@ -10,7 +10,7 @@ UDepthCamera::UDepthCamera() : UCamera()
 	SensorType = SensorType::DEPTH_CAMERA;
 	Name       = TEXT("DEPTH_CAMERA");
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UDepthCamera>>>>();
+	InstructionQueue = std::make_unique<TInstructionQueue<UDepthCamera>>();
 }
 
 /* BeginPlay() //{ */

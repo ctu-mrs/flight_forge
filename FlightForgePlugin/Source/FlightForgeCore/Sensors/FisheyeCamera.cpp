@@ -41,7 +41,7 @@ UFisheyeCamera::UFisheyeCamera() : UCamera()
 	SensorType = SensorType::FISHEYE_CAMERA;
 	Name = TEXT("FISHEYE_CAMERA");
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UFisheyeCamera>>>>();
+	InstructionQueue = std::make_unique<TInstructionQueue<UFisheyeCamera>>();
 
 	FaceCaptures.SetNum(NumFaces);
 	FaceCaptures[0] = SceneCaptureComponent2D;

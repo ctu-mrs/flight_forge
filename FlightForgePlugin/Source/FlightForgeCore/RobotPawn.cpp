@@ -38,7 +38,7 @@ ARobotPawn::ARobotPawn() {
   
   PrimaryActorTick.TickGroup    = TG_PrePhysics;
 
-  InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<ARobotPawn>>>>();
+  InstructionQueue = std::make_unique<TInstructionQueue<ARobotPawn>>();
 
   SensorsCriticalSection = std::make_unique<FCriticalSection>();
 

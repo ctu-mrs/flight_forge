@@ -17,7 +17,7 @@ UStereoCamera::UStereoCamera() : UCamera()
 	SceneCaptureComponent2DStereoRight = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2DStereoRight"));
 	SceneCaptureComponent2DStereoRight->SetupAttachment(SceneCaptureMeshHolderStereoRight);
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<UStereoCamera>>>>();
+	InstructionQueue = std::make_unique<TInstructionQueue<UStereoCamera>>();
 }
 
 

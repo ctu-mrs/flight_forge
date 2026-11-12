@@ -25,7 +25,7 @@ class FLIGHTFORGECORE_API UDepthCamera : public UCamera
 public:
 	UDepthCamera();
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UDepthCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<UDepthCamera>> InstructionQueue;
 
 protected:
 	virtual void BeginPlay() override;

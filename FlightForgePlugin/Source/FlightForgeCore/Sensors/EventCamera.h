@@ -54,7 +54,7 @@ class FLIGHTFORGECORE_API UEventCamera : public UCamera
 public:
 	UEventCamera();
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UEventCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<UEventCamera>> InstructionQueue;
 
 	bool SetEventCameraConfig(const FEventCameraConfig& Config);
 

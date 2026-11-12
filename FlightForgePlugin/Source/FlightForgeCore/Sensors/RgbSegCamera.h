@@ -14,7 +14,7 @@ class FLIGHTFORGECORE_API URgbSegCamera : public UCamera
 public:
 	URgbSegCamera();
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<URgbSegCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<URgbSegCamera>> InstructionQueue;
 
 protected:
 	virtual void BeginPlay() override;

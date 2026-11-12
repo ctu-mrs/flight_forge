@@ -71,7 +71,7 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TArray<USceneCaptureComponent2D*> FaceCaptures;
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UFisheyeCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<UFisheyeCamera>> InstructionQueue;
 
 	bool SetFisheyeCameraConfig(const FFisheyeCameraConfig& Config);
 

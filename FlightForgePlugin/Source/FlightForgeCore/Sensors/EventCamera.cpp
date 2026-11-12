@@ -22,7 +22,7 @@ UEventCamera::UEventCamera() : UCamera()
 	SensorType = SensorType::EVENT_CAMERA;
 	Name = TEXT("EVENT_CAMERA");
 
-	InstructionQueue      = std::make_unique<TQueue<std::shared_ptr<FInstruction<UEventCamera>>>>();
+	InstructionQueue      = std::make_unique<TInstructionQueue<UEventCamera>>();
 	EventsCriticalSection = std::make_unique<FCriticalSection>();
 	GpuState              = MakeShared<FEventGpuState, ESPMode::ThreadSafe>();
 }

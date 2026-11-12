@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 
+#include "Containers/Queue.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 
@@ -47,3 +48,7 @@ struct FInstruction
 private:
 	std::atomic<bool> bClaimed{false};
 };
+
+// every server connection's thread enqueues, the owner's game thread drains
+template <typename T>
+using TInstructionQueue = TQueue<std::shared_ptr<FInstruction<T>>, EQueueMode::Mpsc>;

@@ -102,7 +102,7 @@ private:
 			DefaultPawnClass = RobotPawnFinder.Class;
 		}
 
-		InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>>();
+		InstructionQueue = std::make_unique<TInstructionQueue<AFlightForgeGameModeBase>>();
 	}
 
 	// Must be used in order to tell UE that there will be more players - drones
@@ -920,7 +920,7 @@ public:
 		}
 	}
 		
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<AFlightForgeGameModeBase>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<AFlightForgeGameModeBase>> InstructionQueue;
 	
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category=Classes)
 	TSubclassOf<ARobotPawn> RobotPawnClass;

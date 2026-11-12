@@ -137,7 +137,7 @@ public:
   UPROPERTY(VisibleAnywhere, Category = "Rigid Body", BlueprintReadWrite)
   UStaticMeshComponent* PropellerFrontRight;
 
-  std::unique_ptr<TQueue<std::shared_ptr<FInstruction<ARobotPawn>>>> InstructionQueue;
+  std::unique_ptr<TInstructionQueue<ARobotPawn>> InstructionQueue;
 
 protected:
   virtual void BeginPlay() override;

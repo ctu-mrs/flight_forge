@@ -13,7 +13,7 @@ URgbSegCamera::URgbSegCamera() : UCamera()
 	SensorType = SensorType::RGB_SEG_CAMERA;
 	Name = TEXT("RGB_SEG_CAMERA");
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<URgbSegCamera>>>>();
+	InstructionQueue = std::make_unique<TInstructionQueue<URgbSegCamera>>();
 }
 
 

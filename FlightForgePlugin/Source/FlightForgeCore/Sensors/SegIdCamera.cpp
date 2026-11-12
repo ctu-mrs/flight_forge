@@ -12,7 +12,7 @@ USegIdCamera::USegIdCamera() : UCamera()
 	SensorType = SensorType::INSTANCE_SEG_CAMERA;
 	Name       = TEXT("INSTANCE_SEG_CAMERA");
 
-	InstructionQueue = std::make_unique<TQueue<std::shared_ptr<FInstruction<USegIdCamera>>>>();
+	InstructionQueue = std::make_unique<TInstructionQueue<USegIdCamera>>();
 }
 
 /* BeginPlay() //{ */

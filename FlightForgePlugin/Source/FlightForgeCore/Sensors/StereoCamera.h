@@ -52,7 +52,7 @@ public:
 	
 	//FStereoCameraConfig GetStereoCameraConfig();
 
-	std::unique_ptr<TQueue<std::shared_ptr<FInstruction<UStereoCamera>>>> InstructionQueue;
+	std::unique_ptr<TInstructionQueue<UStereoCamera>> InstructionQueue;
 	
 	virtual void BeginDestroy() override;
 	
