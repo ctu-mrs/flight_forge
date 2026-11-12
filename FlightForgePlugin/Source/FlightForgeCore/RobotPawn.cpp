@@ -148,8 +148,7 @@ void ARobotPawn::BeginPlay() {
 void ARobotPawn::DrainInstructions() {
   std::shared_ptr<FInstruction<ARobotPawn>> Instruction;
   while (InstructionQueue->Dequeue(Instruction)) {
-    Instruction->Function(*this);
-    Instruction->Finished = true;
+    Instruction->Run(*this);
   }
 
   SensorsCriticalSection->Lock();
@@ -929,7 +928,7 @@ bool ARobotPawn::AddDeviceFromServerThread(const FString& DeviceName, const FVec
   Instruction->Function = [&](ARobotPawn& Pawn) { bAdded = Pawn.AddDevice(DeviceName, MountOffset, MountRotation, bShowMesh, OutIds, OutTypes); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
+  Instruction->Wait();
 
   return bAdded;
 }
@@ -944,7 +943,7 @@ int ARobotPawn::AddSensorFromServerThread(int SensorTypeNum)
   Instruction->Function = [SensorTypeNum, &NewID](ARobotPawn& Pawn) { NewID = Pawn.AddSensor(SensorTypeNum); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
+  Instruction->Wait();
 
   return NewID;
 }
@@ -957,7 +956,7 @@ bool ARobotPawn::RemoveSensorFromServerThread(int SensorID)
   Instruction->Function = [SensorID, &bRemoved](ARobotPawn& Pawn) { bRemoved = Pawn.RemoveSensor(SensorID); };
   InstructionQueue->Enqueue(Instruction);
 
-  FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
+  Instruction->Wait();
 
   return bRemoved;
 }

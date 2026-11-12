@@ -223,8 +223,7 @@ private:
 		std::shared_ptr<FInstruction<AFlightForgeGameModeBase>> Instruction;
 		while (InstructionQueue->Dequeue(Instruction))
 		{
-			Instruction->Function(*this);
-			Instruction->Finished = true;
+			Instruction->Run(*this);
 		}
 	}
 

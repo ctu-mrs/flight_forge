@@ -451,7 +451,7 @@ void FSimServer::SetStates(const ffw::Request& Request, FWireReply& Reply)
 
 	for (const auto& Instruction : Pending)
 	{
-		FGenericPlatformProcess::ConditionalSleep([&Instruction]() { return Instruction->Finished.load(); });
+		Instruction->Wait();
 	}
 
 	std::vector<flatbuffers::Offset<ffw::SetStateResponse>> Results;

@@ -54,8 +54,7 @@ void UDepthCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<UDepthCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 

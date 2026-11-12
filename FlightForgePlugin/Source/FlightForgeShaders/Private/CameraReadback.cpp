@@ -217,3 +217,23 @@ void WatchReadback_RenderThread(const TSharedPtr<FCameraReadback, ESPMode::Threa
 }
 
 /* //} */
+
+/* RequestResolve() //{ */
+
+void RequestResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
+{
+	if (!Slot || Slot->bCopied || Slot->bResolveIssued || Slot->bResolveQueued.exchange(true))
+	{
+		return;
+	}
+
+	ENQUEUE_RENDER_COMMAND(FlightForgeRequestResolve)([Slot](FRHICommandListImmediate&) {
+		Slot->bResolveQueued = false;
+		if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
+		{
+			ResolveReadback_RenderThread(*Slot);
+		}
+	});
+}
+
+/* //} */

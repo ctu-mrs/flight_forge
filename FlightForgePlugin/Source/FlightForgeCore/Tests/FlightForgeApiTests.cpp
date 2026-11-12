@@ -5,6 +5,7 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "FlightForgeCore/Instruction.h"
 #include "FlightForgeCore/Server/SimServer.h"
 #include "FlightForgeCore/Server/WireReply.h"
 
@@ -90,6 +91,39 @@ bool FFlightForgeApiVerifyTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("an unknown robot is refused"), Response->ok());
 		TestEqual(TEXT("and the reply still carries the seq"), Response->seq(), 9u);
 	}
+
+	return true;
+}
+
+/* //} */
+
+/* instructions //{ */
+
+// a wait that gives up must leave nothing behind that later runs against the waiter's dead stack
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFlightForgeApiInstructionTimeoutTest, "FlightForge.Api.InstructionTimeout",
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FFlightForgeApiInstructionTimeoutTest::RunTest(const FString& Parameters)
+{
+	int32 Owner = 0;
+	int32 Runs  = 0;
+
+	FInstruction<int32> Abandoned;
+	Abandoned.Function   = [&Runs](int32&) { ++Runs; };
+	GInstructionTimedOut = false;
+	TestFalse(TEXT("an instruction nobody runs times out"), Abandoned.Wait(0.05));
+	TestTrue(TEXT("and marks the thread"), GInstructionTimedOut);
+	Abandoned.Run(Owner);
+	TestEqual(TEXT("and the owner skips it afterwards"), Runs, 0);
+	TestTrue(TEXT("while still marking it finished"), Abandoned.Finished.load());
+
+	FInstruction<int32> Taken;
+	Taken.Function       = [&Runs](int32&) { ++Runs; };
+	GInstructionTimedOut = false;
+	Taken.Run(Owner);
+	TestTrue(TEXT("an instruction already run is waited out"), Taken.Wait(0.05));
+	TestEqual(TEXT("once"), Runs, 1);
+	TestFalse(TEXT("without a timeout"), GInstructionTimedOut);
 
 	return true;
 }

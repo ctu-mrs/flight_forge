@@ -56,8 +56,10 @@ struct FEventReadback
 	uint32 FrameIndex = 0;
 
 	std::atomic<bool> bResolveIssued{false};
+	std::atomic<bool> bResolveQueued{false};
 	std::atomic<bool> bCopied{false};
 
+	// render thread only
 	bool IsReady() const
 	{
 		return Header && Events && Header->IsReady() && Events->IsReady();

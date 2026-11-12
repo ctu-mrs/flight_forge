@@ -18,7 +18,7 @@ void RunOnGameThread(TOwner& Owner, TFunction&& Function)
 	auto Instruction      = std::make_shared<FInstruction<TOwner>>();
 	Instruction->Function = Forward<TFunction>(Function);
 	Owner.InstructionQueue->Enqueue(Instruction);
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
+	Instruction->Wait();
 }
 
 template <typename TOwner, typename TFunction>

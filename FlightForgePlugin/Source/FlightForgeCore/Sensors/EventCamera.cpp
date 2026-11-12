@@ -114,8 +114,7 @@ void UEventCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<UEventCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 
@@ -335,9 +334,15 @@ void UEventCamera::PumpInflight()
 			continue;
 		}
 
-		if (Slot->IsReady() && !Slot->bResolveIssued.exchange(true))
+		if (!Slot->bResolveIssued && !Slot->bResolveQueued.exchange(true))
 		{
-			ENQUEUE_RENDER_COMMAND(FlightForgeEventResolve)([Slot](FRHICommandListImmediate&) { FlightForgeEventGen::Resolve_RenderThread(Slot); });
+			ENQUEUE_RENDER_COMMAND(FlightForgeEventResolve)([Slot](FRHICommandListImmediate&) {
+				Slot->bResolveQueued = false;
+				if (Slot->IsReady() && !Slot->bResolveIssued.exchange(true))
+				{
+					FlightForgeEventGen::Resolve_RenderThread(Slot);
+				}
+			});
 		}
 		break;
 	}
@@ -369,10 +374,7 @@ void UEventCamera::PumpInflight()
 			continue;
 		}
 
-		if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
-		{
-			IssueResolve(Slot);
-		}
+		RequestResolve(Slot);
 		break;
 	}
 }

@@ -59,8 +59,7 @@ void USegIdCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<USegIdCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 

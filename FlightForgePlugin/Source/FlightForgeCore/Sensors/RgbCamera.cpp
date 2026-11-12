@@ -50,8 +50,7 @@ void URgbCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<URgbCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 

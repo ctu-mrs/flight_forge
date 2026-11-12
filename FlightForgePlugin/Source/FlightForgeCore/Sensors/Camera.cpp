@@ -147,11 +147,6 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 	return Slot;
 }
 
-void UCamera::IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot)
-{
-	ENQUEUE_RENDER_COMMAND(FlightForgeResolveReadback)([Slot](FRHICommandListImmediate& RHICmdList) { ResolveReadback_RenderThread(*Slot); });
-}
-
 // copies land in order, so only the head can publish
 bool UCamera::PumpReadback()
 {
@@ -172,10 +167,7 @@ bool UCamera::PumpReadback()
 		if (!Head->bCopied)
 		{
 			CameraBufferCriticalSection->Unlock();
-			if (Head->Readback && Head->Readback->IsReady() && !Head->bResolveIssued.exchange(true))
-			{
-				IssueResolve(Head);
-			}
+			RequestResolve(Head);
 			break;
 		}
 
@@ -312,19 +304,8 @@ bool UCamera::WaitForSlot(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>
 		{
 			return false;
 		}
-		if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
-		{
-			ResolveReadback_RenderThread(*Slot);
-			break;
-		}
-		if (Slot->bResolveIssued)
-		{
-			Slot->Copied->Wait(FTimespan::FromMilliseconds(5));
-		}
-		else
-		{
-			FPlatformProcess::SleepNoStats(0.0002f);
-		}
+		RequestResolve(Slot);
+		Slot->Copied->Wait(FTimespan::FromMilliseconds(1));
 	}
 	return true;
 }

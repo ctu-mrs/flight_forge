@@ -33,6 +33,7 @@ struct FLIGHTFORGESHADERS_API FCameraReadback
 	FVector           Omega = FVector::ZeroVector;
 
 	std::atomic<bool> bResolveIssued{false};
+	std::atomic<bool> bResolveQueued{false};
 	std::atomic<bool> bCopied{false};
 
 	// manual-reset; triggered once Pixels are host-side, so a waiting server thread wakes without a game tick in between
@@ -47,5 +48,8 @@ FLIGHTFORGESHADERS_API void ResolveReadback_RenderThread(FCameraReadback& Slot);
 
 // polls the slot every render frame and resolves it as soon as the GPU is done; render thread
 FLIGHTFORGESHADERS_API void WatchReadback_RenderThread(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
+
+// any thread: resolves on the render thread if the GPU is done; polling or locking a readback anywhere else races the immediate command list
+FLIGHTFORGESHADERS_API void RequestResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
 /* //} */

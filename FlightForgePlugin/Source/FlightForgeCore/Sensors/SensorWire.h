@@ -66,5 +66,5 @@ void RunOnSensorQueue(TSensor& Sensor, TFunction&& Function)
 	auto Instruction      = std::make_shared<FInstruction<TSensor>>();
 	Instruction->Function = Forward<TFunction>(Function);
 	Sensor.InstructionQueue->Enqueue(Instruction);
-	FGenericPlatformProcess::ConditionalSleep([Instruction]() { return Instruction->Finished.load(); });
+	Instruction->Wait();
 }

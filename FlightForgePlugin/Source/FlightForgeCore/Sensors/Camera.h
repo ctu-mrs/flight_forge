@@ -245,7 +245,6 @@ protected:
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> EnqueueReadback(UTextureRenderTarget2D* RT, double Stamp, const FVector& Omega = FVector::ZeroVector,
 	                                                                 bool bFloat16 = false, bool bEncodeSrgb = false, bool bHalfRgba = false, bool bLuma = false);
-	static void IssueResolve(const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot);
 
 	bool PumpReadback();
 

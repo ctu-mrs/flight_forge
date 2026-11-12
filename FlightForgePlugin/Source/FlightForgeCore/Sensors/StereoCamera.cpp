@@ -88,8 +88,7 @@ void UStereoCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<UStereoCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 
@@ -236,14 +235,8 @@ bool UStereoCamera::PumpStereoReadback()
 		if (!Left->bCopied || !Right->bCopied)
 		{
 			CameraBufferCriticalSection->Unlock();
-
-			for (const auto& Slot : {Left, Right})
-			{
-				if (Slot->Readback && Slot->Readback->IsReady() && !Slot->bResolveIssued.exchange(true))
-				{
-					IssueResolve(Slot);
-				}
-			}
+			RequestResolve(Left);
+			RequestResolve(Right);
 			break;
 		}
 

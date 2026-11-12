@@ -367,8 +367,7 @@ void UFisheyeCamera::DrainInstructions()
 	std::shared_ptr<FInstruction<UFisheyeCamera>> Instruction;
 	while (InstructionQueue->Dequeue(Instruction))
 	{
-		Instruction->Function(*this);
-		Instruction->Finished = true;
+		Instruction->Run(*this);
 	}
 }
 
@@ -474,10 +473,7 @@ bool UFisheyeCamera::PumpFisheyeReadback()
 				continue;
 			}
 			bAllCopied = false;
-			if (Face->Readback && Face->Readback->IsReady() && !Face->bResolveIssued.exchange(true))
-			{
-				IssueResolve(Face);
-			}
+			RequestResolve(Face);
 		}
 
 		if (!bAllCopied)

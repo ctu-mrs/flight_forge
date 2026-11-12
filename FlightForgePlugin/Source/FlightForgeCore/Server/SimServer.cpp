@@ -274,6 +274,7 @@ void FSimServer::Handle(const uint8* Data, const size_t Size, FWireReply& Reply)
 		return;
 	}
 
+	GInstructionTimedOut = false;
 	try
 	{
 		(this->*Handler)(*Request, Reply);
@@ -287,6 +288,12 @@ void FSimServer::Handle(const uint8* Data, const size_t Size, FWireReply& Reply)
 	{
 		Reply.Builder.Clear();
 		Reply.Fail(FString::Printf(TEXT("%s failed"), *WireName(Request->body_type())));
+	}
+
+	if (GInstructionTimedOut)
+	{
+		Reply.Builder.Clear();
+		Reply.Fail(FString::Printf(TEXT("%s: the game thread did not take it within %.0f s"), *WireName(Request->body_type()), FInstruction<int>::TimeoutSeconds));
 	}
 
 	FinishReply(Reply, Request->seq());
