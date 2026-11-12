@@ -11,6 +11,7 @@
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "LandscapeProxy.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -312,6 +313,53 @@ public:
 
 	/* //} */
 
+	/* RestOnSurface() //{ */
+
+	// the base link origin sits above the landing gear, so a pose on the floor would start the airframe inside it
+	void RestOnSurface(ARobotPawn& Pawn)
+	{
+		UStaticMeshComponent* Body  = Pawn.RootMeshComponent;
+		UWorld*               World = GetWorld();
+		if (!Body || !World || !Body->IsCollisionEnabled())
+		{
+			return;
+		}
+
+		FBox Box = Body->Bounds.GetBox();
+		if (const UBodySetup* Setup = Body->GetBodySetup(); Setup && Setup->AggGeom.GetElementCount() > 0)
+		{
+			Box = Setup->AggGeom.CalcAABB(Body->GetComponentTransform());
+		}
+
+		const FVector Origin = Pawn.GetActorLocation();
+		if (!Box.IsValid || Box.Min.Z >= Origin.Z)
+		{
+			return;
+		}
+
+		constexpr double RestGapCm = 0.5;  // a sweep from a touching start reports penetration, not a hit
+		const FVector    Footprint(Box.GetExtent().X, Box.GetExtent().Y, 1.0);
+		const FVector    Top(Box.GetCenter().X, Box.GetCenter().Y, Box.Max.Z + Footprint.Z);
+
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(FlightForgeSpawnRest), false, &Pawn);
+		FHitResult            Hit;
+		const bool bHit = World->SweepSingleByChannel(Hit, Top, FVector(Top.X, Top.Y, Box.Min.Z + Footprint.Z), FQuat::Identity, Body->GetCollisionObjectType(),
+		                                              FCollisionShape::MakeBox(Footprint), Params, FCollisionResponseParams(Body->GetCollisionResponseToChannels()));
+		if (!bHit || Hit.bStartPenetrating)
+		{
+			return;
+		}
+
+		const double Lift = Hit.Location.Z - Footprint.Z - Box.Min.Z + RestGapCm;
+		if (Lift > 0.0)
+		{
+			Pawn.SetActorLocation(Origin + FVector(0.0, 0.0, Lift));
+			UE_LOG(LogTemp, Log, TEXT("FlightForge: raised '%s' by %.1f cm to rest on the surface below it"), *Pawn.Label, Lift);
+		}
+	}
+
+	/* //} */
+
 	/* robots //{ */
 
 	ARobotPawn* SpawnRobot(const FTransform& Transform, const FString& Name, const FString& Label)
@@ -353,6 +401,7 @@ public:
 		Pawn->GroundOrigin = GroundOrigin;
 		Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		Pawn->SetStaticMesh(std::string(TCHAR_TO_UTF8(*Name)));
+		RestOnSurface(*Pawn);
 		Pawn->WireKind = Name.Contains(TEXT("wing")) ? 2 : (Pawn->PropellerLinkNames().Num() > 0 ? 1 : 0);
 		Pawn->Simulate_UE_Physics(3.0f);
 
