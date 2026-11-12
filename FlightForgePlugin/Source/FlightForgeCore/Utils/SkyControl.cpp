@@ -127,6 +127,7 @@ bool USkyControl::SetDaytime(const int32 Hour, const int32 Minute, FString& Erro
 			Error = FString::Printf(TEXT("%s has no Time of Day property"), *Sky->GetName());
 			return false;
 		}
+		UE_LOG(LogTemp, Display, TEXT("FlightForge sky: %02d:%02d through %s"), Hour, Minute, *Sky->GetClass()->GetName());
 		return true;
 	}
 
@@ -139,10 +140,22 @@ bool USkyControl::SetDaytime(const int32 Hour, const int32 Minute, FString& Erro
 			return false;
 		}
 		SunSky->ProcessEvent(UpdateSun, nullptr);
+		UE_LOG(LogTemp, Display, TEXT("FlightForge sky: %02d:%02d through %s"), Hour, Minute, *SunSky->GetClass()->GetName());
 		return true;
 	}
 
-	return SetLightsDaytime(Hours, Error);
+	const bool bOk = SetLightsDaytime(Hours, Error);
+	if (bOk)
+	{
+		const UDirectionalLightComponent* Sun = Baseline.Sun.Get();
+		const TCHAR* SunKind = !Sun                                          ? TEXT("no")
+		                       : Sun->Mobility == EComponentMobility::Movable    ? TEXT("a movable")
+		                       : Sun->Mobility == EComponentMobility::Stationary ? TEXT("a stationary")
+		                                                                         : TEXT("a static, untouched,");
+		UE_LOG(LogTemp, Display, TEXT("FlightForge sky: %02d:%02d through the level's lights (%s sun, %d sky lights)"), Hour, Minute, SunKind,
+		       Baseline.SkyLights.Num());
+	}
+	return bOk;
 }
 
 /* //} */
@@ -296,6 +309,7 @@ bool USkyControl::SetWeather(const int32 Weather, FString& Error)
 	// a random variation would wander off the asked weather
 	SetBool(WeatherActor, TEXT("Use Random Weather Variation"), false);
 	WeatherActor->ProcessEvent(ChangeWeather, Params.GetStructMemory());
+	UE_LOG(LogTemp, Display, TEXT("FlightForge sky: weather %s through %s"), *PresetName, *WeatherActor->GetClass()->GetName());
 	return true;
 }
 
