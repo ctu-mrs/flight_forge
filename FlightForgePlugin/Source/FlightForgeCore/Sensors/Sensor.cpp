@@ -31,6 +31,30 @@ void USensor::BeginPlay()
 }
 
 
+/* OnComponentDestroyed() //{ */
+
+void USensor::OnComponentDestroyed(bool bDestroyingHierarchy)
+{
+	// its captures and body are registered on the robot, which otherwise keeps them rendering
+	if (!bDestroyingHierarchy)
+	{
+		TArray<USceneComponent*> Children;
+		GetChildrenComponents(true, Children);
+
+		for (USceneComponent* Child : Children)
+		{
+			if (Child && Child->GetOuter() == this && !Child->IsBeingDestroyed())
+			{
+				Child->DestroyComponent();
+			}
+		}
+	}
+
+	Super::OnComponentDestroyed(bDestroyingHierarchy);
+}
+
+//}
+
 void USensor::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
