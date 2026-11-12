@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "Engine/GameInstance.h"
 #include <memory>
 
@@ -32,4 +33,6 @@ public:
 private:
 	UPROPERTY()
 	TObjectPtr<UDeviceMeshLibrary> DeviceMeshes;
+
+	FTSTicker::FDelegateHandle FrameCapTicker;
 };
