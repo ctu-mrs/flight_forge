@@ -109,6 +109,13 @@ protected:
 	// one trace with the channels asked for; Cursor is the Livox pattern position to advance
 	void Scan(FLivoxCursor& Cursor, uint8 Channels, FLidarScan& Out);
 
+	// the last raster scan, served to reads that come sooner than its frequency allows
+	bool ReuseLastScan(uint8 Channels, FLidarScan& Out) const;
+
+	FLidarScan LastScan;
+	uint8      LastScanChannels = LidarChannelNone;
+	bool       bHaveLastScan    = false;
+
 	// Traces one elapsed-time slice of the active Livox pattern. Prepare(count) is
 	// called once the slice size is known so the caller can size its buffer, then
 	// Store(index, distance, direction, hit, bHasReturn) reports each ray. Distance

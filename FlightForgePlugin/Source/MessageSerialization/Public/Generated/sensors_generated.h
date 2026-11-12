@@ -2032,7 +2032,7 @@ struct RgbCameraConfigT : public ::flatbuffers::NativeTable {
   std::unique_ptr<flightforge::wire::CameraNoiseT> noise{};
   std::unique_ptr<flightforge::wire::CameraRollingShutterT> rolling_shutter{};
   std::unique_ptr<flightforge::wire::ImageEncodingT> encoding{};
-  double capture_rate = 0.0;
+  double capture_rate = 30.0;
   RgbCameraConfigT() = default;
   RgbCameraConfigT(const RgbCameraConfigT &o);
   RgbCameraConfigT(RgbCameraConfigT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2119,7 +2119,7 @@ struct RgbCameraConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return GetPointer<const flightforge::wire::ImageEncoding *>(VT_ENCODING);
   }
   double capture_rate() const {
-    return GetField<double>(VT_CAPTURE_RATE, 0.0);
+    return GetField<double>(VT_CAPTURE_RATE, 30.0);
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -2216,7 +2216,7 @@ struct RgbCameraConfigBuilder {
     fbb_.AddOffset(RgbCameraConfig::VT_ENCODING, encoding);
   }
   void add_capture_rate(double capture_rate) {
-    fbb_.AddElement<double>(RgbCameraConfig::VT_CAPTURE_RATE, capture_rate, 0.0);
+    fbb_.AddElement<double>(RgbCameraConfig::VT_CAPTURE_RATE, capture_rate, 30.0);
   }
   explicit RgbCameraConfigBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2249,7 +2249,7 @@ inline ::flatbuffers::Offset<RgbCameraConfig> CreateRgbCameraConfig(
     ::flatbuffers::Offset<flightforge::wire::CameraNoise> noise = 0,
     ::flatbuffers::Offset<flightforge::wire::CameraRollingShutter> rolling_shutter = 0,
     ::flatbuffers::Offset<flightforge::wire::ImageEncoding> encoding = 0,
-    double capture_rate = 0.0) {
+    double capture_rate = 30.0) {
   RgbCameraConfigBuilder builder_(_fbb);
   builder_.add_capture_rate(capture_rate);
   builder_.add_motion_blur_distortion(motion_blur_distortion);
@@ -2294,7 +2294,7 @@ struct StereoCameraConfigT : public ::flatbuffers::NativeTable {
   std::unique_ptr<flightforge::wire::CameraIntrinsicsT> intrinsics{};
   std::unique_ptr<flightforge::wire::CameraDistortionT> distortion{};
   std::unique_ptr<flightforge::wire::ImageEncodingT> encoding{};
-  double capture_rate = 0.0;
+  double capture_rate = 30.0;
   StereoCameraConfigT() = default;
   StereoCameraConfigT(const StereoCameraConfigT &o);
   StereoCameraConfigT(StereoCameraConfigT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2357,7 +2357,7 @@ struct StereoCameraConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table
     return GetPointer<const flightforge::wire::ImageEncoding *>(VT_ENCODING);
   }
   double capture_rate() const {
-    return GetField<double>(VT_CAPTURE_RATE, 0.0);
+    return GetField<double>(VT_CAPTURE_RATE, 30.0);
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -2426,7 +2426,7 @@ struct StereoCameraConfigBuilder {
     fbb_.AddOffset(StereoCameraConfig::VT_ENCODING, encoding);
   }
   void add_capture_rate(double capture_rate) {
-    fbb_.AddElement<double>(StereoCameraConfig::VT_CAPTURE_RATE, capture_rate, 0.0);
+    fbb_.AddElement<double>(StereoCameraConfig::VT_CAPTURE_RATE, capture_rate, 30.0);
   }
   explicit StereoCameraConfigBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2453,7 +2453,7 @@ inline ::flatbuffers::Offset<StereoCameraConfig> CreateStereoCameraConfig(
     ::flatbuffers::Offset<flightforge::wire::CameraIntrinsics> intrinsics = 0,
     ::flatbuffers::Offset<flightforge::wire::CameraDistortion> distortion = 0,
     ::flatbuffers::Offset<flightforge::wire::ImageEncoding> encoding = 0,
-    double capture_rate = 0.0) {
+    double capture_rate = 30.0) {
   StereoCameraConfigBuilder builder_(_fbb);
   builder_.add_capture_rate(capture_rate);
   builder_.add_fov(fov);
@@ -2493,7 +2493,7 @@ struct FisheyeCameraConfigT : public ::flatbuffers::NativeTable {
   double kb_k2 = 0.0;
   double kb_k3 = 0.0;
   double kb_k4 = 0.0;
-  double capture_rate = 0.0;
+  double capture_rate = 30.0;
   FisheyeCameraConfigT() = default;
   FisheyeCameraConfigT(const FisheyeCameraConfigT &o);
   FisheyeCameraConfigT(FisheyeCameraConfigT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2560,7 +2560,7 @@ struct FisheyeCameraConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
     return GetField<double>(VT_KB_K4, 0.0);
   }
   double capture_rate() const {
-    return GetField<double>(VT_CAPTURE_RATE, 0.0);
+    return GetField<double>(VT_CAPTURE_RATE, 30.0);
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -2632,7 +2632,7 @@ struct FisheyeCameraConfigBuilder {
     fbb_.AddElement<double>(FisheyeCameraConfig::VT_KB_K4, kb_k4, 0.0);
   }
   void add_capture_rate(double capture_rate) {
-    fbb_.AddElement<double>(FisheyeCameraConfig::VT_CAPTURE_RATE, capture_rate, 0.0);
+    fbb_.AddElement<double>(FisheyeCameraConfig::VT_CAPTURE_RATE, capture_rate, 30.0);
   }
   explicit FisheyeCameraConfigBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2660,7 +2660,7 @@ inline ::flatbuffers::Offset<FisheyeCameraConfig> CreateFisheyeCameraConfig(
     double kb_k2 = 0.0,
     double kb_k3 = 0.0,
     double kb_k4 = 0.0,
-    double capture_rate = 0.0) {
+    double capture_rate = 30.0) {
   FisheyeCameraConfigBuilder builder_(_fbb);
   builder_.add_capture_rate(capture_rate);
   builder_.add_kb_k4(kb_k4);

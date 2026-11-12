@@ -33,6 +33,13 @@ inline const FVector DEFAULT_CAMERA_MOUNT = FVector(25.0, 0.0, 0.0);
 
 /* //} */
 
+/* DEFAULT_CAPTURE_RATE //{ */
+
+// Hz in simulated time; every tick (0) only when a client asks for it
+inline constexpr double DEFAULT_CAPTURE_RATE = 30.0;
+
+/* //} */
+
 /* FCameraIntrinsics //{ */
 
 // pinhole intrinsics in pixels, image origin top-left; when UseCustom the capture's
@@ -194,7 +201,7 @@ protected:
 	double LastCaptureSimTime = -1.0;
 
 	// captures only on the first tick that reaches the next due time; 0 = every tick
-	double CaptureRate    = 0.0;
+	double CaptureRate    = DEFAULT_CAPTURE_RATE;
 	double NextCaptureDue = -1.0;
 	bool   CaptureDue();
 

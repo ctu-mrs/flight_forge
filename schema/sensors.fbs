@@ -148,7 +148,7 @@ table RgbCameraConfig {
   noise: CameraNoise;
   rolling_shutter: CameraRollingShutter;
   encoding: ImageEncoding;
-  capture_rate: double;  // Hz, sim; 0 every tick
+  capture_rate: double = 30;  // Hz, sim; 0 every tick
 }
 
 table StereoCameraConfig {
@@ -164,7 +164,7 @@ table StereoCameraConfig {
   intrinsics: CameraIntrinsics;  // both eyes
   distortion: CameraDistortion;  // both eyes
   encoding: ImageEncoding;
-  capture_rate: double;  // Hz, sim; 0 every tick
+  capture_rate: double = 30;  // Hz, sim; 0 every tick
 }
 
 enum FisheyeLens : ubyte {
@@ -188,7 +188,7 @@ table FisheyeCameraConfig {
   kb_k2: double;
   kb_k3: double;
   kb_k4: double;
-  capture_rate: double;  // Hz, sim; 0 every tick
+  capture_rate: double = 30;  // Hz, sim; 0 every tick
 }
 
 table EventCameraConfig {
@@ -218,7 +218,7 @@ table LidarConfig {
   range_m: double;  // m
   horizontal_rays: uint;
   vertical_rays: uint;
-  frequency: double;  // Hz
+  frequency: double;  // Hz; a raster read within a period of the last scan gets that scan, 0 scans on every read
   mount: Pose;  // relative to the sensor's link
   fov_left: double;  // deg
   fov_right: double;  // deg

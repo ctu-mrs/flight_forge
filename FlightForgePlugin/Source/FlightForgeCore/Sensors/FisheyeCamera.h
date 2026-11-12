@@ -28,7 +28,7 @@ struct FFisheyeCameraConfig
 	EFisheyeLensModel LensModel;
 
 	bool FullFrame = false;
-	double CaptureRate = 0.0;  // Hz in simulated time, 0 = every tick
+	double CaptureRate = DEFAULT_CAPTURE_RATE;  // 0 = every tick
 
 	// with UseCustom, Fx/Fy are pixels per radian and Cx/Cy the principal point (engine convention) instead of the fov-fitted focal
 	FCameraIntrinsics Intrinsics;

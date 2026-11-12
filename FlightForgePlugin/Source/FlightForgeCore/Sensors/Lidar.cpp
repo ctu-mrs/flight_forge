@@ -11,6 +11,7 @@
 
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
+#include "FlightForgeCore/SimClock.h"
 #include "FlightForgeCore/Server/WireReply.h"
 #include "FlightForgeCore/Utils/WireFrame.h"
 
@@ -125,6 +126,8 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarConfig.FOVHorRight = Config.FOVHorRight;
     LidarConfig.vertRayDiff = (double)(LidarConfig.FOVVertUp + LidarConfig.FOVVertDown) / (double)(LidarConfig.BeamVertRays - 1.0);
     LidarConfig.horRayDif   = (double)(LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight) / (double)(LidarConfig.BeamHorRays);
+
+    bHaveLastScan = false;
 
     LidarHitsCriticalSection->Unlock();
 
@@ -506,6 +509,38 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
 
 //}
 
+/* reuseLastScan() //{ */
+
+bool ULidar::ReuseLastScan(const uint8 Channels, FLidarScan& Out) const {
+
+    const UWorld* World = Owner ? Owner->GetWorld() : nullptr;
+
+    if (!bHaveLastScan || !World || LidarConfig.Livox || LidarConfig.Frequency <= 0.0 || (Channels & ~LastScanChannels) != 0) {
+        return false;
+    }
+
+    // a reader at the lidar's own rate, jittered or on a lockstep grid, must still get a fresh scan every time
+    const double Period = 1.0 / LidarConfig.Frequency;
+    const double Slack  = FMath::Max(0.25 * Period, FFlightForgeSimClock::FixedDt.load());
+    const double Age    = World->GetTimeSeconds() - LastScan.Stamp;
+
+    if (Age < 0.0 || Age >= Period - Slack) {
+        return false;
+    }
+
+    Out = LastScan;
+    if (!(Channels & LidarChannelIntensity)) {
+        Out.Intensity.clear();
+    }
+    if (!(Channels & LidarChannelLabels)) {
+        Out.ClassId.clear();
+        Out.InstanceId.clear();
+    }
+    return true;
+}
+
+//}
+
 /* wire //{ */
 
 void ULidar::GetData(const flightforge::wire::Request& Request, FWireReply& Reply)
@@ -516,8 +551,19 @@ void ULidar::GetData(const flightforge::wire::Request& Request, FWireReply& Repl
         return;
     }
 
+    const uint8 Channels = (Ask->with_intensity() ? LidarChannelIntensity : 0) | (Ask->with_labels() ? LidarChannelLabels : 0);
+
     FLidarScan S;
-    Scan(LivoxCursor, (Ask->with_intensity() ? LidarChannelIntensity : 0) | (Ask->with_labels() ? LidarChannelLabels : 0), S);
+    LidarHitsCriticalSection->Lock();
+    if (!ReuseLastScan(Channels, S)) {
+        Scan(LivoxCursor, Channels, S);
+        if (!LidarConfig.Livox) {
+            LastScan         = S;
+            LastScanChannels = Channels;
+            bHaveLastScan    = true;
+        }
+    }
+    LidarHitsCriticalSection->Unlock();
 
     const FVector Origin = Owner ? Owner->GroundOriginCm() : FVector::ZeroVector;
     const auto    Pose   = FWireFrame::ToGroundPose(S.SensorPose, Origin);
