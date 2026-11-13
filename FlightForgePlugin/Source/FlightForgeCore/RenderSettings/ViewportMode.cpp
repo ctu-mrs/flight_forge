@@ -11,14 +11,15 @@
 #include "SceneInterface.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/UObjectIterator.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScaleBox.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/Sensors/Camera.h"
+#include "FlightForgeCore/Sensors/EventCamera.h"
 
 /* console variables //{ */
 
@@ -35,6 +36,41 @@ TAutoConsoleVariable<FString> CVarViewportCamera(TEXT("FlightForge.ViewportCamer
                                                  TEXT("camera the window shows without a viewport, \"robot/sensor\" or \"sensor\"; empty: the one read last"));
 
 const TCHAR* TimeSliceVar = TEXT("r.SkyLight.RealTimeReflectionCapture.TimeSlice");
+
+}  // namespace
+
+//}
+
+/* SFeedImage //{ */
+
+namespace
+{
+
+// scene captures leave alpha at 0, which SImage would blend away
+class SFeedImage : public SLeafWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SFeedImage) {}
+	SLATE_ARGUMENT(const FSlateBrush*, Brush)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& Args) { Brush = Args._Brush; }
+
+	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	                      const FWidgetStyle& Style, bool bParentEnabled) const override
+	{
+		if (Brush && Brush->GetResourceObject())
+		{
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, Geometry.ToPaintGeometry(), Brush, ESlateDrawEffect::IgnoreTextureAlpha, FLinearColor::White);
+		}
+		return LayerId;
+	}
+
+	virtual FVector2D ComputeDesiredSize(float) const override { return Brush ? Brush->ImageSize : FVector2D::ZeroVector; }
+
+private:
+	const FSlateBrush* Brush = nullptr;
+};
 
 }  // namespace
 
@@ -256,7 +292,7 @@ void FViewportMode::UpdateFeed(UWorld* World, const bool bShow)
 		       [
 		           SNew(SScaleBox).Stretch(EStretch::ScaleToFit)
 		           [
-		               SNew(SImage).Image(&FeedBrush)
+		               SNew(SFeedImage).Brush(&FeedBrush)
 		           ]
 		       ]
 		       + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(8.0f)
@@ -325,8 +361,9 @@ UCamera* FViewportMode::PickFeedCamera(UWorld* World) const
 			continue;
 		}
 
-		// an 8-bit target is a picture; depth and event targets are not
-		const double Read = Camera->camera_last_request_time_.load() + (Camera->RenderTarget2D->RenderTargetFormat == RTF_RGBA8 ? 1.0e6 : 0.0);
+		const ETextureRenderTargetFormat Format  = Camera->RenderTarget2D->RenderTargetFormat;
+		const bool                       bColour = (Format == RTF_RGBA8 || Format == RTF_RGBA16f || Format == RTF_RGBA32f) && !Camera->IsA<UEventCamera>();
+		const double                     Read    = Camera->camera_last_request_time_.load() + (bColour ? 1.0e6 : 0.0);
 		if (Read > BestRead)
 		{
 			Best     = Camera;
