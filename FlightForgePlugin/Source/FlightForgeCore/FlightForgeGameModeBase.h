@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "FlightForgeGameInstance.h"
-#include "Components/SceneCaptureComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Engine.h"
 #include "GameFramework/GameModeBase.h"
@@ -64,7 +63,6 @@ private:
 	TArray<FPooledDrone> DronePool;
 	
 	CameraCaptureModeEnum CameraCaptureMode = CameraCaptureModeEnum::CAPTURE_ALL_FRAMES;
-	bool bNoViewport = false;
 
 	std::unique_ptr<FCriticalSection> FPSCriticalSection = std::make_unique<FCriticalSection>();
 	double FPS = 0;
@@ -117,22 +115,6 @@ private:
 	virtual void BeginPlay() override
 	{
 		Super::BeginPlay();
-		bNoViewport = FParse::Param(FCommandLine::Get(), TEXT("FlightForgeNoViewport")) ||
-		              FParse::Param(FCommandLine::Get(), TEXT("NoViewport"));
-
-		if (bNoViewport)
-		{
-			if (GEngine != nullptr && GEngine->GameViewport != nullptr)
-			{
-				GEngine->GameViewport->bDisableWorldRendering = true;
-				UE_LOG(LogTemp, Log, TEXT("FlightForge: main viewport world rendering disabled; deferred scene captures will be pumped explicitly"));
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("FlightForge: no-viewport mode was requested, but no game viewport is available"));
-			}
-		}
-
 		LoadStartupLibraries();
 
 		// scene captures keep their history between grabs, so temporal AA costs nothing; without any AA method every sensor image aliases
@@ -234,12 +216,6 @@ private:
 		FPSCriticalSection->Unlock();
 	
 		Super::Tick(DeltaSeconds);
-
-		if (bNoViewport && World != nullptr && World->Scene != nullptr)
-		{
-			USceneCaptureComponent::UpdateDeferredCaptures(World->Scene);
-			World->Scene->IncrementFrameNumber();
-		}
 	}
 
 	void PumpInstructions()

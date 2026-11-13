@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "Devices/DeviceMeshLibrary.h"
+#include "RenderSettings/ViewportMode.h"
 #include "FlightForgeGameInstance.generated.h"
 
 class FSimServer;
@@ -35,4 +36,6 @@ private:
 	TObjectPtr<UDeviceMeshLibrary> DeviceMeshes;
 
 	FTSTicker::FDelegateHandle FrameCapTicker;
+
+	std::unique_ptr<FViewportMode> ViewportMode;
 };

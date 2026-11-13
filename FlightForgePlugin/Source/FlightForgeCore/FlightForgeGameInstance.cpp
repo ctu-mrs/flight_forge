@@ -39,6 +39,8 @@ void ApplyLaptopPreset()
 
 //}
 
+/* Init() //{ */
+
 void UFlightForgeGameInstance::Init()
 {
 	Super::Init();
@@ -48,6 +50,10 @@ void UFlightForgeGameInstance::Init()
 	{
 		ApplyLaptopPreset();
 	}
+
+	const bool bNoViewport = FParse::Param(FCommandLine::Get(), TEXT("FlightForgeNoViewport")) || FParse::Param(FCommandLine::Get(), TEXT("NoViewport")) ||
+	                         (bLaptop && !FParse::Param(FCommandLine::Get(), TEXT("FlightForgeViewport")));
+	ViewportMode = std::make_unique<FViewportMode>(bNoViewport);
 
 	int32 MaxFps = bLaptop ? 30 : 0;
 	FParse::Value(FCommandLine::Get(), TEXT("FlightForgeMaxFps="), MaxFps);
@@ -86,9 +92,14 @@ void UFlightForgeGameInstance::Init()
 	Server->Start();
 }
 
+//}
+
+/* Shutdown() //{ */
+
 void UFlightForgeGameInstance::Shutdown()
 {
 	FTSTicker::GetCoreTicker().RemoveTicker(FrameCapTicker);
+	ViewportMode.reset();
 
 	if (Server)
 	{
@@ -97,3 +108,5 @@ void UFlightForgeGameInstance::Shutdown()
 
 	Super::Shutdown();
 }
+
+//}
