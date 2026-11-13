@@ -23,6 +23,6 @@ private:
 	void ApplyRelight(int32 Relight);
 	void ApplySunPitch(float Pitch);
 
-	bool  bStarted     = false;
-	float AppliedPitch = TNumericLimits<float>::Max();
+	bool                                             bStarted = false;
+	TWeakObjectPtr<class UDirectionalLightComponent> Sun;
 };

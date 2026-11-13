@@ -99,21 +99,23 @@ void USplatLighting::ApplyRelight(const int32 Relight)
 
 void USplatLighting::ApplySunPitch(const float Pitch)
 {
-	if (Pitch >= 360.0f || Pitch == AppliedPitch)
+	if (Pitch >= 360.0f)
 	{
 		return;
 	}
-	AppliedPitch = Pitch;
 
-	UDirectionalLightComponent* Sun = nullptr;
-	for (TObjectIterator<UDirectionalLightComponent> It; It; ++It)
+	if (!Sun.IsValid())
 	{
-		if (It->GetWorld() == GetWorld() && It->IsRegistered() && (!Sun || It->IsUsedAsAtmosphereSunLight()))
+		for (TObjectIterator<UDirectionalLightComponent> It; It; ++It)
 		{
-			Sun = *It;
+			if (It->GetWorld() == GetWorld() && It->IsRegistered() && (!Sun.IsValid() || It->IsUsedAsAtmosphereSunLight()))
+			{
+				Sun = *It;
+			}
 		}
 	}
-	if (!Sun)
+	// held every tick: a ModelForge splat turns the sun to its capture's on its first tick
+	if (!Sun.IsValid() || FMath::IsNearlyEqual(Sun->GetComponentRotation().Pitch, Pitch, 0.01))
 	{
 		return;
 	}
