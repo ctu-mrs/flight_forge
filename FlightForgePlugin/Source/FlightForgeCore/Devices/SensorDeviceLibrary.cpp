@@ -226,8 +226,57 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Lidar;
 		Lidar.Type      = SensorType::LIDAR;
-		Lidar.RelOffset = FVector(0, 0, 3.82);  // taken from the OS0 drawing, OS1 not checked
+		Lidar.RelOffset = FVector(0, 0, 3.82);  // Rev7 lidar_to_sensor z, ouster-sdk metadata
 		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 64, 360, 22.5, 22.5, 12000, 10); };
+		D.Sensors.Add(Lidar);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("ouster_os0_128");
+		D.Description      = TEXT("Ouster OS0-128 Rev7: 128 ch, 1024 cols, 90.8deg vertical FOV, 75 m");
+		D.MeshShape        = EDeviceMeshShape::Cylinder;
+		D.MeshDimensionsCm = FVector(8.7, 8.7, 5.835);
+		D.MeshFile         = TEXT("OUSTER_Rev7_OS0");
+
+		FDeviceSensorEntry Lidar;
+		Lidar.Type      = SensorType::LIDAR;
+		Lidar.RelOffset = FVector(0, 0, 3.82);
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 128, 360, 45.4, 45.4, 7500, 10); };
+		D.Sensors.Add(Lidar);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("ouster_os1_128");
+		D.Description      = TEXT("Ouster OS1-128 Rev7: 128 ch, 1024 cols, 42.4deg vertical FOV, 170 m");
+		D.MeshShape        = EDeviceMeshShape::Cylinder;
+		D.MeshDimensionsCm = FVector(8.7, 8.7, 5.835);
+
+		FDeviceSensorEntry Lidar;
+		Lidar.Type      = SensorType::LIDAR;
+		Lidar.RelOffset = FVector(0, 0, 3.82);
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 128, 360, 21.2, 21.2, 17000, 10); };
+		D.Sensors.Add(Lidar);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("ouster_os2_128");
+		D.Description      = TEXT("Ouster OS2-128 Rev7: 128 ch, 1024 cols, 22.5deg vertical FOV, 350 m");
+		D.MeshShape        = EDeviceMeshShape::Cylinder;
+		D.MeshDimensionsCm = FVector(11.96, 11.96, 9.89);
+
+		FDeviceSensorEntry Lidar;
+		Lidar.Type      = SensorType::LIDAR;
+		Lidar.RelOffset = FVector(0, 0, 7.83);  // Rev6 ouster-sdk metadata, Rev7 value unpublished
+		Lidar.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureGridLidar(S, O, R, 1024, 128, 360, 11.25, 11.25, 35000, 10); };
 		D.Sensors.Add(Lidar);
 
 		Devices.Add(D);
