@@ -188,16 +188,7 @@ private:
 
 /* Nanite ids //{ */
 
-// Nanite geometry never enters a mesh pass: it is rasterized again for this view into a visibility
-// buffer of our own, and each pixel's cluster leads back to its primitive and so to its id. The raster
-// entry points are Renderer-private, so this links only against an engine that exports them
-// (RENDERER_API on IRenderer::Create, InitRasterContext, CreatePackedViewFromViewInfo,
-// FPackedViewArray::Create, FConfiguration::SetViewFlags, FViewInfo::GetShaderParameters,
-// FScene::GetPrimitiveSceneInfo); an installed build gets class ids for Nanite from the custom stencil instead.
-#ifndef FLIGHTFORGE_NANITE_IDS
-#define FLIGHTFORGE_NANITE_IDS 0
-#endif
-
+// Needs the Renderer exports of tools/apply_engine_patch.py; a stock engine falls back to stencil class ids.
 #if FLIGHTFORGE_NANITE_IDS
 class FSegIdNaniteCS : public FNaniteGlobalShader
 {

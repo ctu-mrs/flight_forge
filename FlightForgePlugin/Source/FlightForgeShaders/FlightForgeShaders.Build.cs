@@ -17,5 +17,8 @@ public class FlightForgeShaders : ModuleRules
 		PrivateIncludePaths.Add(Path.Combine(EngineDirectory, "Source", "Runtime", "Renderer", "Internal"));
 		// FViewInfo::DynamicMeshElements: the per-view batches of instanced and skeletal meshes, which register no static ones
 		PrivateIncludePaths.Add(Path.Combine(EngineDirectory, "Source", "Runtime", "Renderer", "Private"));
+
+		bool bEnginePatched = File.Exists(Path.Combine(EngineDirectory, "Build", "FlightForgeEnginePatch.json"));
+		PrivateDefinitions.Add("FLIGHTFORGE_NANITE_IDS=" + (bEnginePatched ? "1" : "0"));
 	}
 }
