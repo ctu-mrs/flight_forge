@@ -1,0 +1,18 @@
+# tools/audit_worlds.sh settings, one per line: map<TAB>setting<TAB>value
+#   exclude  not a world the audit can score; value = the reason
+#   game     game mode for maps whose WorldSettings override it; switch_world_level forces the same class
+#   pose     rig pose X,Y,Z,Yaw,Pitch (world cm, degrees) where the PlayerStart is missing or sees nothing
+#   standin  <hidden collision actor>=<visible actor>[+...]: the trace hits the first, the camera draws the second
+/Game/Worlds/MainMap	exclude	no geometry of its own: a 5.4 persistent level whose streaming entries (Warehouse, Valley, MalaSkala) do not load at runtime; each is audited as its own map
+/Game/Worlds/LevelGeneratorTest/TestLevel	exclude	empty canvas for the level generator: only the sky, no mesh or collision
+/Game/ModelForge/MF_Kladno	exclude	Gaussian splat world: the splat is drawn by a view extension and its collision mesh is hidden, so neither seg camera can label it
+/Game/Assets/VehicleVarietyPack/Maps/Playground	game	/Script/FlightForgeCore.FlightForgeGameModeBase
+/Game/Assets/VehicleVarietyPack/Maps/Playground	pose	1500,0,400,90,-20
+/Game/Assets/VehicleVarietyPack/Maps/Presentation	game	/Script/FlightForgeCore.FlightForgeGameModeBase
+/Game/Military/Maps/Overview	game	/Script/FlightForgeCore.FlightForgeGameModeBase
+/Game/PedestrianSystem/Map/TestPedestrian	game	/Script/FlightForgeCore.FlightForgeGameModeBase
+/Game/Sayantan/Props/Large/Container_FREE/Maps/Demo_Map_Day	pose	1480,1700,300,0,-15
+/Game/Sayantan/Props/Large/Container_FREE/Maps/Demo_Map_Night	pose	1480,1700,300,0,-15
+/Game/Worlds/PCGInfinityForest/Maps/PCGTestMap	pose	-16000,-1750,6000,0,-35
+/Game/Worlds/Temesvar/Maps/Temesvar	standin	StaticMeshActor_UAID_E4C767FC1664932102_2066579216=StaticMeshActor_UAID_E4C767FC1664932102_2054239215
+/Game/Worlds/Temesvar/Maps/Temesvar_annotated	standin	StaticMeshActor_UAID_E4C767FC1664932102_2066579216=StaticMeshActor_UAID_E4C767FC1664932102_2054239215

@@ -34,6 +34,7 @@ struct FSegDiffRig
 	TArray<FFloat16>                         DepthCm;
 	int32                                    RobotId = -1;
 	double                                   Started = 0.0;
+	double                                   Pitch   = 0.0;
 
 	TArray<FColor>                Ids;
 	FIntPoint                     Size = FIntPoint::ZeroValue;
@@ -76,6 +77,18 @@ void SavePng(const FString& Name, const TArray<FColor>& Pixels, const FIntPoint 
 	UE_LOG(LogTemp, Log, TEXT("SegDiff: wrote %s"), *Path);
 }
 
+FString PaintedName(const TArray<FSegInstanceEntry>& Map, const uint32 Id)
+{
+	for (const FSegInstanceEntry& Entry : Map)
+	{
+		if (static_cast<uint32>(Entry.Id) == Id)
+		{
+			return Entry.Actor.Mid(Entry.Actor.Find(TEXT(".")) + 1);
+		}
+	}
+	return Id == 0 ? TEXT("nothing") : TEXT("?");
+}
+
 }  // namespace
 
 /* spawn the rig //{ */
@@ -103,7 +116,22 @@ bool FSegDiffSpawn::Update()
 	}
 
 	Rig->GameMode = GameMode;
-	ARobotPawn* Pawn = GameMode->SpawnRobot(FTransform(GameMode->GetGroundOrigin() + FVector(0, 0, FWireFrame::PlayerStartHeightCm + 150)), TEXT("x500"), FString());
+
+	// -FlightForgeAuditPose=X,Y,Z,Yaw,Pitch (world cm, degrees), from tools/audit_worlds.tsv
+	FTransform Spawn(GameMode->GetGroundOrigin() + FVector(0, 0, FWireFrame::PlayerStartHeightCm + 150));
+	FString    PoseArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("FlightForgeAuditPose="), PoseArg, false))
+	{
+		TArray<FString> Parts;
+		PoseArg.ParseIntoArray(Parts, TEXT(","));
+		if (Parts.Num() >= 3)
+		{
+			Spawn.SetLocation(FVector(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2])));
+			Spawn.SetRotation(FRotator(0, Parts.Num() >= 4 ? FCString::Atod(*Parts[3]) : 0.0, 0).Quaternion());
+			Rig->Pitch = Parts.Num() >= 5 ? FCString::Atod(*Parts[4]) : 0.0;
+		}
+	}
+	ARobotPawn* Pawn = GameMode->SpawnRobot(Spawn, TEXT("x500"), FString());
 	Rig->RobotId     = Pawn ? Pawn->RobotId : -1;
 	if (!Pawn)
 	{
@@ -117,8 +145,9 @@ bool FSegDiffSpawn::Update()
 	if (Rig->Camera.IsValid())
 	{
 		FRgbCameraConfig Config;
-		Config.Width  = 320;
-		Config.Height = 240;
+		Config.Width       = 320;
+		Config.Height      = 240;
+		Config.Orientation = FRotator(Rig->Pitch, 0, 0);
 		Rig->Camera->SetSegIdCameraConfig(Config);
 	}
 	const int32 DepthId = Pawn->AddSensor(static_cast<int>(SensorType::DEPTH_CAMERA));
@@ -126,8 +155,9 @@ bool FSegDiffSpawn::Update()
 	if (Rig->Depth.IsValid())
 	{
 		FRgbCameraConfig Config;
-		Config.Width  = 320;
-		Config.Height = 240;
+		Config.Width       = 320;
+		Config.Height      = 240;
+		Config.Orientation = FRotator(Rig->Pitch, 0, 0);
 		Rig->Depth->SetDepthCameraConfig(Config);
 	}
 
@@ -215,13 +245,14 @@ bool FSegDiffCompare::Update()
 	}
 
 	// the pass draws what has a scene proxy; a trace sees what blocks Visibility - actors with only one are not comparable
-	TMap<FString, uint32>          IdByActor;
+	TMap<FString, uint32>          IdByActor, IdByName;
 	TMap<uint32, TArray<FBox>>     BoxesById;
 	TSet<uint32>                   NoCollisionIds;
 	uint32                SelfId = 0;
 	for (const FSegInstanceEntry& Entry : Rig->Map)
 	{
 		IdByActor.Add(Entry.Actor, static_cast<uint32>(Entry.Id));
+		IdByName.Add(FPaths::GetExtension(Entry.Actor), static_cast<uint32>(Entry.Id));
 
 		AActor* Actor = FindObject<AActor>(nullptr, *Entry.Actor);
 		if (Actor == Rig->Pawn.Get())
@@ -249,6 +280,23 @@ bool FSegDiffCompare::Update()
 		}
 	}
 
+	// -FlightForgeAuditStandIn=<hidden collision actor>=<visible actor>[+...]: the trace hits the first, the render draws the second
+	TMap<FString, FString> StandIns;
+	FString                StandInArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("FlightForgeAuditStandIn="), StandInArg, false))
+	{
+		TArray<FString> Pairs;
+		StandInArg.ParseIntoArray(Pairs, TEXT("+"));
+		for (const FString& Pair : Pairs)
+		{
+			FString Hidden, Visible;
+			if (Pair.Split(TEXT("="), &Hidden, &Visible))
+			{
+				StandIns.Add(Hidden, Visible);
+			}
+		}
+	}
+
 	const FRgbCameraConfig& Config = Camera->GetSegIdCameraConfig();
 	const FCameraIntrinsics K      = UCamera::EffectiveIntrinsics(Config.Intrinsics, Config.FOVAngle, Rig->Size.X, Rig->Size.Y);
 	const FTransform        View   = Camera->SceneCaptureComponent2D->GetComponentTransform();
@@ -258,7 +306,7 @@ bool FSegDiffCompare::Update()
 	Params.AddIgnoredActor(Rig->Pawn.Get());
 
 	int32 Agree = 0, Sky = 0, Missing = 0, Extra = 0, Wrong = 0, Landscape = 0, LandscapeDrawn = 0, Unmapped = 0, UnmappedDrawn = 0, Self = 0, NoCollision = 0, Nanite = 0, NaniteDrawn = 0, DepthMismatch = 0, CoincidentPx = 0;
-	TMap<FString, int32> WrongByActor, MissingByActor;
+	TMap<FString, int32> WrongByActor, MissingByActor, UnmappedByActor;
 
 	TArray<FColor> TraceImage, Mismatch;
 	TraceImage.SetNumUninitialized(Rig->Ids.Num());
@@ -297,7 +345,8 @@ bool FSegDiffCompare::Update()
 			}
 			if (HitActor)
 			{
-				if (const uint32* Mapped = IdByActor.Find(HitActor->GetPathName()))
+				const FString* StandsFor = StandIns.Find(HitActor->GetName());
+				if (const uint32* Mapped = StandsFor ? IdByName.Find(*StandsFor) : IdByActor.Find(HitActor->GetPathName()))
 				{
 					Expected = *Mapped;
 				}
@@ -313,6 +362,7 @@ bool FSegDiffCompare::Update()
 					{
 						Unmapped++;
 						UnmappedDrawn += Actual != 0 ? 1 : 0;
+						UnmappedByActor.FindOrAdd(FString::Printf(TEXT("%s [%s] painted %s"), *HitActor->GetName(), *HitActor->GetClass()->GetName(), *PaintedName(Rig->Map, Actual)))++;
 					}
 				}
 			}
@@ -377,16 +427,7 @@ bool FSegDiffCompare::Update()
 				Wrong++;
 				Mismatch[Index] = FColor::Magenta;
 
-				FString Painted = TEXT("?");
-				for (const FSegInstanceEntry& Entry : Rig->Map)
-				{
-					if (static_cast<uint32>(Entry.Id) == Actual)
-					{
-						Painted = Entry.Actor.Mid(Entry.Actor.Find(TEXT(".")) + 1);
-						break;
-					}
-				}
-				WrongByActor.FindOrAdd(FString::Printf(TEXT("%s (painted %s)"), HitActor ? *HitActor->GetName() : TEXT("?"), *Painted))++;
+				WrongByActor.FindOrAdd(FString::Printf(TEXT("%s (painted %s)"), HitActor ? *HitActor->GetName() : TEXT("?"), *PaintedName(Rig->Map, Actual)))++;
 			}
 		}
 	}
@@ -404,6 +445,15 @@ bool FSegDiffCompare::Update()
 	for (const TPair<FString, int32>& Pair : MissingByActor)
 	{
 		UE_LOG(LogTemp, Log, TEXT("SegDiff:   missing at %s: %d px"), *Pair.Key, Pair.Value);
+	}
+	UnmappedByActor.ValueSort(TGreater<int32>());
+	int32 UnmappedShown = 0;
+	for (const TPair<FString, int32>& Pair : UnmappedByActor)
+	{
+		if (UnmappedShown++ < 10)
+		{
+			UE_LOG(LogTemp, Log, TEXT("SegDiff:   unmapped hit %s: %d px"), *Pair.Key, Pair.Value);
+		}
 	}
 
 	TArray<FColor> IdImage;
