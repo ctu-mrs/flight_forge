@@ -3,6 +3,7 @@
 #include "FlightForgeCore.h"
 
 #include "GpuWatchdog.h"
+#include "Utils/BenchHooks.h"
 
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
@@ -43,6 +44,7 @@ void KeepOffScreenResolution(IConsoleVariable* SetRes)
 void FFlightForgeCoreModule::StartupModule()
 {
 	FGpuWatchdog::Start();
+	FBenchHooks::Start();
 
 	if (FParse::Param(FCommandLine::Get(), TEXT("RenderOffScreen")))
 	{
@@ -55,6 +57,7 @@ void FFlightForgeCoreModule::StartupModule()
 
 void FFlightForgeCoreModule::ShutdownModule()
 {
+	FBenchHooks::Stop();
 	FGpuWatchdog::Stop();
 }
 
