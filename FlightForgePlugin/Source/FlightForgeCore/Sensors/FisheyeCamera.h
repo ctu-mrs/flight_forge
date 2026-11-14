@@ -15,10 +15,10 @@ enum class EFisheyeLensModel : int
 
 struct FFisheyeCameraConfig
 {
-	bool ShowCameraComponent;
+	bool ShowCameraComponent = false;
 
-	FVector  Offset;
-	FRotator Orientation;
+	FVector  Offset      = DEFAULT_CAMERA_MOUNT;
+	FRotator Orientation = FRotator::ZeroRotator;
 
 	double FOVAngle;  // rendered angle cap even with custom intrinsics
 
