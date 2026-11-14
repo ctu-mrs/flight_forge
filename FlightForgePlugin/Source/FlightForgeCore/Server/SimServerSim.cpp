@@ -13,7 +13,7 @@
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 3;
+static constexpr uint16 ApiMinor = 4;
 
 /* connection //{ */
 

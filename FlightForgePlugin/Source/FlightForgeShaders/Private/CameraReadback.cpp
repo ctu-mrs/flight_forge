@@ -32,7 +32,15 @@ void ResolveReadback_RenderThread(FCameraReadback& Slot)
 		const int32 W = Slot.Size.X;
 		const int32 H = Slot.Size.Y;
 
-		if (Slot.bLuma)
+		if (Slot.bRawFloat4)
+		{
+			Slot.Float4Pixels.SetNumUninitialized(W * H);
+			for (int32 Row = 0; Row < H; ++Row)
+			{
+				FMemory::Memcpy(Slot.Float4Pixels.GetData() + (int64)Row * W, static_cast<const FLinearColor*>(Data) + (int64)Row * RowPitchInPixels, W * sizeof(FLinearColor));
+			}
+		}
+		else if (Slot.bLuma)
 		{
 			Slot.LumaPixels.SetNumUninitialized(W * H);
 

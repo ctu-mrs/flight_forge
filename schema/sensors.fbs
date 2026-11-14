@@ -212,6 +212,12 @@ table EventCameraConfig {
   seed: uint;
 }
 
+enum LidarBackend : ubyte {
+  AUTO = 0,  // GPU when the renderer has hardware ray tracing, else CPU
+  CPU = 1,  // traces simple collision
+  GPU = 2,  // ray tracing against visible geometry
+}
+
 table LidarConfig {
   enable: bool;
   show_beams: bool;
@@ -227,6 +233,7 @@ table LidarConfig {
   livox: bool;
   livox_pattern: string;  // Content/Lidar/<name>.ffpat stem, empty for none
   show_sensor_body: bool;
+  backend: LidarBackend;
 }
 
 table GetRgbCameraConfigRequest {}
@@ -340,6 +347,7 @@ table LidarScanResponse {
   intensity: [int];  // physical-material class, -1 for no return
   class_id: [int];  // -1 for no return, landscape 1
   instance_id: [uint];  // 0 background, the instance camera's id space
+  backend: LidarBackend;  // the one that traced this scan, CPU or GPU
 }
 
 table GetRangefinderDataRequest {}

@@ -4,9 +4,14 @@
 
 #include "Async/ParallelFor.h"
 #include "CollisionQueryParams.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/HitResult.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
+#include "LidarRayTrace.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 
 #include "FlightForgeCore/RobotPawn.h"
@@ -42,13 +47,35 @@ ULidar::ULidar()
 	LidarConfig.LivoxSensor = TEXT("mid360");
 
 	LidarHitsCriticalSection = std::make_unique<FCriticalSection>();
+	InstructionQueue         = std::make_unique<TInstructionQueue<ULidar>>();
 }
+
+/* ConfigureRayTracingGeometry() //{ */
+
+// no camera traces rays, so only the lidar sees these: wind-swayed instanced foliage stays in the TLAS and small or far instances are not culled
+static void ConfigureRayTracingGeometry() {
+    for (const auto& [Name, Value] : {std::pair(TEXT("r.RayTracing.Geometry.StaticMeshes.WPO"), 2), std::pair(TEXT("r.RayTracing.Geometry.InstancedStaticMeshes.Culling"), 0)}) {
+        IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+        if (Variable && Variable->GetInt() != Value) {
+            UE_LOG(LogTemp, Log, TEXT("GPU lidar: %s %d -> %d"), Name, Variable->GetInt(), Value);
+            Variable->Set(Value, ECVF_SetByCode);
+        }
+    }
+}
+
+//}
 
 /* BeginPlay() //{ */
 
 void ULidar::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// a frame ahead of the first scan: the WPO switch rebuilds render state
+	if (FLidarRayTraceViewExtension::IsRayTracingAvailable())
+	{
+		ConfigureRayTracingGeometry();
+	}
 }
 
 //}
@@ -104,6 +131,7 @@ bool ULidar::SetLidarConfig(const FLidarConfig& Config) {
     LidarConfig.ShowBeams      = Config.ShowBeams;
     LidarConfig.BeamLength     = Config.BeamLength;
     LidarConfig.ShowSensorBody = Config.ShowSensorBody;
+    LidarConfig.Backend        = Config.Backend;
 
     ResetLivoxCursorsIfChanged(LivoxWas, LivoxSensorWas);
 
@@ -220,19 +248,18 @@ const FLivoxPattern* ULidar::GetLivoxPattern() const {
 // residual within a chunk is far below the range noise of the real sensor.
 #define LIVOX_SUB_BATCH_TIME 0.001
 
-int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
-                            TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store, bool bNeedPhysicalMaterial) {
+bool ULidar::PlanLivoxSlice(FLivoxCursor& Cursor, FLivoxSlice& Out) {
 
     const FLivoxPattern* Pattern = GetLivoxPattern();
 
     if (!Pattern || Pattern->Num() == 0) {
-        return 0;
+        return false;
     }
 
     auto World = Owner->GetWorld();
 
     if (!World) {
-        return 0;
+        return false;
     }
 
     const double Now = World->GetTimeSeconds();
@@ -270,39 +297,64 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         Elapsed           = MaxIntegration;
     }
 
-    const int32 NumRays = FMath::Max(1, FMath::RoundToInt(Elapsed * Pattern->PointRate));
-
-    Prepare(NumRays);
-
     const FTransform DroneTransform = Owner->GetActorTransform();
 
-    const FQuat      LidarQuat     = DroneTransform.GetRotation() * LidarConfig.Orientation.Quaternion();
-    const FVector    LidarLocation = DroneTransform.TransformPosition(LidarConfig.Offset);
-    const FTransform RefTransform(LidarQuat, LidarLocation);
+    const FQuat   LidarQuat     = DroneTransform.GetRotation() * LidarConfig.Orientation.Quaternion();
+    const FVector LidarLocation = DroneTransform.TransformPosition(LidarConfig.Offset);
+
+    Out.Pattern = Pattern;
+    Out.Now     = Now;
+    Out.NumRays = FMath::Max(1, FMath::RoundToInt(Elapsed * Pattern->PointRate));
 
     // The slice covers [LastTime, Now]; the pose at each end is known, so poses
     // inside it are interpolated. Output is expressed in the pose at Now, which is
     // what the response stamp refers to.
-    const FTransform& FromPose = Cursor.bPoseValid ? Cursor.LastPose : RefTransform;
+    Out.RefPose  = FTransform(LidarQuat, LidarLocation);
+    Out.FromPose = Cursor.bPoseValid ? Cursor.LastPose : Out.RefPose;
 
-    const int32  PatternStart = (int32)FMath::Fmod(Cursor.PatternPos, (double)Pattern->Num());
-    const int32  RaysPerBatch = FMath::Max(1, FMath::RoundToInt(LIVOX_SUB_BATCH_TIME * Pattern->PointRate));
-    const int32  NumBatches   = FMath::DivideAndRoundUp(NumRays, RaysPerBatch);
-    const double MinRangeCm   = Pattern->MinRangeCm;
+    Out.PatternStart = (int32)FMath::Fmod(Cursor.PatternPos, (double)Pattern->Num());
+    Out.RaysPerBatch = FMath::Max(1, FMath::RoundToInt(LIVOX_SUB_BATCH_TIME * Pattern->PointRate));
+    Out.NumBatches   = FMath::DivideAndRoundUp(Out.NumRays, Out.RaysPerBatch);
+    Out.MinRangeCm   = Pattern->MinRangeCm;
 
     // a Livox cannot see past its own spec, whatever the config asks for
-    const double BeamLength = Pattern->MaxRangeCm > 0.0 ? FMath::Min(LidarConfig.BeamLength, Pattern->MaxRangeCm) : LidarConfig.BeamLength;
+    Out.BeamLength = Pattern->MaxRangeCm > 0.0 ? FMath::Min(LidarConfig.BeamLength, Pattern->MaxRangeCm) : LidarConfig.BeamLength;
 
-    ParallelFor(NumBatches, [&](int32 BatchIndex) {
-        const double Alpha = NumBatches > 1 ? ((double)BatchIndex + 0.5) / (double)NumBatches : 1.0;
+    return true;
+}
 
-        const FTransform BatchPose(FQuat::Slerp(FromPose.GetRotation(), RefTransform.GetRotation(), Alpha),
-                                   FMath::Lerp(FromPose.GetLocation(), RefTransform.GetLocation(), Alpha));
+void ULidar::CommitLivoxSlice(FLivoxCursor& Cursor, const FLivoxSlice& Slice) {
+    Cursor.PatternPos = FMath::Fmod(Cursor.PatternPos + Slice.NumRays, (double)Slice.Pattern->Num());
+    Cursor.LastTime   = Slice.Now;
+    Cursor.LastPose   = Slice.RefPose;
+    Cursor.bPoseValid = true;
+}
+
+int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prepare,
+                            TFunctionRef<void(int32, double, const FVector&, const FHitResult&, bool)> Store, bool bNeedPhysicalMaterial) {
+
+    FLivoxSlice Slice;
+    if (!PlanLivoxSlice(Cursor, Slice)) {
+        return 0;
+    }
+
+    Prepare(Slice.NumRays);
+
+    UWorld*              World      = Owner->GetWorld();
+    const FLivoxPattern* Pattern    = Slice.Pattern;
+    const FTransform&    RefPose    = Slice.RefPose;
+    const double         BeamLength = Slice.BeamLength;
+
+    ParallelFor(Slice.NumBatches, [&](int32 BatchIndex) {
+        const double Alpha = Slice.BatchAlpha(BatchIndex);
+
+        const FTransform BatchPose(FQuat::Slerp(Slice.FromPose.GetRotation(), RefPose.GetRotation(), Alpha),
+                                   FMath::Lerp(Slice.FromPose.GetLocation(), RefPose.GetLocation(), Alpha));
 
         const FVector BatchOrigin = BatchPose.GetLocation();
 
-        const int32 First = BatchIndex * RaysPerBatch;
-        const int32 Last  = FMath::Min(First + RaysPerBatch, NumRays);
+        const int32 First = BatchIndex * Slice.RaysPerBatch;
+        const int32 Last  = FMath::Min(First + Slice.RaysPerBatch, Slice.NumRays);
 
         // Without this every beam hits the airframe first, and that hit is inside
         // MinRangeCm, so the ray is dropped and reported as no return at all.
@@ -320,7 +372,7 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
         // here cost 4x - the inner tasks contend over work units of ~200 rays.
         for (int32 i = First; i < Last; ++i) {
 
-            const FVector3f& Dir3f = Pattern->Directions[(PatternStart + i) % Pattern->Num()];
+            const FVector3f& Dir3f = Pattern->Directions[(Slice.PatternStart + i) % Pattern->Num()];
             const FVector    PatternDir(Dir3f.X, Dir3f.Y, Dir3f.Z);
 
             const FVector RayWorld = BatchPose.TransformVector(PatternDir) * BeamLength;
@@ -337,11 +389,11 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
                 const bool bHiddenDrone = !Owner->GetVisibilityOtherDrones() && HitActor && HitActor->IsA(ARobotPawn::StaticClass()) && HitActor != Owner;
 
-                if (!bHiddenDrone && HitResult.Distance >= MinRangeCm) {
+                if (!bHiddenDrone && HitResult.Distance >= Slice.MinRangeCm) {
                     // Re-expressing the world hit in the reference frame is what bakes the
                     // intra-scan motion distortion into the geometry, while keeping the
                     // wire format (distance + direction) unchanged.
-                    const FVector Local = RefTransform.InverseTransformPosition(HitResult.ImpactPoint);
+                    const FVector Local = RefPose.InverseTransformPosition(HitResult.ImpactPoint);
 
                     OutDistance = Local.Size();
                     OutDir      = Local.GetSafeNormal() * BeamLength;
@@ -351,19 +403,16 @@ int32 ULidar::CastLivoxRays(FLivoxCursor& Cursor, TFunctionRef<void(int32)> Prep
 
             // only a no-return needs this; on a hit the direction comes from the impact
             if (!bHasReturn) {
-                OutDir = RefTransform.InverseTransformVector(RayWorld);
+                OutDir = RefPose.InverseTransformVector(RayWorld);
             }
 
             Store(i, OutDistance, OutDir, HitResult, bHasReturn);
         }
     });
 
-    Cursor.PatternPos = FMath::Fmod(Cursor.PatternPos + NumRays, (double)Pattern->Num());
-    Cursor.LastTime   = Now;
-    Cursor.LastPose   = RefTransform;
-    Cursor.bPoseValid = true;
+    CommitLivoxSlice(Cursor, Slice);
 
-    return NumRays;
+    return Slice.NumRays;
 }
 
 //}
@@ -480,23 +529,7 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
     }
 
     if (bWantLabels) {
-        if (USegmentationTagger* Tagger = World ? World->GetSubsystem<USegmentationTagger>() : nullptr) {
-            TMap<const UPrimitiveComponent*, int32> ClassCache;  // the rules are wildcard matches, once per component not per point
-            for (size_t i = 0; i < HitActors.size(); ++i) {
-                if (!HitActors[i]) {
-                    continue;
-                }
-                Out.InstanceId[i] = Tagger->GetOrAssignInstanceId(HitActors[i]);
-                if (const int32* Cached = ClassCache.Find(HitComponents[i])) {
-                    Out.ClassId[i] = *Cached;
-                    continue;
-                }
-                // the same class the instance camera paints; landscape has no mesh asset, so the legacy 1 stays
-                const int32 Class = Tagger->ClassOf(HitActors[i], HitComponents[i]);
-                Out.ClassId[i]    = Class > 0 ? Class : (HitComponents[i] && HitComponents[i]->GetName().Contains("Landscape") ? 1 : 0);
-                ClassCache.Add(HitComponents[i], Out.ClassId[i]);
-            }
-        }
+        Label(Out, HitActors, HitComponents);
     }
 
     if (bProfile) {
@@ -505,6 +538,377 @@ void ULidar::Scan(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
     }
 
     LidarHitsCriticalSection->Unlock();
+}
+
+//}
+
+/* Label() //{ */
+
+void ULidar::Label(FLidarScan& Out, const std::vector<const AActor*>& HitActors, const std::vector<const UPrimitiveComponent*>& HitComponents) const {
+
+    UWorld*              World  = Owner ? Owner->GetWorld() : nullptr;
+    USegmentationTagger* Tagger = World ? World->GetSubsystem<USegmentationTagger>() : nullptr;
+    if (!Tagger) {
+        return;
+    }
+
+    TMap<const UPrimitiveComponent*, int32> ClassCache;  // the rules are wildcard matches, once per component not per point
+    for (size_t i = 0; i < HitActors.size(); ++i) {
+        if (!HitActors[i]) {
+            continue;
+        }
+        Out.InstanceId[i] = Tagger->GetOrAssignInstanceId(HitActors[i]);
+        if (const int32* Cached = ClassCache.Find(HitComponents[i])) {
+            Out.ClassId[i] = *Cached;
+            continue;
+        }
+        // the same class the instance camera paints; landscape has no mesh asset, so the legacy 1 stays
+        const int32 Class = Tagger->ClassOf(HitActors[i], HitComponents[i]);
+        Out.ClassId[i]    = Class > 0 ? Class : (HitComponents[i] && HitComponents[i]->GetName().Contains("Landscape") ? 1 : 0);
+        ClassCache.Add(HitComponents[i], Out.ClassId[i]);
+    }
+}
+
+//}
+
+/* GPU backend //{ */
+
+static TAutoConsoleVariable<float> CVarLidarGpuTimeout(TEXT("FlightForge.Lidar.GpuTimeout"), 2.0f,
+                                                      TEXT("seconds a GPU scan may take before the read falls back to the CPU"), ECVF_Default);
+
+
+struct FLidarGpuRequest
+{
+    TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
+
+    FTransform SensorPose;
+    double     Stamp = 0.0;
+    uint32     Rows  = 0;
+    uint32     Cols  = 0;
+    int32      NumRays = 0;
+    bool       bSubmitted = false;
+    double     GameThreadMs = 0.0;
+};
+
+bool ULidar::UsesGpu() const {
+    return LidarConfig.Backend != ELidarBackend::Cpu && FLidarRayTraceViewExtension::IsRayTracingAvailable();
+}
+
+void ULidar::DrainInstructions() {
+    std::shared_ptr<FInstruction<ULidar>> Instruction;
+    while (InstructionQueue->Dequeue(Instruction)) {
+        Instruction->Run(*this);
+    }
+}
+
+void ULidar::EnsureGpuCapture() {
+
+    if (GpuCapture) {
+        return;
+    }
+
+    GpuTarget = NewObject<UTextureRenderTarget2D>(this, TEXT("LidarRayTraceTarget"));
+    GpuTarget->RenderTargetFormat = RTF_RGBA8;
+    GpuTarget->InitAutoFormat(8, 8);
+    GpuTarget->UpdateResourceImmediate(true);
+
+    GpuCapture = NewObject<USceneCaptureComponent2D>(this, TEXT("LidarRayTraceCapture"));
+    GpuCapture->SetupAttachment(this);
+    GpuCapture->SetUsingAbsoluteLocation(true);
+    GpuCapture->SetUsingAbsoluteRotation(true);
+    GpuCapture->TextureTarget                = GpuTarget;
+    GpuCapture->bCaptureEveryFrame           = false;
+    GpuCapture->bCaptureOnMovement           = false;
+    GpuCapture->bAlwaysPersistRenderingState = true;  // the renderer gathers ray-tracing primitives only for views with a state
+    GpuCapture->CaptureSource                = SCS_SceneColorHDR;
+    GpuCapture->FOVAngle                     = 90.0f;
+    GpuCapture->bUseRayTracingIfEnabled      = true;
+
+    // the plugin GI method is what makes the renderer build a TLAS for this view alone; nothing else in it is wanted
+    FPostProcessSettings& Post                         = GpuCapture->PostProcessSettings;
+    Post.bOverride_DynamicGlobalIlluminationMethod     = true;
+    Post.DynamicGlobalIlluminationMethod               = EDynamicGlobalIlluminationMethod::Plugin;
+    Post.bOverride_ReflectionMethod                    = true;
+    Post.ReflectionMethod                              = EReflectionMethod::None;
+
+    FEngineShowFlags& Show = GpuCapture->ShowFlags;
+    Show.SetPostProcessing(false);
+    Show.SetLighting(false);
+    Show.SetDynamicShadows(false);
+    Show.SetGlobalIllumination(false);
+    Show.SetLumenGlobalIllumination(false);
+    Show.SetLumenReflections(false);
+    Show.SetReflectionEnvironment(false);
+    Show.SetScreenSpaceReflections(false);
+    Show.SetAmbientOcclusion(false);
+    Show.SetDistanceFieldAO(false);
+    Show.SetFog(false);
+    Show.SetVolumetricFog(false);
+    Show.SetAtmosphere(false);
+    Show.SetCloud(false);
+    Show.SetTranslucency(false);
+    Show.SetParticles(false);
+    Show.SetDecals(false);
+    Show.SetBloom(false);
+    Show.SetMotionBlur(false);
+    Show.SetAntiAliasing(false);
+    Show.SetTemporalAA(false);
+
+    GpuCapture->RegisterComponent();
+}
+
+TSharedPtr<const TArray<FVector4f>, ESPMode::ThreadSafe> ULidar::RasterRays() {
+
+    const FIntVector4 Key(LidarConfig.BeamHorRays, LidarConfig.BeamVertRays, 0, 0);
+    const FVector4    Fov(LidarConfig.FOVHorLeft, LidarConfig.FOVHorRight, LidarConfig.FOVVertUp, LidarConfig.FOVVertDown);
+    if (RasterRayCache.IsValid() && Key == RasterRayKey && Fov == RasterFovKey) {
+        return RasterRayCache;
+    }
+
+    const int32  H            = LidarConfig.BeamHorRays;
+    const int32  V            = LidarConfig.BeamVertRays;
+    const double TotalHorFov  = LidarConfig.FOVHorLeft + LidarConfig.FOVHorRight;
+    const double TotalVertFov = LidarConfig.FOVVertUp + LidarConfig.FOVVertDown;
+
+    // the CPU raster's angles with an identity mount, in its wire order
+    TSharedPtr<TArray<FVector4f>, ESPMode::ThreadSafe> Rays = MakeShared<TArray<FVector4f>, ESPMode::ThreadSafe>();
+    Rays->SetNumUninitialized(H * V);
+    ParallelFor(H, [&](int32 Row) {
+        const double  HorAngle       = -LidarConfig.FOVHorLeft + (TotalHorFov * (double)Row / (double)(H - 1.0));
+        const FVector RotatedForward = FVector::ForwardVector.RotateAngleAxis(HorAngle, FVector::UpVector);
+        const FVector RotatedRight   = FVector::RightVector.RotateAngleAxis(HorAngle, FVector::UpVector);
+        for (int32 Col = 0; Col < V; ++Col) {
+            const double  VertAngle = -LidarConfig.FOVVertDown + (TotalVertFov * (double)Col / (double)(V - 1.0));
+            const FVector Dir       = RotatedForward.RotateAngleAxis(-VertAngle, RotatedRight).GetSafeNormal();
+            (*Rays)[(V - 1 - Col) * H + Row] = FVector4f(Dir.X, Dir.Y, Dir.Z, 0.0f);
+        }
+    });
+
+    RasterRayCache = Rays;
+    RasterRayKey   = Key;
+    RasterFovKey   = Fov;
+    return RasterRayCache;
+}
+
+void ULidar::SubmitGpuScan(FLivoxCursor& Cursor, FLidarGpuRequest& Request) {
+
+    const double From  = FPlatformTime::Seconds();
+    UWorld*      World = Owner ? Owner->GetWorld() : nullptr;
+    if (!World) {
+        return;
+    }
+
+    EnsureGpuCapture();
+    FTextureRenderTargetResource* Resource = GpuTarget ? GpuTarget->GameThread_GetRenderTargetResource() : nullptr;
+    if (!Resource) {
+        return;
+    }
+
+    const FTransform DroneTransform = Owner->GetActorTransform();
+    const FTransform LidarPose(DroneTransform.GetRotation() * LidarConfig.Orientation.Quaternion(), DroneTransform.TransformPosition(LidarConfig.Offset));
+
+    FLidarGpuJob Job;
+    Job.Slot = Request.Slot;
+
+    if (LidarConfig.Livox) {
+        FLivoxSlice Slice;
+        if (!PlanLivoxSlice(Cursor, Slice)) {
+            return;
+        }
+        TSharedPtr<TArray<FVector4f>, ESPMode::ThreadSafe> Rays = MakeShared<TArray<FVector4f>, ESPMode::ThreadSafe>();
+        Rays->SetNumUninitialized(Slice.NumRays);
+        for (int32 i = 0; i < Slice.NumRays; ++i) {
+            const FVector3f& Dir = Slice.Pattern->Directions[(Slice.PatternStart + i) % Slice.Pattern->Num()];
+            (*Rays)[i]           = FVector4f(Dir.GetSafeNormal(), static_cast<float>(Slice.BatchAlpha(i / Slice.RaysPerBatch)));
+        }
+        Job.Rays       = Rays;
+        Job.StartPose  = Slice.FromPose;
+        Job.EndPose    = Slice.RefPose;
+        Job.MinRangeCm = Slice.MinRangeCm;
+        Job.MaxRangeCm = Slice.BeamLength;
+        CommitLivoxSlice(Cursor, Slice);
+
+        Request.SensorPose = Slice.RefPose;
+        Request.Stamp      = Slice.Now;
+    } else {
+        Job.Rays       = RasterRays();
+        Job.StartPose  = LidarPose;
+        Job.EndPose    = LidarPose;
+        Job.MaxRangeCm = LidarConfig.BeamLength;
+
+        Request.SensorPose = LidarPose;
+        Request.Stamp      = World->GetTimeSeconds();
+        Request.Rows       = LidarConfig.BeamVertRays;
+        Request.Cols       = LidarConfig.BeamHorRays;
+    }
+
+    // as IgnoreOwnBody: the housing if there is one, else the whole robot
+    TArray<UPrimitiveComponent*> Own;
+    if (UPrimitiveComponent* Body = GetSensorBody()) {
+        Own.Add(Body);
+    } else {
+        Owner->GetComponents<UPrimitiveComponent>(Own);
+    }
+    for (const UPrimitiveComponent* Component : Own) {
+        Job.Skip.Add(Component->GetPrimitiveSceneId());
+    }
+    if (!Owner->GetVisibilityOtherDrones()) {
+        for (TActorIterator<ARobotPawn> It(World); It; ++It) {
+            if (*It != Owner) {
+                TArray<UPrimitiveComponent*> Theirs;
+                It->GetComponents<UPrimitiveComponent>(Theirs);
+                for (const UPrimitiveComponent* Component : Theirs) {
+                    Job.Drop.Add(Component->GetPrimitiveSceneId());
+                }
+            }
+        }
+    }
+
+    GpuCapture->SetWorldLocationAndRotation(LidarPose.GetLocation(), LidarPose.GetRotation());
+    Request.NumRays = Job.Rays->Num();
+    FLidarRayTraceViewExtension::Get()->SubmitJob(Resource, MoveTemp(Job));
+
+    // ray-tracing culling is per render: off for this capture only, so small and far objects stay in the lidar's range
+    static IConsoleVariable* Culling = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing.Culling"));
+    const int32              Was     = Culling ? Culling->GetInt() : 0;
+    if (Was != 0) {
+        Culling->Set(0, ECVF_SetByCode);
+    }
+    GpuCapture->CaptureScene();
+    if (Was != 0) {
+        Culling->Set(Was, ECVF_SetByCode);
+    }
+
+    Request.bSubmitted   = true;
+    Request.GameThreadMs = 1000.0 * (FPlatformTime::Seconds() - From);
+}
+
+void ULidar::RebuildComponentIndex() {
+    TMap<uint32, TWeakObjectPtr<const UPrimitiveComponent>> Index;
+    if (UWorld* World = Owner ? Owner->GetWorld() : nullptr) {
+        for (TActorIterator<AActor> It(World); It; ++It) {
+            TInlineComponentArray<UPrimitiveComponent*> Components(*It);
+            for (const UPrimitiveComponent* Component : Components) {
+                Index.Add(Component->GetPrimitiveSceneId().PrimIDValue, Component);
+            }
+        }
+    }
+    FScopeLock Lock(&ComponentIndexLock);
+    ComponentIndex = MoveTemp(Index);
+}
+
+bool ULidar::ScanGpu(FLivoxCursor& Cursor, const uint8 Channels, FLidarScan& Out) {
+
+    const double From = FPlatformTime::Seconds();
+
+    auto Request          = std::make_shared<FLidarGpuRequest>();
+    Request->Slot           = MakeShared<FCameraReadback, ESPMode::ThreadSafe>();
+    Request->Slot->Readback = MakeUnique<FRHIGPUTextureReadback>(TEXT("FlightForgeLidarReadback"));
+
+    auto Instruction      = std::make_shared<FInstruction<ULidar>>();
+    Instruction->Function = [Request, &Cursor](ULidar& Lidar) { Lidar.SubmitGpuScan(Cursor, *Request); };
+    InstructionQueue->Enqueue(Instruction);
+    if (!Instruction->Wait() || !Request->bSubmitted) {
+        return false;
+    }
+
+    const double Deadline = FPlatformTime::Seconds() + CVarLidarGpuTimeout.GetValueOnAnyThread();
+    while (!Request->Slot->Copied->Wait(5)) {
+        if (FPlatformTime::Seconds() > Deadline) {
+            return false;
+        }
+        RequestResolve(Request->Slot);
+    }
+
+    const TArray<FLinearColor>& Hits  = Request->Slot->Float4Pixels;
+    const int32                 Count = Request->NumRays;
+    if (Hits.Num() < Count || Count == 0) {
+        return false;
+    }
+
+    const bool bWantIntensity = (Channels & LidarChannelIntensity) != 0;
+    const bool bWantLabels    = (Channels & LidarChannelLabels) != 0;
+
+    Out.bGpu       = true;
+    Out.SensorPose = Request->SensorPose;
+    Out.Stamp      = Request->Stamp;
+    Out.Rows       = Request->Rows;
+    Out.Cols       = Request->Cols;
+
+    Out.Points.assign(Count, FVector3f(std::numeric_limits<float>::quiet_NaN()));
+    std::vector<uint32> Ids(Count, 0u);
+    for (int32 i = 0; i < Count; ++i) {
+        const FLinearColor& Hit = Hits[i];
+        if (!FMath::IsNaN(Hit.R)) {
+            Out.Points[i] = FVector3f(FWireFrame::ToRightHanded(FVector(Hit.R, Hit.G, Hit.B)));
+            FMemory::Memcpy(&Ids[i], &Hit.A, sizeof(uint32));
+        }
+    }
+
+    Out.Intensity.assign(bWantIntensity ? Count : 0, -1);
+    Out.ClassId.assign(bWantLabels ? Count : 0, -1);
+    Out.InstanceId.assign(bWantLabels ? Count : 0, 0u);
+
+    if (bWantIntensity || bWantLabels) {
+        TSet<uint32> Unique;
+        for (const uint32 Id : Ids) {
+            Unique.Add(Id);
+        }
+        bool         bMissing = false;
+        {
+            FScopeLock Lock(&ComponentIndexLock);
+            for (const uint32 Id : Unique) {
+                bMissing |= Id != 0 && !ComponentIndex.Contains(Id);
+            }
+        }
+        if (bMissing) {
+            auto Rebuild      = std::make_shared<FInstruction<ULidar>>();
+            Rebuild->Function = [](ULidar& Lidar) { Lidar.RebuildComponentIndex(); };
+            InstructionQueue->Enqueue(Rebuild);
+            Rebuild->Wait();
+        }
+
+        TMap<uint32, const UPrimitiveComponent*> Components;
+        {
+            FScopeLock Lock(&ComponentIndexLock);
+            for (const uint32 Id : Unique) {
+                const TWeakObjectPtr<const UPrimitiveComponent>* Found = ComponentIndex.Find(Id);
+                Components.Add(Id, Found ? Found->Get() : nullptr);
+            }
+        }
+
+        TMap<uint32, int32>                     IntensityById;
+        std::vector<const AActor*>              HitActors(bWantLabels ? Count : 0, nullptr);
+        std::vector<const UPrimitiveComponent*> HitComponents(bWantLabels ? Count : 0, nullptr);
+        for (int32 i = 0; i < Count; ++i) {
+            if (!Ids[i]) {
+                continue;
+            }
+            const UPrimitiveComponent* Component = Components.FindRef(Ids[i]);
+            if (bWantIntensity) {
+                int32* Known = IntensityById.Find(Ids[i]);
+                if (!Known) {
+                    // a simple-collision trace reports the body's simple material, so that is the one compared
+                    const UPhysicalMaterial* PhysMat = Component ? Component->BodyInstance.GetSimplePhysicalMaterial() : nullptr;
+                    Known                            = &IntensityById.Add(Ids[i], PhysMat ? MaterialIntensity(PhysMat->GetName()) : -1);
+                }
+                Out.Intensity[i] = *Known;
+            }
+            if (bWantLabels) {
+                HitComponents[i] = Component;
+                HitActors[i]     = Component ? Component->GetOwner() : nullptr;
+            }
+        }
+        if (bWantLabels) {
+            Label(Out, HitActors, HitComponents);
+        }
+    }
+
+    if (CVarLidarProfile.GetValueOnAnyThread() != 0) {
+        UE_LOG(LogTemp, Warning, TEXT("Lidar profile: gpu, %d points, channels %d, game thread %.2f ms, total %.1f ms"), Count, Channels, Request->GameThreadMs,
+               1000.0 * (FPlatformTime::Seconds() - From));
+    }
+    return true;
 }
 
 //}
@@ -556,7 +960,14 @@ void ULidar::GetData(const flightforge::wire::Request& Request, FWireReply& Repl
     FLidarScan S;
     LidarHitsCriticalSection->Lock();
     if (!ReuseLastScan(Channels, S)) {
-        Scan(LivoxCursor, Channels, S);
+        if (!UsesGpu() || !ScanGpu(LivoxCursor, Channels, S)) {
+            if (UsesGpu() && !bWarnedGpuFallback) {
+                bWarnedGpuFallback = true;
+                UE_LOG(LogTemp, Warning, TEXT("Lidar %d: the GPU scan gave nothing back, tracing on the CPU"), GetSensorID());
+            }
+            S = FLidarScan();
+            Scan(LivoxCursor, Channels, S);
+        }
         if (!LidarConfig.Livox) {
             LastScan         = S;
             LastScanChannels = Channels;
@@ -574,7 +985,8 @@ void ULidar::GetData(const flightforge::wire::Request& Request, FWireReply& Repl
     const auto ClassId    = Reply.CopyVector(S.ClassId.data(), S.ClassId.size());
     const auto InstanceId = Reply.CopyVector(S.InstanceId.data(), S.InstanceId.size());
 
-    Reply.Set(flightforge::wire::CreateLidarScanResponse(Reply.Builder, S.Stamp, &Pose, S.Rows, S.Cols, Points, Intensity, ClassId, InstanceId));
+    Reply.Set(flightforge::wire::CreateLidarScanResponse(Reply.Builder, S.Stamp, &Pose, S.Rows, S.Cols, Points, Intensity, ClassId, InstanceId,
+                                                         S.bGpu ? flightforge::wire::LidarBackend::GPU : flightforge::wire::LidarBackend::CPU));
 }
 
 void ULidar::GetConfig(FWireReply& Reply)
@@ -598,6 +1010,7 @@ void ULidar::GetConfig(FWireReply& Reply)
     Table.livox            = C.Livox;
     Table.livox_pattern    = TCHAR_TO_UTF8(*C.LivoxSensor);
     Table.show_sensor_body = C.ShowSensorBody;
+    Table.backend          = static_cast<flightforge::wire::LidarBackend>(C.Backend);
 
     const auto Offset = flightforge::wire::CreateLidarConfig(Reply.Builder, &Table);
     Reply.Set(flightforge::wire::CreateGetLidarConfigResponse(Reply.Builder, Offset));
@@ -621,6 +1034,11 @@ void ULidar::SetConfig(const flightforge::wire::Request& Request, FWireReply& Re
         return;
     }
 
+    if (In->backend == flightforge::wire::LidarBackend::GPU && !FLidarRayTraceViewExtension::IsRayTracingAvailable()) {
+        Reply.Fail(TEXT("backend GPU needs hardware ray tracing (r.RayTracing, an SM6 RHI and a GPU with ray queries); use AUTO or CPU"));
+        return;
+    }
+
     FLidarConfig Config  = GetLidarConfig();
     Config.Enable         = In->enable;
     Config.ShowBeams      = In->show_beams;
@@ -636,6 +1054,7 @@ void ULidar::SetConfig(const flightforge::wire::Request& Request, FWireReply& Re
     Config.Livox          = In->livox;
     Config.LivoxSensor    = UTF8_TO_TCHAR(In->livox_pattern.c_str());
     Config.ShowSensorBody = In->show_sensor_body;
+    Config.Backend        = static_cast<ELidarBackend>(In->backend);
 
     SetLidarConfig(Config);
 }

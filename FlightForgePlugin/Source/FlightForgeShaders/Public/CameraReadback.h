@@ -27,6 +27,9 @@ struct FLIGHTFORGESHADERS_API FCameraReadback
 	bool bHalfRgba  = false;
 	bool bFloatRgba = false;
 
+	bool                 bRawFloat4 = false;
+	TArray<FLinearColor> Float4Pixels;
+
 	FIntPoint         Size = FIntPoint::ZeroValue;
 	double            Stamp = 0.0;
 

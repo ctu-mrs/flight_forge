@@ -473,6 +473,39 @@ inline const char *EnumNameFisheyeLens(FisheyeLens e) {
   return EnumNamesFisheyeLens()[index];
 }
 
+enum class LidarBackend : uint8_t {
+  AUTO = 0,
+  CPU = 1,
+  GPU = 2,
+  MIN = AUTO,
+  MAX = GPU
+};
+
+inline const LidarBackend (&EnumValuesLidarBackend())[3] {
+  static const LidarBackend values[] = {
+    LidarBackend::AUTO,
+    LidarBackend::CPU,
+    LidarBackend::GPU
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesLidarBackend() {
+  static const char * const names[4] = {
+    "AUTO",
+    "CPU",
+    "GPU",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameLidarBackend(LidarBackend e) {
+  if (::flatbuffers::IsOutRange(e, LidarBackend::AUTO, LidarBackend::GPU)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesLidarBackend()[index];
+}
+
 enum class Projection : uint8_t {
   PINHOLE = 0,
   FISHEYE_EQUIDISTANT = 1,
@@ -2952,6 +2985,7 @@ struct LidarConfigT : public ::flatbuffers::NativeTable {
   bool livox = false;
   std::string livox_pattern{};
   bool show_sensor_body = false;
+  flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO;
   LidarConfigT() = default;
   LidarConfigT(const LidarConfigT &o);
   LidarConfigT(LidarConfigT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -2976,7 +3010,8 @@ struct LidarConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_FOV_DOWN = 24,
     VT_LIVOX = 26,
     VT_LIVOX_PATTERN = 28,
-    VT_SHOW_SENSOR_BODY = 30
+    VT_SHOW_SENSOR_BODY = 30,
+    VT_BACKEND = 32
   };
   bool enable() const {
     return GetField<uint8_t>(VT_ENABLE, 0) != 0;
@@ -3020,6 +3055,9 @@ struct LidarConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool show_sensor_body() const {
     return GetField<uint8_t>(VT_SHOW_SENSOR_BODY, 0) != 0;
   }
+  flightforge::wire::LidarBackend backend() const {
+    return static_cast<flightforge::wire::LidarBackend>(GetField<uint8_t>(VT_BACKEND, 0));
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3038,6 +3076,7 @@ struct LidarConfig FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_LIVOX_PATTERN) &&
            verifier.VerifyString(livox_pattern()) &&
            VerifyField<uint8_t>(verifier, VT_SHOW_SENSOR_BODY, 1) &&
+           VerifyField<uint8_t>(verifier, VT_BACKEND, 1) &&
            verifier.EndTable();
   }
   LidarConfigT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3091,6 +3130,9 @@ struct LidarConfigBuilder {
   void add_show_sensor_body(bool show_sensor_body) {
     fbb_.AddElement<uint8_t>(LidarConfig::VT_SHOW_SENSOR_BODY, static_cast<uint8_t>(show_sensor_body), 0);
   }
+  void add_backend(flightforge::wire::LidarBackend backend) {
+    fbb_.AddElement<uint8_t>(LidarConfig::VT_BACKEND, static_cast<uint8_t>(backend), 0);
+  }
   explicit LidarConfigBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3117,7 +3159,8 @@ inline ::flatbuffers::Offset<LidarConfig> CreateLidarConfig(
     double fov_down = 0.0,
     bool livox = false,
     ::flatbuffers::Offset<::flatbuffers::String> livox_pattern = 0,
-    bool show_sensor_body = false) {
+    bool show_sensor_body = false,
+    flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO) {
   LidarConfigBuilder builder_(_fbb);
   builder_.add_fov_down(fov_down);
   builder_.add_fov_up(fov_up);
@@ -3129,6 +3172,7 @@ inline ::flatbuffers::Offset<LidarConfig> CreateLidarConfig(
   builder_.add_mount(mount);
   builder_.add_vertical_rays(vertical_rays);
   builder_.add_horizontal_rays(horizontal_rays);
+  builder_.add_backend(backend);
   builder_.add_show_sensor_body(show_sensor_body);
   builder_.add_livox(livox);
   builder_.add_show_beams(show_beams);
@@ -3156,7 +3200,8 @@ inline ::flatbuffers::Offset<LidarConfig> CreateLidarConfigDirect(
     double fov_down = 0.0,
     bool livox = false,
     const char *livox_pattern = nullptr,
-    bool show_sensor_body = false) {
+    bool show_sensor_body = false,
+    flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO) {
   auto livox_pattern__ = livox_pattern ? _fbb.CreateString(livox_pattern) : 0;
   return flightforge::wire::CreateLidarConfig(
       _fbb,
@@ -3173,7 +3218,8 @@ inline ::flatbuffers::Offset<LidarConfig> CreateLidarConfigDirect(
       fov_down,
       livox,
       livox_pattern__,
-      show_sensor_body);
+      show_sensor_body,
+      backend);
 }
 
 ::flatbuffers::Offset<LidarConfig> CreateLidarConfig(::flatbuffers::FlatBufferBuilder &_fbb, const LidarConfigT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -5276,6 +5322,7 @@ struct LidarScanResponseT : public ::flatbuffers::NativeTable {
   std::vector<int32_t> intensity{};
   std::vector<int32_t> class_id{};
   std::vector<uint32_t> instance_id{};
+  flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO;
   LidarScanResponseT() = default;
   LidarScanResponseT(const LidarScanResponseT &o);
   LidarScanResponseT(LidarScanResponseT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -5294,7 +5341,8 @@ struct LidarScanResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
     VT_POINTS = 12,
     VT_INTENSITY = 14,
     VT_CLASS_ID = 16,
-    VT_INSTANCE_ID = 18
+    VT_INSTANCE_ID = 18,
+    VT_BACKEND = 20
   };
   double stamp() const {
     return GetField<double>(VT_STAMP, 0.0);
@@ -5320,6 +5368,9 @@ struct LidarScanResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   const ::flatbuffers::Vector<uint32_t> *instance_id() const {
     return GetPointer<const ::flatbuffers::Vector<uint32_t> *>(VT_INSTANCE_ID);
   }
+  flightforge::wire::LidarBackend backend() const {
+    return static_cast<flightforge::wire::LidarBackend>(GetField<uint8_t>(VT_BACKEND, 0));
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -5335,6 +5386,7 @@ struct LidarScanResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
            verifier.VerifyVector(class_id()) &&
            VerifyOffset(verifier, VT_INSTANCE_ID) &&
            verifier.VerifyVector(instance_id()) &&
+           VerifyField<uint8_t>(verifier, VT_BACKEND, 1) &&
            verifier.EndTable();
   }
   LidarScanResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5370,6 +5422,9 @@ struct LidarScanResponseBuilder {
   void add_instance_id(::flatbuffers::Offset<::flatbuffers::Vector<uint32_t>> instance_id) {
     fbb_.AddOffset(LidarScanResponse::VT_INSTANCE_ID, instance_id);
   }
+  void add_backend(flightforge::wire::LidarBackend backend) {
+    fbb_.AddElement<uint8_t>(LidarScanResponse::VT_BACKEND, static_cast<uint8_t>(backend), 0);
+  }
   explicit LidarScanResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5390,7 +5445,8 @@ inline ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponse(
     ::flatbuffers::Offset<::flatbuffers::Vector<const flightforge::wire::Vec3f *>> points = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intensity = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> class_id = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<uint32_t>> instance_id = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint32_t>> instance_id = 0,
+    flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO) {
   LidarScanResponseBuilder builder_(_fbb);
   builder_.add_stamp(stamp);
   builder_.add_instance_id(instance_id);
@@ -5400,6 +5456,7 @@ inline ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponse(
   builder_.add_cols(cols);
   builder_.add_rows(rows);
   builder_.add_sensor_pose(sensor_pose);
+  builder_.add_backend(backend);
   return builder_.Finish();
 }
 
@@ -5417,7 +5474,8 @@ inline ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponseDirect(
     const std::vector<flightforge::wire::Vec3f> *points = nullptr,
     const std::vector<int32_t> *intensity = nullptr,
     const std::vector<int32_t> *class_id = nullptr,
-    const std::vector<uint32_t> *instance_id = nullptr) {
+    const std::vector<uint32_t> *instance_id = nullptr,
+    flightforge::wire::LidarBackend backend = flightforge::wire::LidarBackend::AUTO) {
   auto points__ = points ? _fbb.CreateVectorOfStructs<flightforge::wire::Vec3f>(*points) : 0;
   auto intensity__ = intensity ? _fbb.CreateVector<int32_t>(*intensity) : 0;
   auto class_id__ = class_id ? _fbb.CreateVector<int32_t>(*class_id) : 0;
@@ -5431,7 +5489,8 @@ inline ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponseDirect(
       points__,
       intensity__,
       class_id__,
-      instance_id__);
+      instance_id__,
+      backend);
 }
 
 ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponse(::flatbuffers::FlatBufferBuilder &_fbb, const LidarScanResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -7336,7 +7395,8 @@ inline bool operator==(const LidarConfigT &lhs, const LidarConfigT &rhs) {
       (lhs.fov_down == rhs.fov_down) &&
       (lhs.livox == rhs.livox) &&
       (lhs.livox_pattern == rhs.livox_pattern) &&
-      (lhs.show_sensor_body == rhs.show_sensor_body);
+      (lhs.show_sensor_body == rhs.show_sensor_body) &&
+      (lhs.backend == rhs.backend);
 }
 
 inline bool operator!=(const LidarConfigT &lhs, const LidarConfigT &rhs) {
@@ -7358,7 +7418,8 @@ inline LidarConfigT::LidarConfigT(const LidarConfigT &o)
         fov_down(o.fov_down),
         livox(o.livox),
         livox_pattern(o.livox_pattern),
-        show_sensor_body(o.show_sensor_body) {
+        show_sensor_body(o.show_sensor_body),
+        backend(o.backend) {
 }
 
 inline LidarConfigT &LidarConfigT::operator=(LidarConfigT o) FLATBUFFERS_NOEXCEPT {
@@ -7376,6 +7437,7 @@ inline LidarConfigT &LidarConfigT::operator=(LidarConfigT o) FLATBUFFERS_NOEXCEP
   std::swap(livox, o.livox);
   std::swap(livox_pattern, o.livox_pattern);
   std::swap(show_sensor_body, o.show_sensor_body);
+  std::swap(backend, o.backend);
   return *this;
 }
 
@@ -7402,6 +7464,7 @@ inline void LidarConfig::UnPackTo(LidarConfigT *_o, const ::flatbuffers::resolve
   { auto _e = livox(); _o->livox = _e; }
   { auto _e = livox_pattern(); if (_e) _o->livox_pattern = _e->str(); }
   { auto _e = show_sensor_body(); _o->show_sensor_body = _e; }
+  { auto _e = backend(); _o->backend = _e; }
 }
 
 inline ::flatbuffers::Offset<LidarConfig> CreateLidarConfig(::flatbuffers::FlatBufferBuilder &_fbb, const LidarConfigT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -7426,6 +7489,7 @@ inline ::flatbuffers::Offset<LidarConfig> LidarConfig::Pack(::flatbuffers::FlatB
   auto _livox = _o->livox;
   auto _livox_pattern = _o->livox_pattern.empty() ? 0 : _fbb.CreateString(_o->livox_pattern);
   auto _show_sensor_body = _o->show_sensor_body;
+  auto _backend = _o->backend;
   return flightforge::wire::CreateLidarConfig(
       _fbb,
       _enable,
@@ -7441,7 +7505,8 @@ inline ::flatbuffers::Offset<LidarConfig> LidarConfig::Pack(::flatbuffers::FlatB
       _fov_down,
       _livox,
       _livox_pattern,
-      _show_sensor_body);
+      _show_sensor_body,
+      _backend);
 }
 
 
@@ -8855,7 +8920,8 @@ inline bool operator==(const LidarScanResponseT &lhs, const LidarScanResponseT &
       (lhs.points == rhs.points) &&
       (lhs.intensity == rhs.intensity) &&
       (lhs.class_id == rhs.class_id) &&
-      (lhs.instance_id == rhs.instance_id);
+      (lhs.instance_id == rhs.instance_id) &&
+      (lhs.backend == rhs.backend);
 }
 
 inline bool operator!=(const LidarScanResponseT &lhs, const LidarScanResponseT &rhs) {
@@ -8871,7 +8937,8 @@ inline LidarScanResponseT::LidarScanResponseT(const LidarScanResponseT &o)
         points(o.points),
         intensity(o.intensity),
         class_id(o.class_id),
-        instance_id(o.instance_id) {
+        instance_id(o.instance_id),
+        backend(o.backend) {
 }
 
 inline LidarScanResponseT &LidarScanResponseT::operator=(LidarScanResponseT o) FLATBUFFERS_NOEXCEPT {
@@ -8883,6 +8950,7 @@ inline LidarScanResponseT &LidarScanResponseT::operator=(LidarScanResponseT o) F
   std::swap(intensity, o.intensity);
   std::swap(class_id, o.class_id);
   std::swap(instance_id, o.instance_id);
+  std::swap(backend, o.backend);
   return *this;
 }
 
@@ -8903,6 +8971,7 @@ inline void LidarScanResponse::UnPackTo(LidarScanResponseT *_o, const ::flatbuff
   { auto _e = intensity(); if (_e) { _o->intensity.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intensity[_i] = _e->Get(_i); } } else { _o->intensity.resize(0); } }
   { auto _e = class_id(); if (_e) { _o->class_id.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->class_id[_i] = _e->Get(_i); } } else { _o->class_id.resize(0); } }
   { auto _e = instance_id(); if (_e) { _o->instance_id.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->instance_id[_i] = _e->Get(_i); } } else { _o->instance_id.resize(0); } }
+  { auto _e = backend(); _o->backend = _e; }
 }
 
 inline ::flatbuffers::Offset<LidarScanResponse> CreateLidarScanResponse(::flatbuffers::FlatBufferBuilder &_fbb, const LidarScanResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -8921,6 +8990,7 @@ inline ::flatbuffers::Offset<LidarScanResponse> LidarScanResponse::Pack(::flatbu
   auto _intensity = _o->intensity.size() ? _fbb.CreateVector(_o->intensity) : 0;
   auto _class_id = _o->class_id.size() ? _fbb.CreateVector(_o->class_id) : 0;
   auto _instance_id = _o->instance_id.size() ? _fbb.CreateVector(_o->instance_id) : 0;
+  auto _backend = _o->backend;
   return flightforge::wire::CreateLidarScanResponse(
       _fbb,
       _stamp,
@@ -8930,7 +9000,8 @@ inline ::flatbuffers::Offset<LidarScanResponse> LidarScanResponse::Pack(::flatbu
       _points,
       _intensity,
       _class_id,
-      _instance_id);
+      _instance_id,
+      _backend);
 }
 
 
