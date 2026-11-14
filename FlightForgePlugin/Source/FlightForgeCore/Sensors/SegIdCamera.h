@@ -32,6 +32,10 @@ protected:
 
 	double LastSubmitWall = 0.0;
 
+	void ApplyLeanCapture();
+	FEngineShowFlags BaseShowFlags{ESFIM_Game};
+	int32            LeanApplied = -1;
+
 public:
 	virtual void DrainInstructions() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

@@ -71,6 +71,7 @@ void USegmentationTagger::LoadClassMap()
 {
 	const USegmentationTaggerSettings* Settings = GetDefault<USegmentationTaggerSettings>();
 
+	ClassGeneration++;
 	Rules.Reset();
 	ClassesById.Reset();
 	IdByPath.Reset();
@@ -304,6 +305,7 @@ void USegmentationTagger::SetExplicitClass(const AActor* Actor, const int32 Clas
 {
 	FWriteScopeLock Lock(ExplicitClassesLock);
 	ExplicitClasses.Add(Actor, Class);
+	ClassGeneration++;
 }
 
 uint8 USegmentationTagger::GetOrAssignStencilSlot(const AActor* Actor)
@@ -390,6 +392,57 @@ uint32 USegmentationTagger::GetOrAssignInstanceId(const AActor* Actor)
 	return Id;
 }
 
+static TAutoConsoleVariable<int32> CVarSegIdClassCache(TEXT("FlightForge.SegId.ClassCache"), 1,
+                                                       TEXT("1: the instance camera reuses each component's class and actor path until its mesh, tags or the class rules change"));
+
+/* CachedClassOf() / CachedPath() //{ */
+
+int32 USegmentationTagger::CachedClassOf(const AActor* Actor, const UPrimitiveComponent* Component)
+{
+	if (CVarSegIdClassCache.GetValueOnGameThread() == 0)
+	{
+		return ClassOf(Actor, Component);
+	}
+
+	const UObject* Mesh = nullptr;
+	if (const UStaticMeshComponent* Static = Cast<UStaticMeshComponent>(Component))
+	{
+		Mesh = Static->GetStaticMesh();
+	}
+	else if (const USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Component))
+	{
+		Mesh = Skeletal->GetSkeletalMeshAsset();
+	}
+	uint32 TagsHash = Actor->Tags.Num();
+	for (const FName& Tag : Actor->Tags)
+	{
+		TagsHash = HashCombineFast(TagsHash, GetTypeHash(Tag));
+	}
+	const uint32 Generation = ClassGeneration.load();
+
+	FCachedClass& Entry = ClassCache.FindOrAdd(Component);
+	if (Entry.Generation != Generation || Entry.Mesh != Mesh || Entry.TagsHash != TagsHash)
+	{
+		Entry.Mesh       = Mesh;
+		Entry.TagsHash   = TagsHash;
+		Entry.Generation = Generation;
+		Entry.Class      = ClassOf(Actor, Component);
+	}
+	return Entry.Class;
+}
+
+const FString& USegmentationTagger::CachedPath(const AActor* Actor)
+{
+	FString& Path = PathCache.FindOrAdd(Actor);
+	if (Path.IsEmpty() || CVarSegIdClassCache.GetValueOnGameThread() == 0)
+	{
+		Path = Actor->GetPathName();
+	}
+	return Path;
+}
+
+//}
+
 static TAutoConsoleVariable<int32> CVarSegIdDisallowNanite(TEXT("FlightForge.SegId.DisallowNanite"), 0,
                                                             TEXT("render Nanite meshes through the classic path so the instance segmentation can draw them"));
 
@@ -410,6 +463,24 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 
 	TSet<uint32> MappedIds;
 	int32        SlotlessNanite = 0;
+
+	if (++CollectCalls % 600 == 0)
+	{
+		for (auto It = ClassCache.CreateIterator(); It; ++It)
+		{
+			if (!It.Key().IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+		for (auto It = PathCache.CreateIterator(); It; ++It)
+		{
+			if (!It.Key().IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+	}
 
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -441,7 +512,7 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 			}
 
 			const uint32       Id    = GetOrAssignInstanceId(Actor);
-			const int32        Class = FMath::Clamp(ClassOf(Actor, Component), 0, 255);
+			const int32        Class = FMath::Clamp(CachedClassOf(Actor, Component), 0, 255);
 			const FLinearColor IdColor((Id & 0xFF) / 255.0f, ((Id >> 8) & 0xFF) / 255.0f, ((Id >> 16) & 0xFF) / 255.0f, Class / 255.0f);
 
 			if (bNanite && !bDisallowNanite)
@@ -481,8 +552,8 @@ void USegmentationTagger::CollectInstanceItems(TArray<FSegIdDrawItem>& OutItems,
 			{
 				FSegInstanceEntry Entry;
 				Entry.Id      = static_cast<int32>(Id);
-				Entry.ClassId = ClassOf(Actor, FirstDrawn);
-				Entry.Actor   = Actor->GetPathName();
+				Entry.ClassId = CachedClassOf(Actor, FirstDrawn);
+				Entry.Actor   = CachedPath(Actor);
 				OutMap.Add(MoveTemp(Entry));
 			}
 		}

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -144,6 +146,22 @@ private:
 	FCriticalSection InstanceIdsLock;  // the lidar resolves ids on its server thread
 
 	const FSegmentationTagRule* FindRule(const AActor* Actor, const UPrimitiveComponent* Component) const;
+
+	// game thread: ClassOf and actor paths per capture, recomputed only when the mesh, tags or class rules change
+	struct FCachedClass
+	{
+		const UObject* Mesh       = nullptr;
+		uint32         TagsHash   = 0;
+		uint32         Generation = 0;
+		int32          Class      = 0;
+	};
+	int32          CachedClassOf(const AActor* Actor, const UPrimitiveComponent* Component);
+	const FString& CachedPath(const AActor* Actor);
+
+	TMap<TWeakObjectPtr<const UPrimitiveComponent>, FCachedClass> ClassCache;
+	TMap<TWeakObjectPtr<const AActor>, FString>                   PathCache;
+	std::atomic<uint32>                                           ClassGeneration{1};
+	uint32                                                        CollectCalls = 0;
 };
 
 //}

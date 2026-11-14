@@ -7,6 +7,9 @@
 #include "FlightForgeCore/Segmentation/SegmentationTagger.h"
 #include "SensorWire.h"
 
+static TAutoConsoleVariable<int32> CVarSegIdLeanCapture(TEXT("FlightForge.SegId.LeanCapture"), 1,
+                                                        TEXT("1: the instance camera's capture skips lighting, shadows, sky and post effects, which its id image never shows"));
+
 USegIdCamera::USegIdCamera() : UCamera()
 {
 	SensorType = SensorType::INSTANCE_SEG_CAMERA;
@@ -42,6 +45,9 @@ void USegIdCamera::BeginPlay()
 	seg_camera_config_.FOVAngle            = 90;
 	seg_camera_config_.Width               = 640;
 	seg_camera_config_.Height              = 480;
+
+	BaseShowFlags = SceneCaptureComponent2D->ShowFlags;
+	ApplyLeanCapture();
 
 	SetSegIdCameraConfig(seg_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
@@ -135,6 +141,8 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		}
 	}
 
+	ApplyLeanCapture();
+
 	FTextureRenderTargetResource* Resource = RenderTarget2D ? RenderTarget2D->GameThread_GetRenderTargetResource() : nullptr;
 	UWorld*                       World    = GetWorld();
 
@@ -181,6 +189,49 @@ void USegIdCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 }
 
 /* //} */
+
+/* ApplyLeanCapture() //{ */
+
+// depth, visibility and the post-process hook stay as they were
+void USegIdCamera::ApplyLeanCapture()
+{
+	const int32 Lean = CVarSegIdLeanCapture.GetValueOnGameThread() != 0;
+	if (Lean == LeanApplied)
+	{
+		return;
+	}
+	LeanApplied = Lean;
+
+	FEngineShowFlags& Flags = SceneCaptureComponent2D->ShowFlags;
+	Flags                   = BaseShowFlags;
+	if (!Lean)
+	{
+		return;
+	}
+	Flags.SetLighting(false);
+	Flags.SetDynamicShadows(false);
+	Flags.SetLightFunctions(false);
+	Flags.SetGlobalIllumination(false);
+	Flags.SetLumenGlobalIllumination(false);
+	Flags.SetLumenReflections(false);
+	Flags.SetReflectionEnvironment(false);
+	Flags.SetScreenSpaceReflections(false);
+	Flags.SetAmbientOcclusion(false);
+	Flags.SetDistanceFieldAO(false);
+	Flags.SetContactShadows(false);
+	Flags.SetSkyLighting(false);
+	Flags.SetAtmosphere(false);
+	Flags.SetFog(false);
+	Flags.SetVolumetricFog(false);
+	Flags.SetCloud(false);
+	Flags.SetBloom(false);
+	Flags.SetEyeAdaptation(false);
+	Flags.SetLensFlares(false);
+	Flags.SetUnlitRichView(false);
+	Flags.SetUnlitViewmode(false);
+}
+
+//}
 
 /* GetInstanceSegFromServerThread() //{ */
 
