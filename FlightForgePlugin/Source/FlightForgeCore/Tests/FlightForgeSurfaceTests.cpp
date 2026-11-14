@@ -10,6 +10,9 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#if WITH_EDITOR
+#include "StaticMeshCompiler.h"
+#endif
 
 #include "FlightForgeCore/Utils/SurfaceHeightQuery.h"
 
@@ -28,9 +31,13 @@ bool FFlightForgeApiSurfaceHeightTest::RunTest(const FString& Parameters)
 	AStaticMeshActor* Block = World->SpawnActor<AStaticMeshActor>(FVector(0.0, 0.0, 50.0), FRotator::ZeroRotator);
 	if (TestNotNull(TEXT("the engine cube"), Cube) && TestNotNull(TEXT("a block"), Block))
 	{
+#if WITH_EDITOR
+		FStaticMeshCompilingManager::Get().FinishCompilation({Cube});  // a mesh still compiling gets no physics state
+#endif
 		Block->GetStaticMeshComponent()->SetStaticMesh(Cube);
 		Block->GetStaticMeshComponent()->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 		World->Tick(LEVELTICK_All, 0.01f);
+		TestTrue(TEXT("the block has a body"), Block->GetStaticMeshComponent()->GetBodyInstance()->IsValidBodyInstance());
 
 		const double   Nan = std::numeric_limits<double>::quiet_NaN();
 		TArray<double> Heights;
