@@ -9,6 +9,7 @@
 
 #include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "FlightForgeCore/SimClock.h"
 
 // a runaway scene (or a stalled client) must not grow the stream unboundedly
@@ -228,7 +229,7 @@ void UEventCamera::WaitForSlot(bool bParity)
 
 	while (InflightFrames(bParity) >= MaxInflight && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		PumpInflight();
 		if (InflightFrames(bParity) >= MaxInflight)
 		{
@@ -465,7 +466,7 @@ void UEventCamera::DrainReadback()
 
 	while ((GpuInflight.Num() > 0 || CpuInflight.Num() > 0) && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		PumpInflight();
 		if (GpuInflight.Num() > 0 || CpuInflight.Num() > 0)
 		{

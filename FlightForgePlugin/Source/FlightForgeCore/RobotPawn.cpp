@@ -25,6 +25,7 @@
 
 #include "NaniteSceneProxy.h"
 #include "FlightForgeCore/Devices/SensorDeviceLibrary.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "FlightForgeCore/FlightForgeGameInstance.h"
 #include "FlightForgeCore/Server/SimServer.h"
 
@@ -167,7 +168,7 @@ namespace
 void WaitForGpuIdle() //{
 {
   ENQUEUE_RENDER_COMMAND(FlightForgeIdleBeforeSensorTeardown)([](FRHICommandListImmediate& RHICmdList) { RHICmdList.BlockUntilGPUIdle(); });
-  FlushRenderingCommands();
+  FGpuWatchdog::FlushRenderingCommands();
 } //}
 }  // namespace
 

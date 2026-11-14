@@ -2,6 +2,8 @@
 
 #include "FlightForgeCore.h"
 
+#include "GpuWatchdog.h"
+
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "UnrealEngine.h"
@@ -36,8 +38,12 @@ void KeepOffScreenResolution(IConsoleVariable* SetRes)
 
 /* //} */
 
+/* FFlightForgeCoreModule //{ */
+
 void FFlightForgeCoreModule::StartupModule()
 {
+	FGpuWatchdog::Start();
+
 	if (FParse::Param(FCommandLine::Get(), TEXT("RenderOffScreen")))
 	{
 		if (IConsoleVariable* SetRes = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SetRes")))
@@ -46,5 +52,12 @@ void FFlightForgeCoreModule::StartupModule()
 		}
 	}
 }
+
+void FFlightForgeCoreModule::ShutdownModule()
+{
+	FGpuWatchdog::Stop();
+}
+
+/* //} */
 
 IMPLEMENT_GAME_MODULE(FFlightForgeCoreModule, FlightForgeCore);

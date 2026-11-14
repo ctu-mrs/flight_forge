@@ -4,6 +4,7 @@
 
 #include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "RenderingThread.h"
 
 UStereoCamera::UStereoCamera() : UCamera()
@@ -271,7 +272,7 @@ void UStereoCamera::DrainReadback()
 
 	while (InflightReadbacks.Num() > 0 && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		if (!PumpStereoReadback() && InflightReadbacks.Num() > 0)
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);

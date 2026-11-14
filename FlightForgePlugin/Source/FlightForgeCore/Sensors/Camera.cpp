@@ -10,6 +10,7 @@
 #include "SceneInterface.h"
 #include "TextureResource.h"
 #include "FlightForgeCore/RobotPawn.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "FlightForgeCore/SimClock.h"
 
 #include "FlightForgeCore/Utils/WireFrame.h"
@@ -241,7 +242,7 @@ bool UCamera::TakeRingSlot()
 
 	while (RingFull() && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		if (!PumpFrames() && RingFull())
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);
@@ -379,7 +380,7 @@ void UCamera::DrainReadback()
 
 	while (Pending() && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		if (!PumpReadback() && Pending())
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);

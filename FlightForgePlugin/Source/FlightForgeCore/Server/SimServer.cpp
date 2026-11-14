@@ -9,6 +9,7 @@
 #include "SocketSubsystem.h"
 #include "Sockets.h"
 
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "SimServerInternal.h"
 
 /* construction //{ */
@@ -274,6 +275,18 @@ void FSimServer::Handle(const uint8* Data, const size_t Size, FWireReply& Reply)
 		return;
 	}
 
+	const auto FailStalled = [&Reply, Request]() {
+		Reply.Builder.Clear();
+		Reply.Fail(FString::Printf(TEXT("%s: %s"), *WireName(Request->body_type()), *FGpuWatchdog::StallMessage()));
+	};
+
+	if (FGpuWatchdog::IsStalled())
+	{
+		FailStalled();
+		FinishReply(Reply, Request->seq());
+		return;
+	}
+
 	GInstructionTimedOut = false;
 	try
 	{
@@ -290,7 +303,11 @@ void FSimServer::Handle(const uint8* Data, const size_t Size, FWireReply& Reply)
 		Reply.Fail(FString::Printf(TEXT("%s failed"), *WireName(Request->body_type())));
 	}
 
-	if (GInstructionTimedOut)
+	if (FGpuWatchdog::IsStalled())
+	{
+		FailStalled();
+	}
+	else if (GInstructionTimedOut)
 	{
 		Reply.Builder.Clear();
 		Reply.Fail(FString::Printf(TEXT("%s: the game thread did not take it within %.0f s"), *WireName(Request->body_type()), FInstruction<int>::TimeoutSeconds));

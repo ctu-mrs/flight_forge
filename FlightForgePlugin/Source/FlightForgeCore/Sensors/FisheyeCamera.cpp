@@ -5,6 +5,7 @@
 
 #include "SensorWire.h"
 #include "FlightForgeCore/RobotPawn.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include "FlightForgeCore/SimClock.h"
 #include "RenderingThread.h"
 
@@ -420,7 +421,7 @@ void UFisheyeCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		const double Deadline = FPlatformTime::Seconds() + 5.0;
 		while (InflightFaceSets.Num() >= MaxInflight && FPlatformTime::Seconds() < Deadline)
 		{
-			FlushRenderingCommands();
+			FGpuWatchdog::FlushRenderingCommands();
 			if (!PumpFisheyeReadback() && InflightFaceSets.Num() >= MaxInflight)
 			{
 				FPlatformProcess::SleepNoStats(0.0002f);
@@ -516,7 +517,7 @@ void UFisheyeCamera::DrainReadback()
 
 	while (InflightFaceSets.Num() > 0 && FPlatformTime::Seconds() < Deadline)
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 		if (!PumpFisheyeReadback() && InflightFaceSets.Num() > 0)
 		{
 			FPlatformProcess::SleepNoStats(0.0002f);

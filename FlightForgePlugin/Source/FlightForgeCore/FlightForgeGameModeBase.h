@@ -29,6 +29,7 @@
 #include "RenderingThread.h"
 #include "Misc/App.h"
 #include "HAL/IConsoleManager.h"
+#include "FlightForgeCore/GpuWatchdog.h"
 #include <string>
 
 #include "FlightForgeGameModeBase.generated.h"
@@ -598,7 +599,7 @@ public:
 
 	void DrainSensors()
 	{
-		FlushRenderingCommands();
+		FGpuWatchdog::FlushRenderingCommands();
 
 		RobotPawnsCriticalSection->Lock();
 		TArray<ARobotPawn*> Pawns;
