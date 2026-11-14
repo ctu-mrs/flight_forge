@@ -134,12 +134,17 @@ TYPES = {"rgb": SensorType.RGB_CAMERA, "stereo": SensorType.STEREO_CAMERA, "fish
          "depth": SensorType.DEPTH_CAMERA, "instance": SensorType.INSTANCE_SEG_CAMERA}
 
 
+NO_TAA = False
+
+
 def add_camera(robot, kind, rate, yaw_deg=0.0, raw=False):
     pose = Pose(MOUNT, quat_from_rpy(0.0, 0.0, math.radians(yaw_deg)))
     sid = robot.add_sensor(TYPES[kind], pose=pose)
     fields = {"capture_rate": float(rate)}
     if raw:
         fields["encoding"] = {"compression": 0}
+    if NO_TAA and kind in ("rgb", "stereo"):
+        fields["enable_temporal_aa"] = False
     if kind == "stereo":
         robot.set_stereo_camera_config(sensor_id=sid, **fields)
     elif kind == "fisheye":
@@ -198,9 +203,10 @@ def run_phase(client, robot, name, args):
         rec["t0"], rec["t1"] = t0, time.time()
         return rec
 
-    if name in PER_CAPTURE:
-        cams = [(k, add_camera(robot, k, 0.0, y)) for k, y in rig(name)]
-        hz = 20.0
+    kind, _, rate = name.partition("@")
+    if kind in PER_CAPTURE:
+        cams = [(k, add_camera(robot, k, float(rate or 0.0), y)) for k, y in rig(kind)]
+        hz = float(rate) if rate else 20.0
     else:
         cams = [("rgb", add_camera(robot, "rgb", 30.0, y)) for y in range(0, 360, 60)]
         hz = 30.0
@@ -296,8 +302,8 @@ def snapshot(client, robot, sim, args, tag):
     """One raw frame per camera type in lockstep, for each cvar setting in --cvars (';'-separated settings, ',' within one)."""
     for s in robot.sensors():
         robot.remove_sensor(s.id)
-    kinds = ["rgb", "stereo", "fisheye", "depth", "instance"]
-    sids = {k: add_camera(robot, k, 0.0, raw=True) for k in kinds}
+    kinds = ["rgb", "rgb_b", "stereo", "fisheye", "depth", "instance"]
+    sids = {k: add_camera(robot, k.split("_")[0], 0.0, 60.0 if k == "rgb_b" else 0.0, raw=True) for k in kinds}
     robot2 = client.robot(robot.id)
     client.set_fixed_timestep(1.0 / 30.0)
     client.set_lockstep(True)
@@ -309,14 +315,14 @@ def snapshot(client, robot, sim, args, tag):
             for _ in range(args.settle):
                 client.step(1)
                 for k, sid in sids.items():
-                    read_fn(robot2, k)(sid)
+                    read_fn(robot2, k.split("_")[0])(sid)
             for k, sid in sids.items():
                 if k == "stereo":
                     l, r, st = robot.stereo(sid)
                     img = np.concatenate([l, r], 1)
                 elif k == "fisheye":
                     img, st = robot.fisheye(sid)
-                elif k == "rgb":
+                elif k.startswith("rgb"):
                     img, st = robot.rgb(sid)
                 elif k == "depth":
                     img, st = robot.depth(sid)
@@ -329,7 +335,28 @@ def snapshot(client, robot, sim, args, tag):
     finally:
         client.set_lockstep(False)
         client.set_fixed_timestep(0.0)
+    diffs = compare(args, tag, kinds, len(args.cvars or [""]))
+    json.dump(diffs, open(os.path.join(args.out, f"diff_{tag}.json"), "w"), indent=1)
     return out
+
+
+def compare(args, tag, kinds, settings):
+    """Mean absolute and max difference per channel of every setting against setting 0; instance ids as the share of differing pixels."""
+    diffs = {}
+    for k in kinds:
+        ref = np.load(os.path.join(args.out, f"snap_{tag}_0_{k}.npy")).astype(np.float64)
+        for i in range(1, settings):
+            img = np.load(os.path.join(args.out, f"snap_{tag}_{i}_{k}.npy")).astype(np.float64)
+            if img.shape != ref.shape:
+                diffs[f"{k}/{i}"] = {"shape": [list(ref.shape), list(img.shape)]}
+                continue
+            d = np.abs(img - ref).reshape(-1, ref.shape[-1] if ref.ndim == 3 else 1)
+            rec = {"mad": [round(float(x), 4) for x in d.mean(0)], "max": [round(float(x), 3) for x in d.max(0)]}
+            if k == "instance":
+                rec["ids_differ"] = round(float((d[:, 0] > 0).mean()), 5)
+            diffs[f"{k}/{i}"] = rec
+            print(f"diff {tag} {k} setting {i} vs 0: {rec}", flush=True)
+    return diffs
 
 
 # //}
@@ -347,12 +374,17 @@ def main():
     ap.add_argument("--extra", action="append", default=[], help="extra launch argument")
     ap.add_argument("--port", type=int, default=18600)
     ap.add_argument("--attach", action="store_true", help="use a simulator already listening on --port")
+    ap.add_argument("--repeat", type=int, default=1, help="cycle through the --cvars settings this many times, so outside GPU load hits each alike")
     ap.add_argument("--warmup", type=float, default=4.0)
     ap.add_argument("--duration", type=float, default=8.0)
     ap.add_argument("--settle", type=int, default=30, help="lockstep steps before a snapshot read")
     ap.add_argument("--snapshot", action="store_true")
     ap.add_argument("--pose", default="0,0,2", help="robot position, ground frame m")
+    ap.add_argument("--robot", default="x500", help="robot model; empty has no spinning propellers in view, for snapshots")
+    ap.add_argument("--no-taa", action="store_true", help="rgb and stereo cameras without temporal AA")
     args = ap.parse_args()
+    global NO_TAA
+    NO_TAA = args.no_taa
     args.cvars = [c for c in args.cvars.split(";")] if args.cvars else []
     os.makedirs(args.out, exist_ok=True)
 
@@ -368,7 +400,7 @@ def main():
             time.sleep(10)
             for r in client.robots():
                 client.remove_robot(r.id)
-            robot = client.spawn_robot(tuple(float(x) for x in args.pose.split(",")), "x500", label="bench")
+            robot = client.spawn_robot(tuple(float(x) for x in args.pose.split(",")), args.robot, label="bench")
             time.sleep(3)
             try:
                 client.set_daytime(12, 0, animate=False)
@@ -380,7 +412,7 @@ def main():
                 if args.snapshot:
                     snapshot(client, robot, sim, args, f"{args.engine}_{world}_{quality}")
                     continue
-                for ci, setting in enumerate(args.cvars or [""]):
+                for ci, setting in enumerate((args.cvars or [""]) * args.repeat):
                     for line in filter(None, setting.split(",")):
                         sim.exec(line.strip())
                     for phase in args.phases.split(","):
