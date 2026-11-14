@@ -228,17 +228,18 @@ static void AddNaniteIds(FRDGBuilder& GraphBuilder, const FScene* Scene, const F
 		return;
 	}
 
-	// GPU-scene primitive index -> id colour; zero means "not one of ours"
+	// by persistent index, as InstanceData.PrimitiveId is; zero means "not one of ours"
 	TArray<FVector4f> Lookup;
-	Lookup.SetNumZeroed(Scene->Primitives.Num());
+	Lookup.SetNumZeroed(Scene->GetMaxPersistentPrimitiveIndex());
 	bool bAny = false;
 	for (const FSegIdDrawItem& Item : Items)
 	{
 		const FPrimitiveSceneInfo* SceneInfo = Scene->GetPrimitiveSceneInfo(Item.ComponentId);
-		if (SceneInfo && SceneInfo->Proxy && SceneInfo->Proxy->IsNaniteMesh() && Lookup.IsValidIndex(SceneInfo->GetIndex()))
+		const int32                Index     = SceneInfo ? SceneInfo->GetPersistentIndex().Index : INDEX_NONE;
+		if (SceneInfo && SceneInfo->Proxy && SceneInfo->Proxy->IsNaniteMesh() && Lookup.IsValidIndex(Index))
 		{
-			Lookup[SceneInfo->GetIndex()] = FVector4f(Item.IdColor.R, Item.IdColor.G, Item.IdColor.B, Item.IdColor.A);
-			bAny                          = true;
+			Lookup[Index] = FVector4f(Item.IdColor.R, Item.IdColor.G, Item.IdColor.B, Item.IdColor.A);
+			bAny          = true;
 		}
 	}
 	if (!bAny)
@@ -305,8 +306,6 @@ static void AddNaniteIds(FRDGBuilder& GraphBuilder, const FScene* Scene, const F
 }
 #endif
 
-// Nanite never enters a mesh pass but does write custom stencil, so its actors carry a 1..255 slot there
-// and this resolves the slot to the same id colour the mesh pass would have drawn
 class FSegIdStencilFillCS : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FSegIdStencilFillCS);
@@ -329,7 +328,7 @@ class FSegIdStencilFillCS : public FGlobalShader
 IMPLEMENT_GLOBAL_SHADER(FSegIdStencilFillCS, "/FlightForgePlugin/SegIdStencilFill.usf", "Main", SF_Compute);
 
 static TAutoConsoleVariable<int32> CVarSegIdStencilFill(TEXT("FlightForge.SegId.StencilFill"), 1,
-                                                        TEXT("resolve Nanite ids from the custom stencil slots; 0 leaves Nanite pixels unlabelled, 2 paints every raw stencil value over everything"));
+                                                        TEXT("resolve Nanite ids from the custom stencil slots; 0 leaves Nanite pixels to the decode or unlabelled, 2 paints every raw stencil value over everything"));
 
 static void AddStencilClassFill(FRDGBuilder& GraphBuilder, const FSceneView& InView, const FPostProcessingInputs& Inputs,
                                 const TArray<FLinearColor>& StencilSlots, FRDGTextureRef IdTexture)
@@ -588,10 +587,9 @@ void FSegIdViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuil
 		                  }
 	                  });
 
+	AddStencilClassFill(GraphBuilder, InView, Inputs, Job.StencilSlots, IdTexture);
 #if FLIGHTFORGE_NANITE_IDS
 	AddNaniteIds(GraphBuilder, Scene, InView, Inputs, *ItemsOnPass, IdTexture);
-#else
-	AddStencilClassFill(GraphBuilder, InView, Inputs, Job.StencilSlots, IdTexture);
 #endif
 
 	AddEnqueueCopyPass(GraphBuilder, Job.Slot->Readback.Get(), IdTexture, FResolveRect());
