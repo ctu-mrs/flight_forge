@@ -81,11 +81,22 @@ void FReadbackViewExtension::PostRenderViewFamily_RenderThread(FRDGBuilder& Grap
 	{
 		return;
 	}
+	FRHITexture* Texture = InViewFamily.RenderTarget->GetRenderTargetTexture();
+	CopyJob_RenderThread(GraphBuilder, InViewFamily.RenderTarget, Texture ? GraphBuilder.RegisterExternalTexture(CreateRenderTarget(Texture, TEXT("FlightForge.CaptureTarget"))) : nullptr,
+	                     InViewFamily.FrameNumber, InViewFamily.Time.GetWorldTimeSeconds());
+}
+
+void FReadbackViewExtension::CopyJob_RenderThread(FRDGBuilder& GraphBuilder, const FRenderTarget* Target, FRDGTextureRef Source, const uint32 FrameNumber, const double WorldTime)
+{
+	if (PendingJobs.load() <= 0)
+	{
+		return;
+	}
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
 	{
 		FScopeLock Lock(&JobsLock);
-		const int32 Index = Jobs.IndexOfByPredicate([&InViewFamily](const FJob& Job) { return Job.Target == InViewFamily.RenderTarget && InViewFamily.FrameNumber > Job.SceneFrame; });
+		const int32 Index = Jobs.IndexOfByPredicate([Target, FrameNumber](const FJob& Job) { return Job.Target == Target && FrameNumber > Job.SceneFrame; });
 		if (Index == INDEX_NONE)
 		{
 			return;
@@ -95,17 +106,15 @@ void FReadbackViewExtension::PostRenderViewFamily_RenderThread(FRDGBuilder& Grap
 		PendingJobs = Jobs.Num();
 	}
 
-	Slot->Stamp = InViewFamily.Time.GetWorldTimeSeconds();
+	Slot->Stamp = WorldTime;
 
-	FRHITexture* Texture = InViewFamily.RenderTarget->GetRenderTargetTexture();
-	if (!Texture || !Slot->Readback)
+	if (!Source || !Slot->Readback)
 	{
 		Slot->bCopied = true;
 		Slot->Copied->Trigger();
 		return;
 	}
 
-	FRDGTextureRef Source = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(Texture, TEXT("FlightForge.CaptureTarget")));
 	AddEnqueueCopyPass(GraphBuilder, Slot->Readback.Get(), Source, FResolveRect());
 
 	GraphBuilder.AddPass(RDG_EVENT_NAME("FlightForgeReadbackWatch"), ERDGPassFlags::NeverCull, [Slot](FRHICommandList&) { WatchReadback_RenderThread(Slot); });

@@ -1,4 +1,5 @@
 #include "FisheyeCamera.h"
+#include "MultiViewCapture.h"
 
 #include "Async/ParallelFor.h"
 #include "TextureResource.h"
@@ -54,6 +55,9 @@ UFisheyeCamera::UFisheyeCamera() : UCamera()
 	}
 
 	FaceBuffers.SetNum(NumFaces);
+
+	MultiView = CreateDefaultSubobject<UMultiViewCapture>(TEXT("FisheyeMultiView"));
+	MultiView->SetupAttachment(this);
 }
 
 int32 UFisheyeCamera::FaceSize() const
@@ -128,6 +132,8 @@ void UFisheyeCamera::BeginPlay()
 		Settings.bOverride_SceneFringeIntensity = true;
 		Settings.SceneFringeIntensity           = 0.0f;
 	}
+
+	MultiView->SetViews(FaceCaptures);
 
 	SetFisheyeCameraConfig(fisheye_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
@@ -357,10 +363,7 @@ void UFisheyeCamera::RebuildLUT()
 
 void UFisheyeCamera::SetCaptureEveryFrame(bool bEnable)
 {
-	for (int32 Face = 0; Face < NumFaces; ++Face)
-	{
-		FaceCaptures[Face]->bCaptureEveryFrame = bEnable;
-	}
+	MultiView->SetCaptureEveryFrame(bEnable);
 }
 
 void UFisheyeCamera::DrainInstructions()
@@ -433,12 +436,9 @@ void UFisheyeCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 		}
 	}
 
-	if (!SceneCaptureComponent2D->bCaptureEveryFrame)
+	if (!MultiView->CapturesEveryFrame())
 	{
-		for (int32 Face = 0; Face < NumFaces; ++Face)
-		{
-			FaceCaptures[Face]->CaptureScene();
-		}
+		MultiView->Capture(false);
 	}
 
 	TArray<TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>> Set;

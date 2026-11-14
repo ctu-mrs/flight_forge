@@ -6,6 +6,7 @@
 #include "FlightForgeCore/RobotPawn.h"
 #include "FlightForgeCore/GpuWatchdog.h"
 #include "RenderingThread.h"
+#include "MultiViewCapture.h"
 
 UStereoCamera::UStereoCamera() : UCamera()
 {
@@ -17,6 +18,9 @@ UStereoCamera::UStereoCamera() : UCamera()
 
 	SceneCaptureComponent2DStereoRight = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2DStereoRight"));
 	SceneCaptureComponent2DStereoRight->SetupAttachment(SceneCaptureMeshHolderStereoRight);
+
+	MultiView = CreateDefaultSubobject<UMultiViewCapture>(TEXT("StereoMultiView"));
+	MultiView->SetupAttachment(this);
 
 	InstructionQueue = std::make_unique<TInstructionQueue<UStereoCamera>>();
 }
@@ -65,6 +69,8 @@ void UStereoCamera::BeginPlay()
 	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
 	ApplyLevelPostProcessBaseline(SceneCaptureComponent2DStereoRight);
 
+	MultiView->SetViews({SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight});
+
 	SetStereoCameraConfig(stereo_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
 }
@@ -104,13 +110,13 @@ void UStereoCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCo
 		if (bWanted && !bStreamOn)
 		{
 			bStreamOn = true;
-			SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = CaptureRate <= 0.0;
+			MultiView->SetCaptureEveryFrame(CaptureRate <= 0.0);
 			UE_LOG(LogTemp, Warning, TEXT("Turning on Stereo capture"));
 		}
 		else if (!bWanted && bStreamOn)
 		{
 			bStreamOn = false;
-			SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = false;
+			MultiView->SetCaptureEveryFrame(false);
 			CameraBufferCriticalSection->Lock();
 			CameraRendered = false;
 			CameraBufferCriticalSection->Unlock();
@@ -145,7 +151,7 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   CaptureRate    = Config.CaptureRate;
   NextCaptureDue = -1.0;
   if (bStreamOn) {
-    SceneCaptureComponent2D->bCaptureEveryFrame = SceneCaptureComponent2DStereoRight->bCaptureEveryFrame = CaptureRate <= 0.0;
+    MultiView->SetCaptureEveryFrame(CaptureRate <= 0.0);
   }
 
   CameraBufferCriticalSection->Lock();
@@ -194,18 +200,16 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left;
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right;
 
-	if (SceneCaptureComponent2D->bCaptureEveryFrame && SceneCaptureComponent2DStereoRight->bCaptureEveryFrame)
+	if (MultiView->CapturesEveryFrame())
 	{
 		// the components' own every-frame capture does not tick while lockstep holds the world paused
-		SceneCaptureComponent2D->CaptureSceneDeferred();
-		SceneCaptureComponent2DStereoRight->CaptureSceneDeferred();
+		MultiView->Capture(true);
 		Left  = SubmitCaptureJob(RenderTarget2D);
 		Right = SubmitCaptureJob(RenderTarget2DStereoRight);
 	}
 	else
 	{
-		SceneCaptureComponent2D->CaptureScene();
-		SceneCaptureComponent2DStereoRight->CaptureScene();
+		MultiView->Capture(false);
 		Left  = EnqueueReadback(RenderTarget2D, stamp);
 		Right = EnqueueReadback(RenderTarget2DStereoRight, stamp);
 	}

@@ -17,6 +17,8 @@
 
 #include "Camera.generated.h"
 
+class UMultiViewCapture;
+
 
 // the wire's CaptureMode ids
 enum CameraCaptureModeEnum : unsigned short
@@ -149,6 +151,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Components", BlueprintReadWrite)
 	USceneCaptureComponent2D* SceneCaptureComponent2D;
 	
+	// the views a multi-view camera renders together; null for single-view cameras
+	UPROPERTY()
+	UMultiViewCapture* MultiView = nullptr;
+
 	UPROPERTY(EditAnywhere, Category = "Segmentation PostProcess Setup")
 	UMaterial* PostProcessMaterial = nullptr;
 

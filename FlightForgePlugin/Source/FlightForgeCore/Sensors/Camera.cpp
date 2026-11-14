@@ -14,6 +14,7 @@
 #include "FlightForgeCore/SimClock.h"
 
 #include "FlightForgeCore/Utils/WireFrame.h"
+#include "MultiViewCapture.h"
 
 UCamera::UCamera()
 {
@@ -74,6 +75,11 @@ void UCamera::Initialize(int InSensorID)
 	SceneCaptureComponent2D->SetMobility(EComponentMobility::Movable);
 	if (!SceneCaptureComponent2D->IsRegistered())
 		SceneCaptureComponent2D->RegisterComponent();
+
+	if (MultiView && !MultiView->IsRegistered())
+	{
+		MultiView->RegisterComponent();
+	}
 }
 
 void UCamera::BeginDestroy()
@@ -462,7 +468,7 @@ void UCamera::PushStreamingViewHint()
 		return;
 	}
 
-	const bool bActive = SceneCaptureComponent2D->bCaptureEveryFrame || (FPlatformTime::Seconds() - camera_last_request_time_) < 2.0;
+	const bool bActive = SceneCaptureComponent2D->bCaptureEveryFrame || (MultiView && MultiView->CapturesEveryFrame()) || (FPlatformTime::Seconds() - camera_last_request_time_) < 2.0;
 
 	if (!bActive)
 	{

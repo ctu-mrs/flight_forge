@@ -5,6 +5,7 @@
 
 #include "FlightForgeCore/RobotPawn.h"
 #include "SensorWire.h"
+#include "MultiViewCapture.h"
 
 static TAutoConsoleVariable<int32> CVarHdrTargetBits(TEXT("FlightForge.Camera.HdrTargetBits"), 16,
                                                      TEXT("Float bits per channel of the HDR capture target: 16 or 32."));
@@ -65,13 +66,13 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 		if (bWanted && !bStreamOn)
 		{
 			bStreamOn = true;
-			SceneCaptureComponent2D->bCaptureEveryFrame = CaptureRate <= 0.0;
+			bEveryFrameWanted = CaptureRate <= 0.0;
 			UE_LOG(LogTemp, Warning, TEXT("Turning on RGB capture"));
 		}
 		else if (!bWanted && bStreamOn)
 		{
 			bStreamOn = false;
-			SceneCaptureComponent2D->bCaptureEveryFrame = false;
+			bEveryFrameWanted = false;
 			CameraBufferCriticalSection->Lock();
 			CameraRendered = false;
 			CameraBufferCriticalSection->Unlock();
@@ -82,6 +83,9 @@ void URgbCamera::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompo
 			UpdateCamera(true, SimNow());
 		}
 	}
+
+	// a batched camera is captured by its robot's batch, never by the engine on its own
+	SceneCaptureComponent2D->bCaptureEveryFrame = bEveryFrameWanted && !UMultiViewCapture::BatchEnabled();
 
 	PumpReadback();
 
@@ -159,7 +163,7 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   CaptureRate    = Config.CaptureRate;
   NextCaptureDue = -1.0;
   if (bStreamOn) {
-    SceneCaptureComponent2D->bCaptureEveryFrame = CaptureRate <= 0.0;
+    bEveryFrameWanted = CaptureRate <= 0.0;
   }
 
   CameraBufferCriticalSection->Lock();
@@ -189,7 +193,7 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 
   SceneCaptureComponent2D->TextureTarget                        = RenderTarget2D;
   SceneCaptureComponent2D->bAlwaysPersistRenderingState         = true;
-  SceneCaptureComponent2D->bCaptureEveryFrame                   = false;
+  bEveryFrameWanted = false;
   SceneCaptureComponent2D->bCaptureOnMovement                   = false;
   SceneCaptureComponent2D->PostProcessSettings.MotionBlurAmount = Config.motion_blur_amount;
   SceneCaptureComponent2D->PostProcessSettings.MotionBlurMax    = Config.motion_blur_distortion;
@@ -229,9 +233,16 @@ void URgbCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 
 	const FVector OmegaCamera = CaptureOmega(stamp);
 
-	if (SceneCaptureComponent2D->bCaptureEveryFrame || bEverRendered)
+	if (bEveryFrameWanted || bEverRendered)
 	{
-		SceneCaptureComponent2D->CaptureSceneDeferred();
+		if (UMultiViewCapture* Batch = UMultiViewCapture::BatchEnabled() ? UMultiViewCapture::RobotBatch(Owner) : nullptr)
+		{
+			Batch->Defer(SceneCaptureComponent2D);
+		}
+		else
+		{
+			SceneCaptureComponent2D->CaptureSceneDeferred();
+		}
 		PushReadback(SubmitCaptureJob(RenderTarget2D, OmegaCamera, false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr));
 		return;
 	}
@@ -272,7 +283,7 @@ bool URgbCamera::GetRgbCameraDataFromServerThread(FCameraFrame& OutFrame)
 	const bool bHaveFrame = CameraRendered;
 	CameraBufferCriticalSection->Unlock();
 
-	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !SceneCaptureComponent2D->bCaptureEveryFrame && CachedTargetResource.load() && bEverRendered) {
+	if (CameraCaptureMode == CameraCaptureModeEnum::CAPTURE_ON_DEMAND && !bEveryFrameWanted && CachedTargetResource.load() && bEverRendered) {
 		if (!RequestFrameFromServerThread(RenderTarget2D, CaptureOmega(SimNow()), false, rgb_camera_config_.enable_hdr, rgb_camera_config_.enable_hdr, 2.0)) {
 			UE_LOG(LogTemp, Warning, TEXT("URgbCamera: timed out waiting for a frame"));
 		}

@@ -84,6 +84,8 @@ protected:
 	// consecutive-capture pose delta, for the rolling-shutter angular velocity
 	FQuat  LastCaptureQuat = FQuat::Identity;
 	double LastCaptureTime = 0.0;
+
+	bool bEveryFrameWanted = false;
 	
 public:
 	virtual void DrainInstructions() override;

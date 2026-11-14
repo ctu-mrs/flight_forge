@@ -29,6 +29,9 @@ public:
 	// SceneFrame is the scene's frame number at submission, so a render still in flight from an earlier frame cannot take the job
 	void SubmitJob(const FRenderTarget* Target, const TSharedPtr<FCameraReadback, ESPMode::ThreadSafe>& Slot, uint32 SceneFrame);
 
+	// render thread: Source holds Target's pixels for the render of FrameNumber
+	void CopyJob_RenderThread(FRDGBuilder& GraphBuilder, const FRenderTarget* Target, FRDGTextureRef Source, uint32 FrameNumber, double WorldTime);
+
 	static TSharedPtr<FReadbackViewExtension, ESPMode::ThreadSafe> Get();
 
 private:
