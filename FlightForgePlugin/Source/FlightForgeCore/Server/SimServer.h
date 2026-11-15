@@ -175,6 +175,7 @@ private:
 	void SetWeather(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SetDaytime(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void GetDaytime(const flightforge::wire::Request& Request, FWireReply& Reply);
+	void GetViewportImage(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SetGraphicsSettings(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SetForestDensity(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SetForestHillyLevel(const flightforge::wire::Request& Request, FWireReply& Reply);

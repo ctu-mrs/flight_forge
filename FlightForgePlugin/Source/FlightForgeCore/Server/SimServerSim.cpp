@@ -11,9 +11,11 @@
 #include "FlightForgeCore/Utils/SkyControl.h"
 #include "FlightForgeCore/Utils/SurfaceHeightQuery.h"
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
+#include "FlightForgeCore/RenderSettings/ViewportMatch.h"
+#include "FlightForgeCore/Sensors/SensorWire.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 5;
+static constexpr uint16 ApiMinor = 6;
 
 /* connection //{ */
 
@@ -281,6 +283,74 @@ void FSimServer::GetDaytime(const ffw::Request& Request, FWireReply& Reply)
 	}
 	Reply.Set(ffw::CreateGetDaytimeResponse(Reply.Builder, Hours, bAnimated, Reply.String(Sky)));
 }
+
+void FSimServer::GetViewportImage(const ffw::Request& Request, FWireReply& Reply)
+{ //{
+	const ffw::GetViewportImageRequest* Ask      = Request.body_as_GetViewportImageRequest();
+	const FGameModeLease                GameMode = LeaseGameMode(Reply);
+	if (!GameMode)
+	{
+		return;
+	}
+
+	USceneCaptureComponent2D* Capture = nullptr;
+	TOptional<FRobotLease>    Robot;
+	if (Request.robot_id().has_value() && !Ask->release())
+	{
+		Robot.Emplace(LeaseRobot(Request, Reply));
+		if (!*Robot)
+		{
+			return;
+		}
+		const int32    SensorId = Request.sensor_id().has_value() ? *Request.sensor_id() : -1;
+		const UCamera* Camera   = Cast<UCamera>((*Robot)->FindSensorById(SensorId));
+		Capture                 = Camera ? Camera->ViewCapture(Ask->view()) : nullptr;
+		if (!Capture)
+		{
+			Reply.Fail(FString::Printf(TEXT("robot %d has no camera %d with view %d"), Robot->Id, SensorId, Ask->view()));
+			return;
+		}
+	}
+
+	bool    bOk = true;
+	FString Error;
+	auto    Shot = std::make_shared<FViewportShot>();
+	RunOnGameThread(*GameMode.GameMode, [&](AFlightForgeGameModeBase& Mode) {
+		UViewportMatch* Match = Mode.GetWorld()->GetSubsystem<UViewportMatch>();
+		if (Ask->release())
+		{
+			Match->Release();
+			return;
+		}
+		bOk = (!Capture || Match->Match(Capture, Error)) && Match->RequestShot(Shot, Error);
+	});
+	if (!bOk)
+	{
+		Reply.Fail(Error);
+		return;
+	}
+	if (Ask->release())
+	{
+		return;
+	}
+
+	const double Deadline = FPlatformTime::Seconds() + 10.0;
+	while (!Shot->bDone.load() && FPlatformTime::Seconds() < Deadline)
+	{
+		FPlatformProcess::Sleep(0.002f);
+	}
+	if (!Shot->bDone.load())
+	{
+		Reply.Fail(TEXT("the viewport drew no frame at the camera's size within 10 s"));
+		return;
+	}
+
+	FCameraFrame Frame;
+	const std::unique_ptr<ffw::ImageEncodingT> Encoding(Ask->encoding() ? Ask->encoding()->UnPack() : nullptr);
+	UCamera::CompressFrame(Shot->Pixels, Shot->Size, FSensorWire::Encoding(Encoding.get()), false, Frame);
+	const auto Image = FSensorWire::Image(Reply, Frame, FSensorWire::ColourFormat(Frame.Codec));
+	Reply.Set(ffw::CreateViewportImageResponse(Reply.Builder, Shot->Stamp, Shot->Fov, Image));
+} //}
 
 void FSimServer::SetGraphicsSettings(const ffw::Request& Request, FWireReply& Reply)
 {

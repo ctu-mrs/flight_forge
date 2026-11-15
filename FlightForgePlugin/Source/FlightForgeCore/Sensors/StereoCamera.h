@@ -83,6 +83,11 @@ public:
 
 	FStereoCameraConfig GetStereoCameraConfig() const { return stereo_camera_config_; }
 
+	virtual USceneCaptureComponent2D* ViewCapture(int32 View) const override
+	{
+		return View == 0 ? SceneCaptureComponent2D : View == 1 ? SceneCaptureComponent2DStereoRight : nullptr;
+	}
+
 	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) override
 	{
 		const FStereoCameraConfig& C = stereo_camera_config_;

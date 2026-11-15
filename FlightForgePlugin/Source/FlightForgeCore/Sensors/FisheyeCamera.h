@@ -79,6 +79,8 @@ public:
 
 	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) override;
 
+	virtual USceneCaptureComponent2D* ViewCapture(int32 View) const override { return FaceCaptures.IsValidIndex(View) ? FaceCaptures[View] : nullptr; }
+
 	// pixels per radian of theta such that theta = fov/2 lands on the image circle, matching RebuildLUT
 	static double FocalPx(EFisheyeLensModel Model, double FovDeg, int32 Width, int32 Height, bool FullFrame);
 

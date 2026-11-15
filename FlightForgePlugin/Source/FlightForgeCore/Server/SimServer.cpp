@@ -563,6 +563,7 @@ const FSimServer::FHandler* FSimServer::Handlers()
 		Add(B::SetWeatherRequest, &FSimServer::SetWeather);
 		Add(B::SetDaytimeRequest, &FSimServer::SetDaytime);
 		Add(B::GetDaytimeRequest, &FSimServer::GetDaytime);
+		Add(B::GetViewportImageRequest, &FSimServer::GetViewportImage);
 		Add(B::SetGraphicsSettingsRequest, &FSimServer::SetGraphicsSettings);
 		Add(B::SetForestDensityRequest, &FSimServer::SetForestDensity);
 		Add(B::SetForestHillyLevelRequest, &FSimServer::SetForestHillyLevel);

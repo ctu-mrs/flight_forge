@@ -2,6 +2,7 @@
 #include "MultiViewCapture.h"
 
 #include "Async/ParallelFor.h"
+#include "HAL/IConsoleManager.h"
 #include "TextureResource.h"
 
 #include "SensorWire.h"
@@ -30,6 +31,9 @@ const FFaceBasis FaceBases[UFisheyeCamera::NumFaces] = {
     {FVector(0, 0, 1), FVector(0, 1, 0), FVector(-1, 0, 0), FRotator(90, 0, 0)},
     {FVector(0, 0, -1), FVector(0, 1, 0), FVector(1, 0, 0), FRotator(-90, 0, 0)},
 };
+
+TAutoConsoleVariable<int32> CVarServeFace(TEXT("FlightForge.Camera.Fisheye.ServeFace"), -1,
+                                          TEXT("0-4: get_fisheye_camera_data serves that face's pinhole render instead of the fisheye image, for look checks"));
 
 // faces render slightly wider than 90 degrees so bilinear taps at face borders
 // stay inside valid pixels instead of seaming
@@ -572,6 +576,13 @@ bool UFisheyeCamera::GetFisheyeCameraDataFromServerThread(FCameraFrame& OutFrame
 	if (OutSize.X <= 0 || OutSize.Y <= 0 || LocalLUT->Num() != OutSize.X * OutSize.Y)
 	{
 		return false;
+	}
+
+	const int32 ServeFace = CVarServeFace.GetValueOnAnyThread();
+	if (Faces.IsValidIndex(ServeFace) && Faces[ServeFace].Num() == Size * Size)
+	{
+		CompressFrame(Faces[ServeFace], FIntPoint(Size, Size), fisheye_camera_config_.Compression, false, OutFrame);
+		return true;
 	}
 
 	// bilinear LUT resample from the five faces, outside every lock

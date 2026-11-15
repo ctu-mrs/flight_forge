@@ -235,6 +235,14 @@ struct GetSurfaceHeightResponse;
 struct GetSurfaceHeightResponseBuilder;
 struct GetSurfaceHeightResponseT;
 
+struct GetViewportImageRequest;
+struct GetViewportImageRequestBuilder;
+struct GetViewportImageRequestT;
+
+struct ViewportImageResponse;
+struct ViewportImageResponseBuilder;
+struct ViewportImageResponseT;
+
 bool operator==(const PingRequestT &lhs, const PingRequestT &rhs);
 bool operator!=(const PingRequestT &lhs, const PingRequestT &rhs);
 bool operator==(const GetInfoRequestT &lhs, const GetInfoRequestT &rhs);
@@ -343,6 +351,10 @@ bool operator==(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightReque
 bool operator!=(const GetSurfaceHeightRequestT &lhs, const GetSurfaceHeightRequestT &rhs);
 bool operator==(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs);
 bool operator!=(const GetSurfaceHeightResponseT &lhs, const GetSurfaceHeightResponseT &rhs);
+bool operator==(const GetViewportImageRequestT &lhs, const GetViewportImageRequestT &rhs);
+bool operator!=(const GetViewportImageRequestT &lhs, const GetViewportImageRequestT &rhs);
+bool operator==(const ViewportImageResponseT &lhs, const ViewportImageResponseT &rhs);
+bool operator!=(const ViewportImageResponseT &lhs, const ViewportImageResponseT &rhs);
 
 enum class Weather : uint8_t {
   SUNNY = 0,
@@ -4343,6 +4355,178 @@ inline ::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightRes
 
 ::flatbuffers::Offset<GetSurfaceHeightResponse> CreateGetSurfaceHeightResponse(::flatbuffers::FlatBufferBuilder &_fbb, const GetSurfaceHeightResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct GetViewportImageRequestT : public ::flatbuffers::NativeTable {
+  typedef GetViewportImageRequest TableType;
+  int32_t view = 0;
+  bool release = false;
+  std::unique_ptr<flightforge::wire::ImageEncodingT> encoding{};
+  GetViewportImageRequestT() = default;
+  GetViewportImageRequestT(const GetViewportImageRequestT &o);
+  GetViewportImageRequestT(GetViewportImageRequestT&&) FLATBUFFERS_NOEXCEPT = default;
+  GetViewportImageRequestT &operator=(GetViewportImageRequestT o) FLATBUFFERS_NOEXCEPT;
+};
+
+struct GetViewportImageRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef GetViewportImageRequestT NativeTableType;
+  typedef GetViewportImageRequestBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_VIEW = 4,
+    VT_RELEASE = 6,
+    VT_ENCODING = 8
+  };
+  int32_t view() const {
+    return GetField<int32_t>(VT_VIEW, 0);
+  }
+  bool release() const {
+    return GetField<uint8_t>(VT_RELEASE, 0) != 0;
+  }
+  const flightforge::wire::ImageEncoding *encoding() const {
+    return GetPointer<const flightforge::wire::ImageEncoding *>(VT_ENCODING);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_VIEW, 4) &&
+           VerifyField<uint8_t>(verifier, VT_RELEASE, 1) &&
+           VerifyOffset(verifier, VT_ENCODING) &&
+           verifier.VerifyTable(encoding()) &&
+           verifier.EndTable();
+  }
+  GetViewportImageRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GetViewportImageRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<GetViewportImageRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetViewportImageRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct GetViewportImageRequestBuilder {
+  typedef GetViewportImageRequest Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_view(int32_t view) {
+    fbb_.AddElement<int32_t>(GetViewportImageRequest::VT_VIEW, view, 0);
+  }
+  void add_release(bool release) {
+    fbb_.AddElement<uint8_t>(GetViewportImageRequest::VT_RELEASE, static_cast<uint8_t>(release), 0);
+  }
+  void add_encoding(::flatbuffers::Offset<flightforge::wire::ImageEncoding> encoding) {
+    fbb_.AddOffset(GetViewportImageRequest::VT_ENCODING, encoding);
+  }
+  explicit GetViewportImageRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<GetViewportImageRequest> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<GetViewportImageRequest>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<GetViewportImageRequest> CreateGetViewportImageRequest(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t view = 0,
+    bool release = false,
+    ::flatbuffers::Offset<flightforge::wire::ImageEncoding> encoding = 0) {
+  GetViewportImageRequestBuilder builder_(_fbb);
+  builder_.add_encoding(encoding);
+  builder_.add_view(view);
+  builder_.add_release(release);
+  return builder_.Finish();
+}
+
+struct GetViewportImageRequest::Traits {
+  using type = GetViewportImageRequest;
+  static auto constexpr Create = CreateGetViewportImageRequest;
+};
+
+::flatbuffers::Offset<GetViewportImageRequest> CreateGetViewportImageRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetViewportImageRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ViewportImageResponseT : public ::flatbuffers::NativeTable {
+  typedef ViewportImageResponse TableType;
+  double stamp = 0.0;
+  double fov = 0.0;
+  std::unique_ptr<flightforge::wire::ImageT> image{};
+  ViewportImageResponseT() = default;
+  ViewportImageResponseT(const ViewportImageResponseT &o);
+  ViewportImageResponseT(ViewportImageResponseT&&) FLATBUFFERS_NOEXCEPT = default;
+  ViewportImageResponseT &operator=(ViewportImageResponseT o) FLATBUFFERS_NOEXCEPT;
+};
+
+struct ViewportImageResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ViewportImageResponseT NativeTableType;
+  typedef ViewportImageResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_STAMP = 4,
+    VT_FOV = 6,
+    VT_IMAGE = 8
+  };
+  double stamp() const {
+    return GetField<double>(VT_STAMP, 0.0);
+  }
+  double fov() const {
+    return GetField<double>(VT_FOV, 0.0);
+  }
+  const flightforge::wire::Image *image() const {
+    return GetPointer<const flightforge::wire::Image *>(VT_IMAGE);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<double>(verifier, VT_STAMP, 8) &&
+           VerifyField<double>(verifier, VT_FOV, 8) &&
+           VerifyOffset(verifier, VT_IMAGE) &&
+           verifier.VerifyTable(image()) &&
+           verifier.EndTable();
+  }
+  ViewportImageResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ViewportImageResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<ViewportImageResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ViewportImageResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ViewportImageResponseBuilder {
+  typedef ViewportImageResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_stamp(double stamp) {
+    fbb_.AddElement<double>(ViewportImageResponse::VT_STAMP, stamp, 0.0);
+  }
+  void add_fov(double fov) {
+    fbb_.AddElement<double>(ViewportImageResponse::VT_FOV, fov, 0.0);
+  }
+  void add_image(::flatbuffers::Offset<flightforge::wire::Image> image) {
+    fbb_.AddOffset(ViewportImageResponse::VT_IMAGE, image);
+  }
+  explicit ViewportImageResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ViewportImageResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ViewportImageResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ViewportImageResponse> CreateViewportImageResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    double stamp = 0.0,
+    double fov = 0.0,
+    ::flatbuffers::Offset<flightforge::wire::Image> image = 0) {
+  ViewportImageResponseBuilder builder_(_fbb);
+  builder_.add_fov(fov);
+  builder_.add_stamp(stamp);
+  builder_.add_image(image);
+  return builder_.Finish();
+}
+
+struct ViewportImageResponse::Traits {
+  using type = ViewportImageResponse;
+  static auto constexpr Create = CreateViewportImageResponse;
+};
+
+::flatbuffers::Offset<ViewportImageResponse> CreateViewportImageResponse(::flatbuffers::FlatBufferBuilder &_fbb, const ViewportImageResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 
 inline bool operator==(const PingRequestT &, const PingRequestT &) {
   return true;
@@ -6561,6 +6745,122 @@ inline ::flatbuffers::Offset<GetSurfaceHeightResponse> GetSurfaceHeightResponse:
   return flightforge::wire::CreateGetSurfaceHeightResponse(
       _fbb,
       _heights);
+}
+
+
+inline bool operator==(const GetViewportImageRequestT &lhs, const GetViewportImageRequestT &rhs) {
+  return
+      (lhs.view == rhs.view) &&
+      (lhs.release == rhs.release) &&
+      ((lhs.encoding == rhs.encoding) || (lhs.encoding && rhs.encoding && *lhs.encoding == *rhs.encoding));
+}
+
+inline bool operator!=(const GetViewportImageRequestT &lhs, const GetViewportImageRequestT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline GetViewportImageRequestT::GetViewportImageRequestT(const GetViewportImageRequestT &o)
+      : view(o.view),
+        release(o.release),
+        encoding((o.encoding) ? new flightforge::wire::ImageEncodingT(*o.encoding) : nullptr) {
+}
+
+inline GetViewportImageRequestT &GetViewportImageRequestT::operator=(GetViewportImageRequestT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(view, o.view);
+  std::swap(release, o.release);
+  std::swap(encoding, o.encoding);
+  return *this;
+}
+
+inline GetViewportImageRequestT *GetViewportImageRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<GetViewportImageRequestT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void GetViewportImageRequest::UnPackTo(GetViewportImageRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = view(); _o->view = _e; }
+  { auto _e = release(); _o->release = _e; }
+  { auto _e = encoding(); if (_e) { if(_o->encoding) { _e->UnPackTo(_o->encoding.get(), _resolver); } else { _o->encoding = std::unique_ptr<flightforge::wire::ImageEncodingT>(_e->UnPack(_resolver)); } } else if (_o->encoding) { _o->encoding.reset(); } }
+}
+
+inline ::flatbuffers::Offset<GetViewportImageRequest> CreateGetViewportImageRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetViewportImageRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return GetViewportImageRequest::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<GetViewportImageRequest> GetViewportImageRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetViewportImageRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetViewportImageRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _view = _o->view;
+  auto _release = _o->release;
+  auto _encoding = _o->encoding ? CreateImageEncoding(_fbb, _o->encoding.get(), _rehasher) : 0;
+  return flightforge::wire::CreateGetViewportImageRequest(
+      _fbb,
+      _view,
+      _release,
+      _encoding);
+}
+
+
+inline bool operator==(const ViewportImageResponseT &lhs, const ViewportImageResponseT &rhs) {
+  return
+      (lhs.stamp == rhs.stamp) &&
+      (lhs.fov == rhs.fov) &&
+      ((lhs.image == rhs.image) || (lhs.image && rhs.image && *lhs.image == *rhs.image));
+}
+
+inline bool operator!=(const ViewportImageResponseT &lhs, const ViewportImageResponseT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline ViewportImageResponseT::ViewportImageResponseT(const ViewportImageResponseT &o)
+      : stamp(o.stamp),
+        fov(o.fov),
+        image((o.image) ? new flightforge::wire::ImageT(*o.image) : nullptr) {
+}
+
+inline ViewportImageResponseT &ViewportImageResponseT::operator=(ViewportImageResponseT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(stamp, o.stamp);
+  std::swap(fov, o.fov);
+  std::swap(image, o.image);
+  return *this;
+}
+
+inline ViewportImageResponseT *ViewportImageResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<ViewportImageResponseT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ViewportImageResponse::UnPackTo(ViewportImageResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = stamp(); _o->stamp = _e; }
+  { auto _e = fov(); _o->fov = _e; }
+  { auto _e = image(); if (_e) { if(_o->image) { _e->UnPackTo(_o->image.get(), _resolver); } else { _o->image = std::unique_ptr<flightforge::wire::ImageT>(_e->UnPack(_resolver)); } } else if (_o->image) { _o->image.reset(); } }
+}
+
+inline ::flatbuffers::Offset<ViewportImageResponse> CreateViewportImageResponse(::flatbuffers::FlatBufferBuilder &_fbb, const ViewportImageResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return ViewportImageResponse::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<ViewportImageResponse> ViewportImageResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ViewportImageResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const ViewportImageResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _stamp = _o->stamp;
+  auto _fov = _o->fov;
+  auto _image = _o->image ? CreateImage(_fbb, _o->image.get(), _rehasher) : 0;
+  return flightforge::wire::CreateViewportImageResponse(
+      _fbb,
+      _stamp,
+      _fov,
+      _image);
 }
 
 }  // namespace wire

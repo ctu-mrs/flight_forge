@@ -84,6 +84,7 @@ union RequestBody {
 
   GetSurfaceHeightRequest,
   GetDaytimeRequest,
+  GetViewportImageRequest,
 }
 
 // members are append-only, as for RequestBody; ops that return nothing answer NONE
@@ -144,6 +145,7 @@ union ResponseBody {
 
   GetSurfaceHeightResponse,
   GetDaytimeResponse,
+  ViewportImageResponse,
 }
 
 // a frame carries one Request; robot ops need robot_id, sensor ops robot_id and optionally sensor_id

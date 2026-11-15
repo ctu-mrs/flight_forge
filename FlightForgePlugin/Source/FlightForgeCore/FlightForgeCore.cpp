@@ -14,11 +14,13 @@
 namespace
 {
 
+bool bResizeAllowed = false;
+
 // off screen a resolution change draws a frame on the spot, which crashed mid BeginPlay in SetExposureCompensationCurve
 void KeepOffScreenResolution(IConsoleVariable* SetRes)
 {
 	static bool bRestoring = false;
-	if (bRestoring)
+	if (bRestoring || bResizeAllowed)
 	{
 		return;
 	}
@@ -54,6 +56,12 @@ void FFlightForgeCoreModule::StartupModule()
 		}
 	}
 }
+
+void FFlightForgeCoreModule::ResizeOffScreen(const int32 Width, const int32 Height)
+{ //{
+	TGuardValue<bool> Guard(bResizeAllowed, true);
+	FSystemResolution::RequestResolutionChange(Width, Height, EWindowMode::Windowed);
+} //}
 
 void FFlightForgeCoreModule::ShutdownModule()
 {

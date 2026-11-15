@@ -104,11 +104,12 @@ enum class RequestBody : uint8_t {
   GetRangefinderDataRequest = 66,
   GetSurfaceHeightRequest = 67,
   GetDaytimeRequest = 68,
+  GetViewportImageRequest = 69,
   MIN = NONE,
-  MAX = GetDaytimeRequest
+  MAX = GetViewportImageRequest
 };
 
-inline const RequestBody (&EnumValuesRequestBody())[69] {
+inline const RequestBody (&EnumValuesRequestBody())[70] {
   static const RequestBody values[] = {
     RequestBody::NONE,
     RequestBody::PingRequest,
@@ -178,13 +179,14 @@ inline const RequestBody (&EnumValuesRequestBody())[69] {
     RequestBody::GetLidarScanRequest,
     RequestBody::GetRangefinderDataRequest,
     RequestBody::GetSurfaceHeightRequest,
-    RequestBody::GetDaytimeRequest
+    RequestBody::GetDaytimeRequest,
+    RequestBody::GetViewportImageRequest
   };
   return values;
 }
 
 inline const char * const *EnumNamesRequestBody() {
-  static const char * const names[70] = {
+  static const char * const names[71] = {
     "NONE",
     "PingRequest",
     "GetInfoRequest",
@@ -254,13 +256,14 @@ inline const char * const *EnumNamesRequestBody() {
     "GetRangefinderDataRequest",
     "GetSurfaceHeightRequest",
     "GetDaytimeRequest",
+    "GetViewportImageRequest",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameRequestBody(RequestBody e) {
-  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetDaytimeRequest)) return "";
+  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetViewportImageRequest)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesRequestBody()[index];
 }
@@ -541,6 +544,10 @@ template<> struct RequestBodyTraits<flightforge::wire::GetDaytimeRequest> {
   static const RequestBody enum_value = RequestBody::GetDaytimeRequest;
 };
 
+template<> struct RequestBodyTraits<flightforge::wire::GetViewportImageRequest> {
+  static const RequestBody enum_value = RequestBody::GetViewportImageRequest;
+};
+
 template<typename T> struct RequestBodyUnionTraits {
   static const RequestBody enum_value = RequestBody::NONE;
 };
@@ -815,6 +822,10 @@ template<> struct RequestBodyUnionTraits<flightforge::wire::GetSurfaceHeightRequ
 
 template<> struct RequestBodyUnionTraits<flightforge::wire::GetDaytimeRequestT> {
   static const RequestBody enum_value = RequestBody::GetDaytimeRequest;
+};
+
+template<> struct RequestBodyUnionTraits<flightforge::wire::GetViewportImageRequestT> {
+  static const RequestBody enum_value = RequestBody::GetViewportImageRequest;
 };
 
 struct RequestBodyUnion {
@@ -1391,6 +1402,14 @@ struct RequestBodyUnion {
     return type == RequestBody::GetDaytimeRequest ?
       reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(value) : nullptr;
   }
+  flightforge::wire::GetViewportImageRequestT *AsGetViewportImageRequest() {
+    return type == RequestBody::GetViewportImageRequest ?
+      reinterpret_cast<flightforge::wire::GetViewportImageRequestT *>(value) : nullptr;
+  }
+  const flightforge::wire::GetViewportImageRequestT *AsGetViewportImageRequest() const {
+    return type == RequestBody::GetViewportImageRequest ?
+      reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(value) : nullptr;
+  }
 };
 
 
@@ -1672,6 +1691,10 @@ inline bool operator==(const RequestBodyUnion &lhs, const RequestBodyUnion &rhs)
       return *(reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(rhs.value));
     }
+    case RequestBody::GetViewportImageRequest: {
+      return *(reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(rhs.value));
+    }
     default: {
       return false;
     }
@@ -1737,11 +1760,12 @@ enum class ResponseBody : uint8_t {
   RangefinderDataResponse = 46,
   GetSurfaceHeightResponse = 47,
   GetDaytimeResponse = 48,
+  ViewportImageResponse = 49,
   MIN = NONE,
-  MAX = GetDaytimeResponse
+  MAX = ViewportImageResponse
 };
 
-inline const ResponseBody (&EnumValuesResponseBody())[49] {
+inline const ResponseBody (&EnumValuesResponseBody())[50] {
   static const ResponseBody values[] = {
     ResponseBody::NONE,
     ResponseBody::GetInfoResponse,
@@ -1791,13 +1815,14 @@ inline const ResponseBody (&EnumValuesResponseBody())[49] {
     ResponseBody::LidarScanResponse,
     ResponseBody::RangefinderDataResponse,
     ResponseBody::GetSurfaceHeightResponse,
-    ResponseBody::GetDaytimeResponse
+    ResponseBody::GetDaytimeResponse,
+    ResponseBody::ViewportImageResponse
   };
   return values;
 }
 
 inline const char * const *EnumNamesResponseBody() {
-  static const char * const names[50] = {
+  static const char * const names[51] = {
     "NONE",
     "GetInfoResponse",
     "GetTimeResponse",
@@ -1847,13 +1872,14 @@ inline const char * const *EnumNamesResponseBody() {
     "RangefinderDataResponse",
     "GetSurfaceHeightResponse",
     "GetDaytimeResponse",
+    "ViewportImageResponse",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameResponseBody(ResponseBody e) {
-  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::GetDaytimeResponse)) return "";
+  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::ViewportImageResponse)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesResponseBody()[index];
 }
@@ -2054,6 +2080,10 @@ template<> struct ResponseBodyTraits<flightforge::wire::GetDaytimeResponse> {
   static const ResponseBody enum_value = ResponseBody::GetDaytimeResponse;
 };
 
+template<> struct ResponseBodyTraits<flightforge::wire::ViewportImageResponse> {
+  static const ResponseBody enum_value = ResponseBody::ViewportImageResponse;
+};
+
 template<typename T> struct ResponseBodyUnionTraits {
   static const ResponseBody enum_value = ResponseBody::NONE;
 };
@@ -2248,6 +2278,10 @@ template<> struct ResponseBodyUnionTraits<flightforge::wire::GetSurfaceHeightRes
 
 template<> struct ResponseBodyUnionTraits<flightforge::wire::GetDaytimeResponseT> {
   static const ResponseBody enum_value = ResponseBody::GetDaytimeResponse;
+};
+
+template<> struct ResponseBodyUnionTraits<flightforge::wire::ViewportImageResponseT> {
+  static const ResponseBody enum_value = ResponseBody::ViewportImageResponse;
 };
 
 struct ResponseBodyUnion {
@@ -2664,6 +2698,14 @@ struct ResponseBodyUnion {
     return type == ResponseBody::GetDaytimeResponse ?
       reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(value) : nullptr;
   }
+  flightforge::wire::ViewportImageResponseT *AsViewportImageResponse() {
+    return type == ResponseBody::ViewportImageResponse ?
+      reinterpret_cast<flightforge::wire::ViewportImageResponseT *>(value) : nullptr;
+  }
+  const flightforge::wire::ViewportImageResponseT *AsViewportImageResponse() const {
+    return type == ResponseBody::ViewportImageResponse ?
+      reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(value) : nullptr;
+  }
 };
 
 
@@ -2864,6 +2906,10 @@ inline bool operator==(const ResponseBodyUnion &lhs, const ResponseBodyUnion &rh
     case ResponseBody::GetDaytimeResponse: {
       return *(reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(rhs.value));
+    }
+    case ResponseBody::ViewportImageResponse: {
+      return *(reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(rhs.value));
     }
     default: {
       return false;
@@ -3118,6 +3164,9 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const flightforge::wire::GetDaytimeRequest *body_as_GetDaytimeRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetDaytimeRequest ? static_cast<const flightforge::wire::GetDaytimeRequest *>(body()) : nullptr;
+  }
+  const flightforge::wire::GetViewportImageRequest *body_as_GetViewportImageRequest() const {
+    return body_type() == flightforge::wire::RequestBody::GetViewportImageRequest ? static_cast<const flightforge::wire::GetViewportImageRequest *>(body()) : nullptr;
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -3407,6 +3456,10 @@ template<> inline const flightforge::wire::GetDaytimeRequest *Request::body_as<f
   return body_as_GetDaytimeRequest();
 }
 
+template<> inline const flightforge::wire::GetViewportImageRequest *Request::body_as<flightforge::wire::GetViewportImageRequest>() const {
+  return body_as_GetViewportImageRequest();
+}
+
 struct RequestBuilder {
   typedef Request Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
@@ -3639,6 +3692,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::GetDaytimeResponse *body_as_GetDaytimeResponse() const {
     return body_type() == flightforge::wire::ResponseBody::GetDaytimeResponse ? static_cast<const flightforge::wire::GetDaytimeResponse *>(body()) : nullptr;
   }
+  const flightforge::wire::ViewportImageResponse *body_as_ViewportImageResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::ViewportImageResponse ? static_cast<const flightforge::wire::ViewportImageResponse *>(body()) : nullptr;
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3846,6 +3902,10 @@ template<> inline const flightforge::wire::GetSurfaceHeightResponse *Response::b
 
 template<> inline const flightforge::wire::GetDaytimeResponse *Response::body_as<flightforge::wire::GetDaytimeResponse>() const {
   return body_as_GetDaytimeResponse();
+}
+
+template<> inline const flightforge::wire::ViewportImageResponse *Response::body_as<flightforge::wire::ViewportImageResponse>() const {
+  return body_as_ViewportImageResponse();
 }
 
 struct ResponseBuilder {
@@ -4300,6 +4360,10 @@ inline bool VerifyRequestBody(::flatbuffers::VerifierTemplate<B> &verifier, cons
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case RequestBody::GetViewportImageRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequest *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -4592,6 +4656,10 @@ inline void *RequestBodyUnion::UnPack(const void *obj, RequestBody type, const :
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequest *>(obj);
       return ptr->UnPack(resolver);
     }
+    case RequestBody::GetViewportImageRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequest *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -4871,6 +4939,10 @@ inline ::flatbuffers::Offset<void> RequestBodyUnion::Pack(::flatbuffers::FlatBuf
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeRequestT *>(value);
       return CreateGetDaytimeRequest(_fbb, ptr, _rehasher).Union();
     }
+    case RequestBody::GetViewportImageRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(value);
+      return CreateGetViewportImageRequest(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -5147,6 +5219,10 @@ inline RequestBodyUnion::RequestBodyUnion(const RequestBodyUnion &u) : type(u.ty
     }
     case RequestBody::GetDaytimeRequest: {
       value = new flightforge::wire::GetDaytimeRequestT(*reinterpret_cast<flightforge::wire::GetDaytimeRequestT *>(u.value));
+      break;
+    }
+    case RequestBody::GetViewportImageRequest: {
+      value = new flightforge::wire::GetViewportImageRequestT(*reinterpret_cast<flightforge::wire::GetViewportImageRequestT *>(u.value));
       break;
     }
     default:
@@ -5496,6 +5572,11 @@ inline void RequestBodyUnion::Reset() {
       delete ptr;
       break;
     }
+    case RequestBody::GetViewportImageRequest: {
+      auto ptr = reinterpret_cast<flightforge::wire::GetViewportImageRequestT *>(value);
+      delete ptr;
+      break;
+    }
     default: break;
   }
   value = nullptr;
@@ -5698,6 +5779,10 @@ inline bool VerifyResponseBody(::flatbuffers::VerifierTemplate<B> &verifier, con
     }
     case ResponseBody::GetDaytimeResponse: {
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case ResponseBody::ViewportImageResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -5912,6 +5997,10 @@ inline void *ResponseBodyUnion::UnPack(const void *obj, ResponseBody type, const
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponse *>(obj);
       return ptr->UnPack(resolver);
     }
+    case ResponseBody::ViewportImageResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponse *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -6111,6 +6200,10 @@ inline ::flatbuffers::Offset<void> ResponseBodyUnion::Pack(::flatbuffers::FlatBu
       auto ptr = reinterpret_cast<const flightforge::wire::GetDaytimeResponseT *>(value);
       return CreateGetDaytimeResponse(_fbb, ptr, _rehasher).Union();
     }
+    case ResponseBody::ViewportImageResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(value);
+      return CreateViewportImageResponse(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6307,6 +6400,10 @@ inline ResponseBodyUnion::ResponseBodyUnion(const ResponseBodyUnion &u) : type(u
     }
     case ResponseBody::GetDaytimeResponse: {
       value = new flightforge::wire::GetDaytimeResponseT(*reinterpret_cast<flightforge::wire::GetDaytimeResponseT *>(u.value));
+      break;
+    }
+    case ResponseBody::ViewportImageResponse: {
+      value = new flightforge::wire::ViewportImageResponseT(*reinterpret_cast<flightforge::wire::ViewportImageResponseT *>(u.value));
       break;
     }
     default:
@@ -6553,6 +6650,11 @@ inline void ResponseBodyUnion::Reset() {
     }
     case ResponseBody::GetDaytimeResponse: {
       auto ptr = reinterpret_cast<flightforge::wire::GetDaytimeResponseT *>(value);
+      delete ptr;
+      break;
+    }
+    case ResponseBody::ViewportImageResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::ViewportImageResponseT *>(value);
       delete ptr;
       break;
     }

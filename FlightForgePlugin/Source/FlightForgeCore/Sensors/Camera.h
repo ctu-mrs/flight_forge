@@ -227,6 +227,9 @@ public:
 	// one CameraInfo per eye, for get_camera_info
 	virtual void DescribeCameras(std::vector<flightforge::wire::CameraInfoT>& Out) {}
 
+	// the capture behind one eye or face, for get_viewport_image; null when out of range
+	virtual USceneCaptureComponent2D* ViewCapture(int32 View) const { return View == 0 ? SceneCaptureComponent2D : nullptr; }
+
 	static flightforge::wire::CameraInfoT PinholeInfo(int SensorId, ::SensorType Type, const FCameraIntrinsics& Intrinsics, const FCameraDistortion& Distortion,
 	                                                  double FovDeg, int32 Width, int32 Height, const FVector& Offset, const FRotator& Orientation);
 

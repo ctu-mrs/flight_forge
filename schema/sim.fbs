@@ -295,3 +295,21 @@ table GetSurfaceHeightResponse {
 }
 
 //}
+
+// viewport //{
+
+// the main viewport (player 0's view) as rendered; with robot_id and sensor_id on the Request the view first takes that camera's
+// pose, FOV and image size, and keeps them until release
+table GetViewportImageRequest {
+  view: int;  // the matched camera's eye (stereo, 0 left) or face (fisheye)
+  release: bool;  // give the view and window size back to the game; returns no image
+  encoding: ImageEncoding;
+}
+
+table ViewportImageResponse {
+  stamp: double;  // s, sim
+  fov: double;  // deg, horizontal
+  image: Image;
+}
+
+//}
