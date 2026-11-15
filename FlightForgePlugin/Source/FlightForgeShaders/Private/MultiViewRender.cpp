@@ -3,10 +3,47 @@
 #include "ReadbackPass.h"
 
 #include "RenderGraphBuilder.h"
+#include "PostProcess/PostProcessMaterialInputs.h"
 #include "RenderGraphUtils.h"
 #include "SceneRenderBuilderInterface.h"
 #include "SceneRendering.h"
+#include "SceneViewExtension.h"
+#include "ScreenPass.h"
 #include "TextureResource.h"
+
+/* FMultiViewOutputExtension //{ */
+
+namespace
+{
+
+class FMultiViewOutputExtension : public ISceneViewExtension
+{
+public:
+	virtual void SubscribeToPostProcessingPass(EPostProcessingPass Pass, const FSceneView& InView, FPostProcessingPassDelegateArray& InOutPassCallbacks,
+	                                           bool bIsPassEnabled) override
+	{
+		if (Pass == EPostProcessingPass::Tonemap)
+		{
+			InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateStatic(&FMultiViewOutputExtension::Output));
+		}
+	}
+
+private:
+	static FScreenPassTexture Output(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessMaterialInputs& Inputs)
+	{
+		const FScreenPassTextureSlice& Color = Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
+		if (!Inputs.OverrideOutput.IsValid())
+		{
+			return FScreenPassTexture::CopyFromSlice(GraphBuilder, Color);
+		}
+		AddDrawTexturePass(GraphBuilder, FScreenPassViewInfo(View), Color, Inputs.OverrideOutput);
+		return Inputs.OverrideOutput;
+	}
+};
+
+}  // namespace
+
+/* //} */
 
 /* FMultiViewRender //{ */
 
@@ -42,6 +79,12 @@ void FMultiViewRender::Add(ISceneRenderBuilder& Builder, FSceneViewFamily& Famil
 		GraphBuilder.SetTextureAccessFinal(Source, ERHIAccess::SRVMask);
 		return true;
 	});
+}
+
+TSharedRef<ISceneViewExtension, ESPMode::ThreadSafe> FMultiViewRender::OutputExtension()
+{
+	static const TSharedRef<ISceneViewExtension, ESPMode::ThreadSafe> Extension = MakeShared<FMultiViewOutputExtension, ESPMode::ThreadSafe>();
+	return Extension;
 }
 
 /* //} */

@@ -42,8 +42,10 @@ private:
 	static bool Groupable(const USceneCaptureComponent2D* View);
 	static bool Compatible(const USceneCaptureComponent2D* A, const USceneCaptureComponent2D* B);
 	bool        PrepareAtlas(TArrayView<USceneCaptureComponent2D* const> Members, int32 Slot, TArray<FIntRect>& OutTiles);
+	void        RenderFamilies(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32& Slot,
+	                           bool bOwnStates);
 	void        RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32 Slot,
-	                         bool bOwnStates);
+	                         bool bOwnStates, int32 FirstState);
 	void ApplyEveryFrame();
 	void ResetViewStates();
 
