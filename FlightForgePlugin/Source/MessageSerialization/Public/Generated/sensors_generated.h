@@ -198,13 +198,13 @@ struct DepthCameraDataResponse;
 struct DepthCameraDataResponseBuilder;
 struct DepthCameraDataResponseT;
 
-struct GetRgbSegCameraDataRequest;
-struct GetRgbSegCameraDataRequestBuilder;
-struct GetRgbSegCameraDataRequestT;
+struct RetiredGetRgbSegCameraDataRequest;
+struct RetiredGetRgbSegCameraDataRequestBuilder;
+struct RetiredGetRgbSegCameraDataRequestT;
 
-struct RgbSegCameraDataResponse;
-struct RgbSegCameraDataResponseBuilder;
-struct RgbSegCameraDataResponseT;
+struct RetiredRgbSegCameraDataResponse;
+struct RetiredRgbSegCameraDataResponseBuilder;
+struct RetiredRgbSegCameraDataResponseT;
 
 struct GetInstanceSegDataRequest;
 struct GetInstanceSegDataRequestBuilder;
@@ -352,10 +352,10 @@ bool operator==(const GetDepthCameraDataRequestT &lhs, const GetDepthCameraDataR
 bool operator!=(const GetDepthCameraDataRequestT &lhs, const GetDepthCameraDataRequestT &rhs);
 bool operator==(const DepthCameraDataResponseT &lhs, const DepthCameraDataResponseT &rhs);
 bool operator!=(const DepthCameraDataResponseT &lhs, const DepthCameraDataResponseT &rhs);
-bool operator==(const GetRgbSegCameraDataRequestT &lhs, const GetRgbSegCameraDataRequestT &rhs);
-bool operator!=(const GetRgbSegCameraDataRequestT &lhs, const GetRgbSegCameraDataRequestT &rhs);
-bool operator==(const RgbSegCameraDataResponseT &lhs, const RgbSegCameraDataResponseT &rhs);
-bool operator!=(const RgbSegCameraDataResponseT &lhs, const RgbSegCameraDataResponseT &rhs);
+bool operator==(const RetiredGetRgbSegCameraDataRequestT &lhs, const RetiredGetRgbSegCameraDataRequestT &rhs);
+bool operator!=(const RetiredGetRgbSegCameraDataRequestT &lhs, const RetiredGetRgbSegCameraDataRequestT &rhs);
+bool operator==(const RetiredRgbSegCameraDataResponseT &lhs, const RetiredRgbSegCameraDataResponseT &rhs);
+bool operator!=(const RetiredRgbSegCameraDataResponseT &lhs, const RetiredRgbSegCameraDataResponseT &rhs);
 bool operator==(const GetInstanceSegDataRequestT &lhs, const GetInstanceSegDataRequestT &rhs);
 bool operator!=(const GetInstanceSegDataRequestT &lhs, const GetInstanceSegDataRequestT &rhs);
 bool operator==(const InstanceSegDataResponseT &lhs, const InstanceSegDataResponseT &rhs);
@@ -389,7 +389,6 @@ enum class SensorType : uint8_t {
   RGB_CAMERA = 0,
   LIDAR = 1,
   RANGEFINDER = 2,
-  RGB_SEG_CAMERA = 4,
   STEREO_CAMERA = 5,
   EVENT_CAMERA = 6,
   FISHEYE_CAMERA = 7,
@@ -399,12 +398,11 @@ enum class SensorType : uint8_t {
   MAX = DEPTH_CAMERA
 };
 
-inline const SensorType (&EnumValuesSensorType())[9] {
+inline const SensorType (&EnumValuesSensorType())[8] {
   static const SensorType values[] = {
     SensorType::RGB_CAMERA,
     SensorType::LIDAR,
     SensorType::RANGEFINDER,
-    SensorType::RGB_SEG_CAMERA,
     SensorType::STEREO_CAMERA,
     SensorType::EVENT_CAMERA,
     SensorType::FISHEYE_CAMERA,
@@ -420,7 +418,7 @@ inline const char * const *EnumNamesSensorType() {
     "LIDAR",
     "RANGEFINDER",
     "",
-    "RGB_SEG_CAMERA",
+    "",
     "STEREO_CAMERA",
     "EVENT_CAMERA",
     "FISHEYE_CAMERA",
@@ -4590,126 +4588,97 @@ struct DepthCameraDataResponse::Traits {
 
 ::flatbuffers::Offset<DepthCameraDataResponse> CreateDepthCameraDataResponse(::flatbuffers::FlatBufferBuilder &_fbb, const DepthCameraDataResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct GetRgbSegCameraDataRequestT : public ::flatbuffers::NativeTable {
-  typedef GetRgbSegCameraDataRequest TableType;
+struct RetiredGetRgbSegCameraDataRequestT : public ::flatbuffers::NativeTable {
+  typedef RetiredGetRgbSegCameraDataRequest TableType;
 };
 
-struct GetRgbSegCameraDataRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef GetRgbSegCameraDataRequestT NativeTableType;
-  typedef GetRgbSegCameraDataRequestBuilder Builder;
+struct RetiredGetRgbSegCameraDataRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef RetiredGetRgbSegCameraDataRequestT NativeTableType;
+  typedef RetiredGetRgbSegCameraDataRequestBuilder Builder;
   struct Traits;
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
            verifier.EndTable();
   }
-  GetRgbSegCameraDataRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(GetRgbSegCameraDataRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static ::flatbuffers::Offset<GetRgbSegCameraDataRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetRgbSegCameraDataRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  RetiredGetRgbSegCameraDataRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RetiredGetRgbSegCameraDataRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredGetRgbSegCameraDataRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
-struct GetRgbSegCameraDataRequestBuilder {
-  typedef GetRgbSegCameraDataRequest Table;
+struct RetiredGetRgbSegCameraDataRequestBuilder {
+  typedef RetiredGetRgbSegCameraDataRequest Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
-  explicit GetRgbSegCameraDataRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+  explicit RetiredGetRgbSegCameraDataRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ::flatbuffers::Offset<GetRgbSegCameraDataRequest> Finish() {
+  ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<GetRgbSegCameraDataRequest>(end);
+    auto o = ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest>(end);
     return o;
   }
 };
 
-inline ::flatbuffers::Offset<GetRgbSegCameraDataRequest> CreateGetRgbSegCameraDataRequest(
+inline ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> CreateRetiredGetRgbSegCameraDataRequest(
     ::flatbuffers::FlatBufferBuilder &_fbb) {
-  GetRgbSegCameraDataRequestBuilder builder_(_fbb);
+  RetiredGetRgbSegCameraDataRequestBuilder builder_(_fbb);
   return builder_.Finish();
 }
 
-struct GetRgbSegCameraDataRequest::Traits {
-  using type = GetRgbSegCameraDataRequest;
-  static auto constexpr Create = CreateGetRgbSegCameraDataRequest;
+struct RetiredGetRgbSegCameraDataRequest::Traits {
+  using type = RetiredGetRgbSegCameraDataRequest;
+  static auto constexpr Create = CreateRetiredGetRgbSegCameraDataRequest;
 };
 
-::flatbuffers::Offset<GetRgbSegCameraDataRequest> CreateGetRgbSegCameraDataRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetRgbSegCameraDataRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> CreateRetiredGetRgbSegCameraDataRequest(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredGetRgbSegCameraDataRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct RgbSegCameraDataResponseT : public ::flatbuffers::NativeTable {
-  typedef RgbSegCameraDataResponse TableType;
-  double stamp = 0.0;
-  std::unique_ptr<flightforge::wire::ImageT> image{};
-  RgbSegCameraDataResponseT() = default;
-  RgbSegCameraDataResponseT(const RgbSegCameraDataResponseT &o);
-  RgbSegCameraDataResponseT(RgbSegCameraDataResponseT&&) FLATBUFFERS_NOEXCEPT = default;
-  RgbSegCameraDataResponseT &operator=(RgbSegCameraDataResponseT o) FLATBUFFERS_NOEXCEPT;
+struct RetiredRgbSegCameraDataResponseT : public ::flatbuffers::NativeTable {
+  typedef RetiredRgbSegCameraDataResponse TableType;
 };
 
-struct RgbSegCameraDataResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
-  typedef RgbSegCameraDataResponseT NativeTableType;
-  typedef RgbSegCameraDataResponseBuilder Builder;
+struct RetiredRgbSegCameraDataResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef RetiredRgbSegCameraDataResponseT NativeTableType;
+  typedef RetiredRgbSegCameraDataResponseBuilder Builder;
   struct Traits;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_STAMP = 4,
-    VT_IMAGE = 6
-  };
-  double stamp() const {
-    return GetField<double>(VT_STAMP, 0.0);
-  }
-  const flightforge::wire::Image *image() const {
-    return GetPointer<const flightforge::wire::Image *>(VT_IMAGE);
-  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<double>(verifier, VT_STAMP, 8) &&
-           VerifyOffset(verifier, VT_IMAGE) &&
-           verifier.VerifyTable(image()) &&
            verifier.EndTable();
   }
-  RgbSegCameraDataResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(RgbSegCameraDataResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static ::flatbuffers::Offset<RgbSegCameraDataResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RgbSegCameraDataResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  RetiredRgbSegCameraDataResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RetiredRgbSegCameraDataResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredRgbSegCameraDataResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
-struct RgbSegCameraDataResponseBuilder {
-  typedef RgbSegCameraDataResponse Table;
+struct RetiredRgbSegCameraDataResponseBuilder {
+  typedef RetiredRgbSegCameraDataResponse Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
   ::flatbuffers::uoffset_t start_;
-  void add_stamp(double stamp) {
-    fbb_.AddElement<double>(RgbSegCameraDataResponse::VT_STAMP, stamp, 0.0);
-  }
-  void add_image(::flatbuffers::Offset<flightforge::wire::Image> image) {
-    fbb_.AddOffset(RgbSegCameraDataResponse::VT_IMAGE, image);
-  }
-  explicit RgbSegCameraDataResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+  explicit RetiredRgbSegCameraDataResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ::flatbuffers::Offset<RgbSegCameraDataResponse> Finish() {
+  ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = ::flatbuffers::Offset<RgbSegCameraDataResponse>(end);
+    auto o = ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse>(end);
     return o;
   }
 };
 
-inline ::flatbuffers::Offset<RgbSegCameraDataResponse> CreateRgbSegCameraDataResponse(
-    ::flatbuffers::FlatBufferBuilder &_fbb,
-    double stamp = 0.0,
-    ::flatbuffers::Offset<flightforge::wire::Image> image = 0) {
-  RgbSegCameraDataResponseBuilder builder_(_fbb);
-  builder_.add_stamp(stamp);
-  builder_.add_image(image);
+inline ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> CreateRetiredRgbSegCameraDataResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  RetiredRgbSegCameraDataResponseBuilder builder_(_fbb);
   return builder_.Finish();
 }
 
-struct RgbSegCameraDataResponse::Traits {
-  using type = RgbSegCameraDataResponse;
-  static auto constexpr Create = CreateRgbSegCameraDataResponse;
+struct RetiredRgbSegCameraDataResponse::Traits {
+  using type = RetiredRgbSegCameraDataResponse;
+  static auto constexpr Create = CreateRetiredRgbSegCameraDataResponse;
 };
 
-::flatbuffers::Offset<RgbSegCameraDataResponse> CreateRgbSegCameraDataResponse(::flatbuffers::FlatBufferBuilder &_fbb, const RgbSegCameraDataResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> CreateRetiredRgbSegCameraDataResponse(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredRgbSegCameraDataResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct GetInstanceSegDataRequestT : public ::flatbuffers::NativeTable {
   typedef GetInstanceSegDataRequest TableType;
@@ -8481,88 +8450,69 @@ inline ::flatbuffers::Offset<DepthCameraDataResponse> DepthCameraDataResponse::P
 }
 
 
-inline bool operator==(const GetRgbSegCameraDataRequestT &, const GetRgbSegCameraDataRequestT &) {
+inline bool operator==(const RetiredGetRgbSegCameraDataRequestT &, const RetiredGetRgbSegCameraDataRequestT &) {
   return true;
 }
 
-inline bool operator!=(const GetRgbSegCameraDataRequestT &lhs, const GetRgbSegCameraDataRequestT &rhs) {
+inline bool operator!=(const RetiredGetRgbSegCameraDataRequestT &lhs, const RetiredGetRgbSegCameraDataRequestT &rhs) {
     return !(lhs == rhs);
 }
 
 
-inline GetRgbSegCameraDataRequestT *GetRgbSegCameraDataRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = std::make_unique<GetRgbSegCameraDataRequestT>();
+inline RetiredGetRgbSegCameraDataRequestT *RetiredGetRgbSegCameraDataRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<RetiredGetRgbSegCameraDataRequestT>();
   UnPackTo(_o.get(), _resolver);
   return _o.release();
 }
 
-inline void GetRgbSegCameraDataRequest::UnPackTo(GetRgbSegCameraDataRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+inline void RetiredGetRgbSegCameraDataRequest::UnPackTo(RetiredGetRgbSegCameraDataRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
 }
 
-inline ::flatbuffers::Offset<GetRgbSegCameraDataRequest> CreateGetRgbSegCameraDataRequest(::flatbuffers::FlatBufferBuilder &_fbb, const GetRgbSegCameraDataRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
-  return GetRgbSegCameraDataRequest::Pack(_fbb, _o, _rehasher);
+inline ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> CreateRetiredGetRgbSegCameraDataRequest(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredGetRgbSegCameraDataRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return RetiredGetRgbSegCameraDataRequest::Pack(_fbb, _o, _rehasher);
 }
 
-inline ::flatbuffers::Offset<GetRgbSegCameraDataRequest> GetRgbSegCameraDataRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const GetRgbSegCameraDataRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+inline ::flatbuffers::Offset<RetiredGetRgbSegCameraDataRequest> RetiredGetRgbSegCameraDataRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredGetRgbSegCameraDataRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const GetRgbSegCameraDataRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  return flightforge::wire::CreateGetRgbSegCameraDataRequest(
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const RetiredGetRgbSegCameraDataRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return flightforge::wire::CreateRetiredGetRgbSegCameraDataRequest(
       _fbb);
 }
 
 
-inline bool operator==(const RgbSegCameraDataResponseT &lhs, const RgbSegCameraDataResponseT &rhs) {
-  return
-      (lhs.stamp == rhs.stamp) &&
-      ((lhs.image == rhs.image) || (lhs.image && rhs.image && *lhs.image == *rhs.image));
+inline bool operator==(const RetiredRgbSegCameraDataResponseT &, const RetiredRgbSegCameraDataResponseT &) {
+  return true;
 }
 
-inline bool operator!=(const RgbSegCameraDataResponseT &lhs, const RgbSegCameraDataResponseT &rhs) {
+inline bool operator!=(const RetiredRgbSegCameraDataResponseT &lhs, const RetiredRgbSegCameraDataResponseT &rhs) {
     return !(lhs == rhs);
 }
 
 
-inline RgbSegCameraDataResponseT::RgbSegCameraDataResponseT(const RgbSegCameraDataResponseT &o)
-      : stamp(o.stamp),
-        image((o.image) ? new flightforge::wire::ImageT(*o.image) : nullptr) {
-}
-
-inline RgbSegCameraDataResponseT &RgbSegCameraDataResponseT::operator=(RgbSegCameraDataResponseT o) FLATBUFFERS_NOEXCEPT {
-  std::swap(stamp, o.stamp);
-  std::swap(image, o.image);
-  return *this;
-}
-
-inline RgbSegCameraDataResponseT *RgbSegCameraDataResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = std::make_unique<RgbSegCameraDataResponseT>();
+inline RetiredRgbSegCameraDataResponseT *RetiredRgbSegCameraDataResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<RetiredRgbSegCameraDataResponseT>();
   UnPackTo(_o.get(), _resolver);
   return _o.release();
 }
 
-inline void RgbSegCameraDataResponse::UnPackTo(RgbSegCameraDataResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+inline void RetiredRgbSegCameraDataResponse::UnPackTo(RetiredRgbSegCameraDataResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = stamp(); _o->stamp = _e; }
-  { auto _e = image(); if (_e) { if(_o->image) { _e->UnPackTo(_o->image.get(), _resolver); } else { _o->image = std::unique_ptr<flightforge::wire::ImageT>(_e->UnPack(_resolver)); } } else if (_o->image) { _o->image.reset(); } }
 }
 
-inline ::flatbuffers::Offset<RgbSegCameraDataResponse> CreateRgbSegCameraDataResponse(::flatbuffers::FlatBufferBuilder &_fbb, const RgbSegCameraDataResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
-  return RgbSegCameraDataResponse::Pack(_fbb, _o, _rehasher);
+inline ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> CreateRetiredRgbSegCameraDataResponse(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredRgbSegCameraDataResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return RetiredRgbSegCameraDataResponse::Pack(_fbb, _o, _rehasher);
 }
 
-inline ::flatbuffers::Offset<RgbSegCameraDataResponse> RgbSegCameraDataResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RgbSegCameraDataResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+inline ::flatbuffers::Offset<RetiredRgbSegCameraDataResponse> RetiredRgbSegCameraDataResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RetiredRgbSegCameraDataResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const RgbSegCameraDataResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  auto _stamp = _o->stamp;
-  auto _image = _o->image ? CreateImage(_fbb, _o->image.get(), _rehasher) : 0;
-  return flightforge::wire::CreateRgbSegCameraDataResponse(
-      _fbb,
-      _stamp,
-      _image);
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const RetiredRgbSegCameraDataResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return flightforge::wire::CreateRetiredRgbSegCameraDataResponse(
+      _fbb);
 }
 
 

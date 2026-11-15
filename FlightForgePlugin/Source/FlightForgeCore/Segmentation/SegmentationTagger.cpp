@@ -353,7 +353,7 @@ void USegmentationTagger::TagActor(AActor* Actor)
 	TArray<UPrimitiveComponent*> Primitives;
 	Actor->GetComponents<UPrimitiveComponent>(Primitives);
 
-	// the stencil carries the class for the legacy seg camera; folder-derived classes count as well
+	// the stencil carries the class for the instance camera's fallback; folder-derived classes count as well
 	for (UPrimitiveComponent* Component : Primitives)
 	{
 		int32 Class = 0;

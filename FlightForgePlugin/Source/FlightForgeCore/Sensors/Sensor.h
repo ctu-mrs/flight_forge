@@ -13,7 +13,6 @@ enum class SensorType : int
 	LIDAR = 1,
 	RANGEFINDER = 2,
 	LIDAR_LIVOX = 3,
-	RGB_SEG_CAMERA = 4,
 	STEREO_CAMERA = 5,
 	EVENT_CAMERA = 6,
 	FISHEYE_CAMERA = 7,

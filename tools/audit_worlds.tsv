@@ -5,7 +5,7 @@
 #   standin  <hidden collision actor>=<visible actor>[+...]: the trace hits the first, the camera draws the second
 /Game/Worlds/MainMap	exclude	no geometry of its own: a 5.4 persistent level whose streaming entries (Warehouse, Valley, MalaSkala) do not load at runtime; each is audited as its own map
 /Game/Worlds/LevelGeneratorTest/TestLevel	exclude	empty canvas for the level generator: only the sky, no mesh or collision
-/Game/ModelForge/MF_Kladno	exclude	Gaussian splat world: the splat is drawn by a view extension and its collision mesh is hidden, so neither seg camera can label it
+/Game/ModelForge/MF_Kladno	exclude	Gaussian splat world: the splat is drawn by a view extension and its collision mesh is hidden, so the instance camera cannot label it
 /Game/Assets/VehicleVarietyPack/Maps/Playground	game	/Script/FlightForgeCore.FlightForgeGameModeBase
 /Game/Assets/VehicleVarietyPack/Maps/Playground	pose	1500,0,400,90,-20
 /Game/Assets/VehicleVarietyPack/Maps/Presentation	game	/Script/FlightForgeCore.FlightForgeGameModeBase

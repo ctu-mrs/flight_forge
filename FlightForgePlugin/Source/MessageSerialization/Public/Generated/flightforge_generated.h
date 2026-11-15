@@ -96,7 +96,7 @@ enum class RequestBody : uint8_t {
   GetStereoCameraDataRequest = 58,
   GetFisheyeCameraDataRequest = 59,
   GetDepthCameraDataRequest = 60,
-  GetRgbSegCameraDataRequest = 61,
+  RetiredGetRgbSegCameraDataRequest = 61,
   GetInstanceSegDataRequest = 62,
   GetInstanceSegMapRequest = 63,
   GetEventCameraDataRequest = 64,
@@ -171,7 +171,7 @@ inline const RequestBody (&EnumValuesRequestBody())[69] {
     RequestBody::GetStereoCameraDataRequest,
     RequestBody::GetFisheyeCameraDataRequest,
     RequestBody::GetDepthCameraDataRequest,
-    RequestBody::GetRgbSegCameraDataRequest,
+    RequestBody::RetiredGetRgbSegCameraDataRequest,
     RequestBody::GetInstanceSegDataRequest,
     RequestBody::GetInstanceSegMapRequest,
     RequestBody::GetEventCameraDataRequest,
@@ -246,7 +246,7 @@ inline const char * const *EnumNamesRequestBody() {
     "GetStereoCameraDataRequest",
     "GetFisheyeCameraDataRequest",
     "GetDepthCameraDataRequest",
-    "GetRgbSegCameraDataRequest",
+    "RetiredGetRgbSegCameraDataRequest",
     "GetInstanceSegDataRequest",
     "GetInstanceSegMapRequest",
     "GetEventCameraDataRequest",
@@ -509,8 +509,8 @@ template<> struct RequestBodyTraits<flightforge::wire::GetDepthCameraDataRequest
   static const RequestBody enum_value = RequestBody::GetDepthCameraDataRequest;
 };
 
-template<> struct RequestBodyTraits<flightforge::wire::GetRgbSegCameraDataRequest> {
-  static const RequestBody enum_value = RequestBody::GetRgbSegCameraDataRequest;
+template<> struct RequestBodyTraits<flightforge::wire::RetiredGetRgbSegCameraDataRequest> {
+  static const RequestBody enum_value = RequestBody::RetiredGetRgbSegCameraDataRequest;
 };
 
 template<> struct RequestBodyTraits<flightforge::wire::GetInstanceSegDataRequest> {
@@ -785,8 +785,8 @@ template<> struct RequestBodyUnionTraits<flightforge::wire::GetDepthCameraDataRe
   static const RequestBody enum_value = RequestBody::GetDepthCameraDataRequest;
 };
 
-template<> struct RequestBodyUnionTraits<flightforge::wire::GetRgbSegCameraDataRequestT> {
-  static const RequestBody enum_value = RequestBody::GetRgbSegCameraDataRequest;
+template<> struct RequestBodyUnionTraits<flightforge::wire::RetiredGetRgbSegCameraDataRequestT> {
+  static const RequestBody enum_value = RequestBody::RetiredGetRgbSegCameraDataRequest;
 };
 
 template<> struct RequestBodyUnionTraits<flightforge::wire::GetInstanceSegDataRequestT> {
@@ -1327,13 +1327,13 @@ struct RequestBodyUnion {
     return type == RequestBody::GetDepthCameraDataRequest ?
       reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequestT *>(value) : nullptr;
   }
-  flightforge::wire::GetRgbSegCameraDataRequestT *AsGetRgbSegCameraDataRequest() {
-    return type == RequestBody::GetRgbSegCameraDataRequest ?
-      reinterpret_cast<flightforge::wire::GetRgbSegCameraDataRequestT *>(value) : nullptr;
+  flightforge::wire::RetiredGetRgbSegCameraDataRequestT *AsRetiredGetRgbSegCameraDataRequest() {
+    return type == RequestBody::RetiredGetRgbSegCameraDataRequest ?
+      reinterpret_cast<flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(value) : nullptr;
   }
-  const flightforge::wire::GetRgbSegCameraDataRequestT *AsGetRgbSegCameraDataRequest() const {
-    return type == RequestBody::GetRgbSegCameraDataRequest ?
-      reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequestT *>(value) : nullptr;
+  const flightforge::wire::RetiredGetRgbSegCameraDataRequestT *AsRetiredGetRgbSegCameraDataRequest() const {
+    return type == RequestBody::RetiredGetRgbSegCameraDataRequest ?
+      reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(value) : nullptr;
   }
   flightforge::wire::GetInstanceSegDataRequestT *AsGetInstanceSegDataRequest() {
     return type == RequestBody::GetInstanceSegDataRequest ?
@@ -1640,9 +1640,9 @@ inline bool operator==(const RequestBodyUnion &lhs, const RequestBodyUnion &rhs)
       return *(reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequestT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequestT *>(rhs.value));
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      return *(reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequestT *>(lhs.value)) ==
-             *(reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequestT *>(rhs.value));
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      return *(reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(rhs.value));
     }
     case RequestBody::GetInstanceSegDataRequest: {
       return *(reinterpret_cast<const flightforge::wire::GetInstanceSegDataRequestT *>(lhs.value)) ==
@@ -1729,7 +1729,7 @@ enum class ResponseBody : uint8_t {
   StereoCameraDataResponse = 38,
   FisheyeCameraDataResponse = 39,
   DepthCameraDataResponse = 40,
-  RgbSegCameraDataResponse = 41,
+  RetiredRgbSegCameraDataResponse = 41,
   InstanceSegDataResponse = 42,
   InstanceSegMapResponse = 43,
   EventCameraDataResponse = 44,
@@ -1784,7 +1784,7 @@ inline const ResponseBody (&EnumValuesResponseBody())[49] {
     ResponseBody::StereoCameraDataResponse,
     ResponseBody::FisheyeCameraDataResponse,
     ResponseBody::DepthCameraDataResponse,
-    ResponseBody::RgbSegCameraDataResponse,
+    ResponseBody::RetiredRgbSegCameraDataResponse,
     ResponseBody::InstanceSegDataResponse,
     ResponseBody::InstanceSegMapResponse,
     ResponseBody::EventCameraDataResponse,
@@ -1839,7 +1839,7 @@ inline const char * const *EnumNamesResponseBody() {
     "StereoCameraDataResponse",
     "FisheyeCameraDataResponse",
     "DepthCameraDataResponse",
-    "RgbSegCameraDataResponse",
+    "RetiredRgbSegCameraDataResponse",
     "InstanceSegDataResponse",
     "InstanceSegMapResponse",
     "EventCameraDataResponse",
@@ -2022,8 +2022,8 @@ template<> struct ResponseBodyTraits<flightforge::wire::DepthCameraDataResponse>
   static const ResponseBody enum_value = ResponseBody::DepthCameraDataResponse;
 };
 
-template<> struct ResponseBodyTraits<flightforge::wire::RgbSegCameraDataResponse> {
-  static const ResponseBody enum_value = ResponseBody::RgbSegCameraDataResponse;
+template<> struct ResponseBodyTraits<flightforge::wire::RetiredRgbSegCameraDataResponse> {
+  static const ResponseBody enum_value = ResponseBody::RetiredRgbSegCameraDataResponse;
 };
 
 template<> struct ResponseBodyTraits<flightforge::wire::InstanceSegDataResponse> {
@@ -2218,8 +2218,8 @@ template<> struct ResponseBodyUnionTraits<flightforge::wire::DepthCameraDataResp
   static const ResponseBody enum_value = ResponseBody::DepthCameraDataResponse;
 };
 
-template<> struct ResponseBodyUnionTraits<flightforge::wire::RgbSegCameraDataResponseT> {
-  static const ResponseBody enum_value = ResponseBody::RgbSegCameraDataResponse;
+template<> struct ResponseBodyUnionTraits<flightforge::wire::RetiredRgbSegCameraDataResponseT> {
+  static const ResponseBody enum_value = ResponseBody::RetiredRgbSegCameraDataResponse;
 };
 
 template<> struct ResponseBodyUnionTraits<flightforge::wire::InstanceSegDataResponseT> {
@@ -2600,13 +2600,13 @@ struct ResponseBodyUnion {
     return type == ResponseBody::DepthCameraDataResponse ?
       reinterpret_cast<const flightforge::wire::DepthCameraDataResponseT *>(value) : nullptr;
   }
-  flightforge::wire::RgbSegCameraDataResponseT *AsRgbSegCameraDataResponse() {
-    return type == ResponseBody::RgbSegCameraDataResponse ?
-      reinterpret_cast<flightforge::wire::RgbSegCameraDataResponseT *>(value) : nullptr;
+  flightforge::wire::RetiredRgbSegCameraDataResponseT *AsRetiredRgbSegCameraDataResponse() {
+    return type == ResponseBody::RetiredRgbSegCameraDataResponse ?
+      reinterpret_cast<flightforge::wire::RetiredRgbSegCameraDataResponseT *>(value) : nullptr;
   }
-  const flightforge::wire::RgbSegCameraDataResponseT *AsRgbSegCameraDataResponse() const {
-    return type == ResponseBody::RgbSegCameraDataResponse ?
-      reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponseT *>(value) : nullptr;
+  const flightforge::wire::RetiredRgbSegCameraDataResponseT *AsRetiredRgbSegCameraDataResponse() const {
+    return type == ResponseBody::RetiredRgbSegCameraDataResponse ?
+      reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponseT *>(value) : nullptr;
   }
   flightforge::wire::InstanceSegDataResponseT *AsInstanceSegDataResponse() {
     return type == ResponseBody::InstanceSegDataResponse ?
@@ -2833,9 +2833,9 @@ inline bool operator==(const ResponseBodyUnion &lhs, const ResponseBodyUnion &rh
       return *(reinterpret_cast<const flightforge::wire::DepthCameraDataResponseT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::DepthCameraDataResponseT *>(rhs.value));
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      return *(reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponseT *>(lhs.value)) ==
-             *(reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponseT *>(rhs.value));
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      return *(reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponseT *>(rhs.value));
     }
     case ResponseBody::InstanceSegDataResponse: {
       return *(reinterpret_cast<const flightforge::wire::InstanceSegDataResponseT *>(lhs.value)) ==
@@ -3095,8 +3095,8 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::GetDepthCameraDataRequest *body_as_GetDepthCameraDataRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetDepthCameraDataRequest ? static_cast<const flightforge::wire::GetDepthCameraDataRequest *>(body()) : nullptr;
   }
-  const flightforge::wire::GetRgbSegCameraDataRequest *body_as_GetRgbSegCameraDataRequest() const {
-    return body_type() == flightforge::wire::RequestBody::GetRgbSegCameraDataRequest ? static_cast<const flightforge::wire::GetRgbSegCameraDataRequest *>(body()) : nullptr;
+  const flightforge::wire::RetiredGetRgbSegCameraDataRequest *body_as_RetiredGetRgbSegCameraDataRequest() const {
+    return body_type() == flightforge::wire::RequestBody::RetiredGetRgbSegCameraDataRequest ? static_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequest *>(body()) : nullptr;
   }
   const flightforge::wire::GetInstanceSegDataRequest *body_as_GetInstanceSegDataRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetInstanceSegDataRequest ? static_cast<const flightforge::wire::GetInstanceSegDataRequest *>(body()) : nullptr;
@@ -3375,8 +3375,8 @@ template<> inline const flightforge::wire::GetDepthCameraDataRequest *Request::b
   return body_as_GetDepthCameraDataRequest();
 }
 
-template<> inline const flightforge::wire::GetRgbSegCameraDataRequest *Request::body_as<flightforge::wire::GetRgbSegCameraDataRequest>() const {
-  return body_as_GetRgbSegCameraDataRequest();
+template<> inline const flightforge::wire::RetiredGetRgbSegCameraDataRequest *Request::body_as<flightforge::wire::RetiredGetRgbSegCameraDataRequest>() const {
+  return body_as_RetiredGetRgbSegCameraDataRequest();
 }
 
 template<> inline const flightforge::wire::GetInstanceSegDataRequest *Request::body_as<flightforge::wire::GetInstanceSegDataRequest>() const {
@@ -3615,8 +3615,8 @@ struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::DepthCameraDataResponse *body_as_DepthCameraDataResponse() const {
     return body_type() == flightforge::wire::ResponseBody::DepthCameraDataResponse ? static_cast<const flightforge::wire::DepthCameraDataResponse *>(body()) : nullptr;
   }
-  const flightforge::wire::RgbSegCameraDataResponse *body_as_RgbSegCameraDataResponse() const {
-    return body_type() == flightforge::wire::ResponseBody::RgbSegCameraDataResponse ? static_cast<const flightforge::wire::RgbSegCameraDataResponse *>(body()) : nullptr;
+  const flightforge::wire::RetiredRgbSegCameraDataResponse *body_as_RetiredRgbSegCameraDataResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::RetiredRgbSegCameraDataResponse ? static_cast<const flightforge::wire::RetiredRgbSegCameraDataResponse *>(body()) : nullptr;
   }
   const flightforge::wire::InstanceSegDataResponse *body_as_InstanceSegDataResponse() const {
     return body_type() == flightforge::wire::ResponseBody::InstanceSegDataResponse ? static_cast<const flightforge::wire::InstanceSegDataResponse *>(body()) : nullptr;
@@ -3816,8 +3816,8 @@ template<> inline const flightforge::wire::DepthCameraDataResponse *Response::bo
   return body_as_DepthCameraDataResponse();
 }
 
-template<> inline const flightforge::wire::RgbSegCameraDataResponse *Response::body_as<flightforge::wire::RgbSegCameraDataResponse>() const {
-  return body_as_RgbSegCameraDataResponse();
+template<> inline const flightforge::wire::RetiredRgbSegCameraDataResponse *Response::body_as<flightforge::wire::RetiredRgbSegCameraDataResponse>() const {
+  return body_as_RetiredRgbSegCameraDataResponse();
 }
 
 template<> inline const flightforge::wire::InstanceSegDataResponse *Response::body_as<flightforge::wire::InstanceSegDataResponse>() const {
@@ -4268,8 +4268,8 @@ inline bool VerifyRequestBody(::flatbuffers::VerifierTemplate<B> &verifier, cons
       auto ptr = reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      auto ptr = reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequest *>(obj);
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case RequestBody::GetInstanceSegDataRequest: {
@@ -4560,8 +4560,8 @@ inline void *RequestBodyUnion::UnPack(const void *obj, RequestBody type, const :
       auto ptr = reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequest *>(obj);
       return ptr->UnPack(resolver);
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      auto ptr = reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequest *>(obj);
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequest *>(obj);
       return ptr->UnPack(resolver);
     }
     case RequestBody::GetInstanceSegDataRequest: {
@@ -4839,9 +4839,9 @@ inline ::flatbuffers::Offset<void> RequestBodyUnion::Pack(::flatbuffers::FlatBuf
       auto ptr = reinterpret_cast<const flightforge::wire::GetDepthCameraDataRequestT *>(value);
       return CreateGetDepthCameraDataRequest(_fbb, ptr, _rehasher).Union();
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      auto ptr = reinterpret_cast<const flightforge::wire::GetRgbSegCameraDataRequestT *>(value);
-      return CreateGetRgbSegCameraDataRequest(_fbb, ptr, _rehasher).Union();
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(value);
+      return CreateRetiredGetRgbSegCameraDataRequest(_fbb, ptr, _rehasher).Union();
     }
     case RequestBody::GetInstanceSegDataRequest: {
       auto ptr = reinterpret_cast<const flightforge::wire::GetInstanceSegDataRequestT *>(value);
@@ -5117,8 +5117,8 @@ inline RequestBodyUnion::RequestBodyUnion(const RequestBodyUnion &u) : type(u.ty
       value = new flightforge::wire::GetDepthCameraDataRequestT(*reinterpret_cast<flightforge::wire::GetDepthCameraDataRequestT *>(u.value));
       break;
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      value = new flightforge::wire::GetRgbSegCameraDataRequestT(*reinterpret_cast<flightforge::wire::GetRgbSegCameraDataRequestT *>(u.value));
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      value = new flightforge::wire::RetiredGetRgbSegCameraDataRequestT(*reinterpret_cast<flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(u.value));
       break;
     }
     case RequestBody::GetInstanceSegDataRequest: {
@@ -5456,8 +5456,8 @@ inline void RequestBodyUnion::Reset() {
       delete ptr;
       break;
     }
-    case RequestBody::GetRgbSegCameraDataRequest: {
-      auto ptr = reinterpret_cast<flightforge::wire::GetRgbSegCameraDataRequestT *>(value);
+    case RequestBody::RetiredGetRgbSegCameraDataRequest: {
+      auto ptr = reinterpret_cast<flightforge::wire::RetiredGetRgbSegCameraDataRequestT *>(value);
       delete ptr;
       break;
     }
@@ -5668,8 +5668,8 @@ inline bool VerifyResponseBody(::flatbuffers::VerifierTemplate<B> &verifier, con
       auto ptr = reinterpret_cast<const flightforge::wire::DepthCameraDataResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      auto ptr = reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponse *>(obj);
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
     case ResponseBody::InstanceSegDataResponse: {
@@ -5880,8 +5880,8 @@ inline void *ResponseBodyUnion::UnPack(const void *obj, ResponseBody type, const
       auto ptr = reinterpret_cast<const flightforge::wire::DepthCameraDataResponse *>(obj);
       return ptr->UnPack(resolver);
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      auto ptr = reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponse *>(obj);
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponse *>(obj);
       return ptr->UnPack(resolver);
     }
     case ResponseBody::InstanceSegDataResponse: {
@@ -6079,9 +6079,9 @@ inline ::flatbuffers::Offset<void> ResponseBodyUnion::Pack(::flatbuffers::FlatBu
       auto ptr = reinterpret_cast<const flightforge::wire::DepthCameraDataResponseT *>(value);
       return CreateDepthCameraDataResponse(_fbb, ptr, _rehasher).Union();
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      auto ptr = reinterpret_cast<const flightforge::wire::RgbSegCameraDataResponseT *>(value);
-      return CreateRgbSegCameraDataResponse(_fbb, ptr, _rehasher).Union();
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::RetiredRgbSegCameraDataResponseT *>(value);
+      return CreateRetiredRgbSegCameraDataResponse(_fbb, ptr, _rehasher).Union();
     }
     case ResponseBody::InstanceSegDataResponse: {
       auto ptr = reinterpret_cast<const flightforge::wire::InstanceSegDataResponseT *>(value);
@@ -6277,8 +6277,8 @@ inline ResponseBodyUnion::ResponseBodyUnion(const ResponseBodyUnion &u) : type(u
       value = new flightforge::wire::DepthCameraDataResponseT(*reinterpret_cast<flightforge::wire::DepthCameraDataResponseT *>(u.value));
       break;
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      value = new flightforge::wire::RgbSegCameraDataResponseT(*reinterpret_cast<flightforge::wire::RgbSegCameraDataResponseT *>(u.value));
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      value = new flightforge::wire::RetiredRgbSegCameraDataResponseT(*reinterpret_cast<flightforge::wire::RetiredRgbSegCameraDataResponseT *>(u.value));
       break;
     }
     case ResponseBody::InstanceSegDataResponse: {
@@ -6516,8 +6516,8 @@ inline void ResponseBodyUnion::Reset() {
       delete ptr;
       break;
     }
-    case ResponseBody::RgbSegCameraDataResponse: {
-      auto ptr = reinterpret_cast<flightforge::wire::RgbSegCameraDataResponseT *>(value);
+    case ResponseBody::RetiredRgbSegCameraDataResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::RetiredRgbSegCameraDataResponseT *>(value);
       delete ptr;
       break;
     }

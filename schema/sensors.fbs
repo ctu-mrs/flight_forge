@@ -2,12 +2,11 @@ include "common.fbs";
 
 namespace flightforge.wire;
 
-// ids are stable and append-only; 3 was LIDAR_LIVOX, sonar and DVL are reserved to append
+// ids are stable and append-only; 3 was LIDAR_LIVOX, 4 RGB_SEG_CAMERA (removed in 1.5), sonar and DVL are reserved to append
 enum SensorType : ubyte {
   RGB_CAMERA = 0,
   LIDAR = 1,
   RANGEFINDER = 2,
-  RGB_SEG_CAMERA = 4,
   STEREO_CAMERA = 5,
   EVENT_CAMERA = 6,
   FISHEYE_CAMERA = 7,
@@ -128,7 +127,7 @@ table CameraLensEffects {
 
 /* configs //{ */
 
-// also the config of the depth, instance segmentation and legacy segmentation cameras
+// also the config of the depth and instance segmentation cameras
 table RgbCameraConfig {
   show_debug_camera: bool;
   mount: Pose;  // relative to the sensor's link
@@ -290,13 +289,9 @@ table DepthCameraDataResponse {
   image: Image;
 }
 
-table GetRgbSegCameraDataRequest {}
-
-// label cameras ignore the encoding and send PNG, as a lossy codec would invent ids
-table RgbSegCameraDataResponse {
-  stamp: double;  // s, sim
-  image: Image;
-}
+// the legacy stencil segmentation camera's op, removed in 1.5; the tables only keep their union slots
+table RetiredGetRgbSegCameraDataRequest {}
+table RetiredRgbSegCameraDataResponse {}
 
 table GetInstanceSegDataRequest {}
 

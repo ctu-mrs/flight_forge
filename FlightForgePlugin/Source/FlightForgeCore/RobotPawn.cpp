@@ -142,7 +142,6 @@ void ARobotPawn::BeginPlay() {
 //     // AddSensor(1); //Lidar
 //     // AddSensor(2); //RangeFinder
 //     // AddSensor(3); //Lidar Livox
-//     // AddSensor(4); //RGB Seg camera
 //     // AddSensor(5); //Stereo camera
 // }
 
@@ -689,7 +688,6 @@ int ARobotPawn::AddSensor(int SensorTypeNum){
     case SensorType::LIDAR:          SensorClass = ULidar::StaticClass();       break;
     case SensorType::RANGEFINDER:    SensorClass = URangeFinder::StaticClass(); break;
     case SensorType::LIDAR_LIVOX:    SensorClass = ULidarLivox::StaticClass();  break;
-    case SensorType::RGB_SEG_CAMERA: SensorClass = URgbSegCamera::StaticClass();break;
     case SensorType::STEREO_CAMERA:  SensorClass = UStereoCamera::StaticClass();break;
     case SensorType::EVENT_CAMERA:   SensorClass = UEventCamera::StaticClass(); break;
     case SensorType::FISHEYE_CAMERA: SensorClass = UFisheyeCamera::StaticClass();break;
@@ -777,13 +775,11 @@ USensor* ARobotPawn::FindSensorById(int SensorID)
 
 int ARobotPawn::ResolveSensorId(SensorType Type, int RequestedID)
 {
-  // the generic lidar messages also drive a dedicated livox instance, and the rgb
-  // config messages also address seg cameras (same config struct on the wire) so
-  // seg resolution/intrinsics/distortion are settable by explicit id
+  // the generic lidar messages also drive a dedicated livox instance; the rgb config messages also address the depth and instance cameras
   auto TypeCompatible = [Type](SensorType Actual) {
     return Actual == Type || (Type == SensorType::LIDAR && Actual == SensorType::LIDAR_LIVOX) ||
            (Type == SensorType::RGB_CAMERA &&
-            (Actual == SensorType::RGB_SEG_CAMERA || Actual == SensorType::INSTANCE_SEG_CAMERA || Actual == SensorType::DEPTH_CAMERA));
+            (Actual == SensorType::INSTANCE_SEG_CAMERA || Actual == SensorType::DEPTH_CAMERA));
   };
 
   SensorsCriticalSection->Lock();

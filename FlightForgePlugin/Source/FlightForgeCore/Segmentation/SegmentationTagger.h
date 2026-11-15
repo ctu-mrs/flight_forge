@@ -28,7 +28,7 @@ struct FSegmentationTagRule
 	UPROPERTY(Config, EditAnywhere, Category = "Segmentation")
 	FString Match;
 
-	// the class id; written to the stencil as well when it fits in 8 bits, for the legacy seg camera
+	// the class id; written to the stencil as well when it fits in 8 bits, for the instance camera's stencil fallback
 	UPROPERTY(Config, EditAnywhere, Category = "Segmentation")
 	uint8 Stencil = 0;
 };

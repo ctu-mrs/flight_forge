@@ -118,8 +118,7 @@ void DumpSegGroundTruth(const TArray<FString>& Args)
 	const FString PngPath = FPaths::Combine(Directory, BaseName + TEXT(".png"));
 	FFileHelper::SaveArrayToFile(Png, *PngPath);
 
-	// id -> actor mapping plus each actor's stencil, so the mask can be compared
-	// against the stencil segmentation output directly
+	// id -> actor mapping plus each actor's stencil
 	TSet<int32> UsedStencils;
 	int32       StencilCollisions = 0;
 

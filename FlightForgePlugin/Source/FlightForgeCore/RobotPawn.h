@@ -10,7 +10,6 @@
 #include "Sensors/Lidar.h"
 #include "Sensors/Camera.h"
 #include "Sensors/RgbCamera.h"
-#include "Sensors/RgbSegCamera.h"
 #include "Sensors/StereoCamera.h"
 #include "Sensors/RangeFinder.h"
 #include "Sensors/LidarLivox.h"

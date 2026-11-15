@@ -749,7 +749,7 @@ void FSimServer::SensorOp(const ffw::Request& Request, FWireReply& Reply)
 		case B::GetStereoCameraDataRequest: Type = SensorType::STEREO_CAMERA; break;
 		case B::GetFisheyeCameraDataRequest: Type = SensorType::FISHEYE_CAMERA; break;
 		case B::GetDepthCameraDataRequest: Type = SensorType::DEPTH_CAMERA; break;
-		case B::GetRgbSegCameraDataRequest: Type = SensorType::RGB_SEG_CAMERA; break;
+		case B::RetiredGetRgbSegCameraDataRequest: Reply.Fail(TEXT("get_rgb_seg_camera_data was removed in API 1.5; use the instance segmentation camera")); return;
 		case B::GetInstanceSegDataRequest:
 		case B::GetInstanceSegMapRequest: Type = SensorType::INSTANCE_SEG_CAMERA; break;
 		case B::GetEventCameraDataRequest: Type = SensorType::EVENT_CAMERA; break;

@@ -606,7 +606,7 @@ const FSimServer::FHandler* FSimServer::Handlers()
 		for (const B Body : {B::GetRgbCameraConfigRequest, B::SetRgbCameraConfigRequest, B::GetStereoCameraConfigRequest, B::SetStereoCameraConfigRequest,
 		                     B::GetFisheyeCameraConfigRequest, B::SetFisheyeCameraConfigRequest, B::GetEventCameraConfigRequest,
 		                     B::SetEventCameraConfigRequest, B::GetLidarConfigRequest, B::SetLidarConfigRequest, B::GetRgbCameraDataRequest,
-		                     B::GetStereoCameraDataRequest, B::GetFisheyeCameraDataRequest, B::GetDepthCameraDataRequest, B::GetRgbSegCameraDataRequest,
+		                     B::GetStereoCameraDataRequest, B::GetFisheyeCameraDataRequest, B::GetDepthCameraDataRequest, B::RetiredGetRgbSegCameraDataRequest,
 		                     B::GetInstanceSegDataRequest, B::GetInstanceSegMapRequest, B::GetEventCameraDataRequest, B::GetLidarScanRequest,
 		                     B::GetRangefinderDataRequest})
 		{
