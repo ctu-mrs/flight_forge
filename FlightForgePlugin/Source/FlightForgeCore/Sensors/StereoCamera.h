@@ -18,9 +18,9 @@ struct FStereoCameraConfig
 	double   FOVAngle;
 	int      Width;
 	int      Height;
-	bool     enable_temporal_aa;
-	bool     enable_hdr;
-	bool     enable_raytracing;
+	bool     enable_temporal_aa = true;
+	bool     enable_hdr         = false;
+	bool     enable_raytracing  = true;
 	double   CaptureRate = DEFAULT_CAPTURE_RATE;  // 0 = every tick
 
 	// shared by both eyes

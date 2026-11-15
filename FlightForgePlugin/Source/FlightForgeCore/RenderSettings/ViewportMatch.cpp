@@ -59,6 +59,9 @@ bool UViewportMatch::Match(USceneCaptureComponent2D* Capture, FString& Error)
 	// captures keep the horizontal fov; the project may keep the vertical one
 	Camera->bOverrideAspectRatioAxisConstraint = true;
 	Camera->AspectRatioAxisConstraint          = AspectRatio_MaintainXFOV;
+	// the camera's own overrides (manual exposure, lens, a fisheye face's seam locks) on top of the world's, as the capture has them
+	Camera->PostProcessSettings    = Capture->PostProcessSettings;
+	Camera->PostProcessBlendWeight = Capture->PostProcessBlendWeight;
 	Probe->AttachToComponent(Capture, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 	Player->SetViewTarget(Probe);
 

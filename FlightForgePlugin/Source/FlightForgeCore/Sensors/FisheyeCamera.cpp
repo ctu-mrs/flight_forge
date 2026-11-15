@@ -54,7 +54,7 @@ UFisheyeCamera::UFisheyeCamera() : UCamera()
 
 	for (int32 Face = 1; Face < NumFaces; ++Face)
 	{
-		FaceCaptures[Face] = CreateDefaultSubobject<USceneCaptureComponent2D>(*FString::Printf(TEXT("FisheyeFaceCapture%d"), Face));
+		FaceCaptures[Face] = CreateDefaultSubobject<ULookCapture>(*FString::Printf(TEXT("FisheyeFaceCapture%d"), Face));
 		FaceCaptures[Face]->SetupAttachment(SceneCaptureMeshHolder);
 	}
 
@@ -98,12 +98,19 @@ void UFisheyeCamera::BeginPlay()
 
 		USceneCaptureComponent2D* Capture = FaceCaptures[Face];
 
-		// temporal effects are per-face and would seam at the boundaries
-		Capture->CaptureSource = SCS_FinalColorLDR;
+		ApplyViewportLook(Capture);
 		Capture->TextureTarget = FaceRenderTargets[Face];
 		Capture->FOVAngle      = FaceFovDeg;
-		Capture->ShowFlags.SetTemporalAA(false);
+
+		// screen-space effects centred on a face would seam where faces meet; the faces share one exposure instead
 		Capture->ShowFlags.SetMotionBlur(false);
+		FPostProcessSettings& Settings          = Capture->PostProcessSettings;
+		Settings.bOverride_VignetteIntensity    = true;
+		Settings.VignetteIntensity              = 0.0f;
+		Settings.bOverride_SceneFringeIntensity = true;
+		Settings.SceneFringeIntensity           = 0.0f;
+		Settings.bOverride_LensFlareIntensity   = true;
+		Settings.LensFlareIntensity             = 0.0f;
 		Capture->bAlwaysPersistRenderingState = true;
 		Capture->bCaptureEveryFrame           = false;
 		Capture->bCaptureOnMovement           = false;
@@ -112,32 +119,8 @@ void UFisheyeCamera::BeginPlay()
 
 	RenderTarget2D = FaceRenderTargets[0];
 
-	for (int32 Face = 0; Face < NumFaces; ++Face)
-	{
-		ApplyLevelPostProcessBaseline(FaceCaptures[Face]);
-
-		// Screen-space post effects are computed per face, so anything that varies with
-		// what a face happens to see leaves a straight seam along the face boundary and
-		// the result reads as the inside of a box. Exposure is the worst of them: a face
-		// full of sky adapts differently from one full of ground. Lock them all.
-		FPostProcessSettings& Settings = FaceCaptures[Face]->PostProcessSettings;
-
-		Settings.bOverride_AutoExposureMinBrightness = true;
-		Settings.bOverride_AutoExposureMaxBrightness = true;
-		Settings.AutoExposureMinBrightness           = 1.0f;
-		Settings.AutoExposureMaxBrightness           = 1.0f;
-
-		Settings.bOverride_VignetteIntensity = true;
-		Settings.VignetteIntensity           = 0.0f;
-
-		Settings.bOverride_BloomIntensity = true;
-		Settings.BloomIntensity           = 0.0f;
-
-		Settings.bOverride_SceneFringeIntensity = true;
-		Settings.SceneFringeIntensity           = 0.0f;
-	}
-
 	MultiView->SetViews(FaceCaptures);
+	MultiView->bSharedExposure = true;
 
 	SetFisheyeCameraConfig(fisheye_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());

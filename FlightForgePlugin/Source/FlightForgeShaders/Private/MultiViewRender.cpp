@@ -57,6 +57,10 @@ void FMultiViewRender::Add(ISceneRenderBuilder& Builder, FSceneViewFamily& Famil
 
 	Builder.AddRenderer(Renderer, [Atlas, Tiles = MoveTemp(Tiles), Frame, Time](FRDGBuilder& GraphBuilder, const FSceneRenderFunctionInputs& Inputs) {
 		Inputs.Renderer->Render(GraphBuilder, Inputs.SceneUpdateInputs);
+		if (Tiles.IsEmpty())
+		{
+			return true;
+		}
 
 		FRDGTextureRef Source = RegisterExternalTexture(GraphBuilder, Atlas->GetRenderTargetTexture(), TEXT("FlightForge.MultiViewAtlas"));
 		for (const FMultiViewTile& Tile : Tiles)

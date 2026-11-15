@@ -15,7 +15,7 @@ struct FMultiViewTile
 	FTextureRenderTargetResource* Target = nullptr;
 };
 
-// renders a family of several views into Atlas as one scene renderer, then copies each tile into its own target
+// renders a family of views into Atlas as one scene renderer, then copies each tile into its own target; no tiles: Atlas is the views' own target
 class FLIGHTFORGESHADERS_API FMultiViewRender
 {
 public:

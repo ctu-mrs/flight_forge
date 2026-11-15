@@ -5,6 +5,8 @@
 
 #include "MultiViewCapture.generated.h"
 
+class FSceneViewStateInterface;
+class FTextureRenderTargetResource;
 class UTextureRenderTarget2D;
 
 /* UMultiViewCapture //{ */
@@ -21,6 +23,16 @@ public:
 	static bool Enabled();
 
 	static bool BatchEnabled();
+
+	// FlightForge.Camera.ViewportLook: colour captures render with the main viewport's post-process, Lumen and screen percentage
+	static bool LookEnabled();
+	static bool HasLook(const USceneCaptureComponent2D* View);
+
+	// one capture as a family of one, with the viewport's look
+	static void RenderSingle(USceneCaptureComponent2D* View, FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder);
+
+	// the other views take view 0's exposure, as one camera would; no seams between fisheye faces
+	bool bSharedExposure = false;
 
 	// the robot's batch, made on first use
 	static UMultiViewCapture* RobotBatch(AActor* Robot);
@@ -46,6 +58,20 @@ private:
 	void        RenderFamilies(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32& Slot);
 	void        RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32 Slot,
 	                         bool bSharedLumen);
+
+	struct FFamilySetup
+	{
+		FTextureRenderTargetResource*                                   Target = nullptr;
+		TArray<FIntRect>                                                Tiles;
+		bool                                                            bCopyTiles = true;
+		bool                                                            bSharedExposure = false;
+		bool                                                            bCube = false;
+		FSceneViewStateInterface*                                       LumenAnchor = nullptr;
+		TFunction<FSceneViewStateInterface*(USceneCaptureComponent2D*)> StateFor;
+		FString                                                         Name;
+	};
+	static void RenderViews(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members,
+	                        FFamilySetup&& Setup);
 	void ApplyEveryFrame();
 	// a member's state inside a shared-Lumen family: shares this component's origin, so its Lumen scene; the member's own state stays untouched
 	FSceneViewStateInterface* FamilyState(USceneCaptureComponent2D* Capture);
@@ -64,6 +90,22 @@ private:
 
 	bool bEveryFrame   = false;
 	bool bAppliedGroup = false;
+};
+
+/* //} */
+
+/* ULookCapture //{ */
+
+// a colour camera's capture: with the viewport look it renders through UMultiViewCapture's view setup, not the engine's scene capture defaults
+UCLASS()
+class FLIGHTFORGECORE_API ULookCapture : public USceneCaptureComponent2D
+{
+	GENERATED_BODY()
+
+public:
+	bool bViewportLook = false;
+
+	virtual void UpdateSceneCaptureContents(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder) override;
 };
 
 /* //} */

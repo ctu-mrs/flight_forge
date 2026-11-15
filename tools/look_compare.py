@@ -24,7 +24,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from bench_cameras import Sim, connect  # noqa: E402
-from flightforge import Pose, SensorType, quat_from_rpy  # noqa: E402
+from flightforge import FlightForgeError, Pose, SensorType, quat_from_rpy  # noqa: E402
 
 LEVELS = ["low", "medium", "high", "epic", "cinematic"]
 VIEWS = [("rgb", 0), ("stereo", 0), ("stereo", 1)] + [("fisheye", f) for f in range(5)]
@@ -54,16 +54,23 @@ def save_triplet(path, viewport, camera):
 # cameras //{
 
 
-def add_cameras(robot, pitch_deg):
+def add_cameras(robot, pitch_deg, kinds=("rgb", "stereo", "fisheye")):
     pose = Pose(MOUNT, quat_from_rpy(0.0, math.radians(pitch_deg), 0.0))
     raw = {"encoding": {"compression": 0}}
+    # one image size for every view (the fisheye's faces are 512), so the viewport resizes once: a resize drops every camera's history
+    size = {"width": 512, "height": 512}
     sids = {}
-    sids["rgb"] = robot.add_sensor(SensorType.RGB_CAMERA, pose=pose)
-    robot.set_rgb_camera_config(sensor_id=sids["rgb"], **raw)
-    sids["stereo"] = robot.add_sensor(SensorType.STEREO_CAMERA, pose=pose)
-    robot.set_stereo_camera_config(sensor_id=sids["stereo"], **raw)
-    sids["fisheye"] = robot.add_sensor(SensorType.FISHEYE_CAMERA, pose=pose)
-    robot.set_fisheye_camera_config(sensor_id=sids["fisheye"], **raw)
+    if "rgb" in kinds:
+        sids["rgb"] = robot.add_sensor(SensorType.RGB_CAMERA, pose=pose)
+        robot.set_rgb_camera_config(sensor_id=sids["rgb"], **raw, **size)
+    if "stereo" in kinds:
+        sids["stereo"] = robot.add_sensor(SensorType.STEREO_CAMERA, pose=pose)
+        robot.set_stereo_camera_config(sensor_id=sids["stereo"], **raw, **size)
+    if "fisheye" in kinds:
+        sids["fisheye"] = robot.add_sensor(SensorType.FISHEYE_CAMERA, pose=pose)
+        robot.set_fisheye_camera_config(sensor_id=sids["fisheye"], **raw)
+    if "depth" in kinds:
+        sids["depth"] = robot.add_sensor(SensorType.DEPTH_CAMERA, pose=pose)
     return sids
 
 
@@ -117,6 +124,19 @@ def seam_steps(client, robot, sids, out):
 # //}
 
 
+def step(client, n):
+    """n lockstep steps, ten at a time; a level switch can stall a step on shader compiles."""
+    for _ in range((n + 9) // 10):
+        for attempt in range(5):
+            try:
+                client.step(10)
+                break
+            except FlightForgeError as error:
+                if "did not finish" not in str(error) or attempt == 4:
+                    raise
+                print("step stalled, retrying", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-e", "--engine", choices=["stock", "src"], default="stock")
@@ -125,7 +145,7 @@ def main():
     ap.add_argument("-o", "--out", default=os.path.expanduser("~/Data/fflook/run"))
     ap.add_argument("--cvars", default="", help="';'-separated settings, each 'label=cmd,cmd'; every view is compared under each")
     ap.add_argument("--views", default="", help="kind:view list, e.g. rgb:0,fisheye:3; default every view")
-    ap.add_argument("--settle", type=int, default=150, help="lockstep steps after a level change")
+    ap.add_argument("--settle", type=int, default=300, help="lockstep steps after a level change; a camera's own Lumen scene takes about 200 to fill")
     ap.add_argument("--settle-view", type=int, default=45, help="lockstep steps after the viewport takes a view")
     ap.add_argument("--pitch", type=float, default=0.0, help="camera pitch, deg")
     ap.add_argument("--pose", default="0,0,2")
@@ -159,16 +179,18 @@ def main():
             sids = add_cameras(robot, args.pitch)
             client.set_fixed_timestep(1.0 / 30.0)
             client.set_lockstep(True)
+            # every view is 512 x 512, so the viewport resizes once, here
+            client.viewport_image(robot, sids[views[0][0]], views[0][1])
             for level in args.quality.split(","):
                 client.set_graphics_settings(level.upper())
-                client.step(args.settle)
+                step(client, args.settle)
                 for label, cmds in settings:
                     for line in filter(None, cmds.split(",")):
                         sim.exec(line.strip())
-                    client.step(30)
+                    step(client, 30)
                     for kind, view in views:
                         client.viewport_image(robot, sids[kind], view)
-                        client.step(args.settle_view)
+                        step(client, args.settle_view)
                         cam1 = read_view(robot, sim, sids, kind, view)
                         vp1 = client.viewport_image()[0]
                         client.step(1)

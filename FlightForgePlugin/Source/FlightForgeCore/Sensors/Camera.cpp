@@ -29,7 +29,7 @@ UCamera::UCamera()
 	SceneCaptureMeshHolder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolder"));
 	SceneCaptureMeshHolder->SetupAttachment(this);
 
-	SceneCaptureComponent2D = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2D"));
+	SceneCaptureComponent2D = CreateDefaultSubobject<ULookCapture>(TEXT("SceneCaptureComponent2D"));
 	SceneCaptureComponent2D->SetupAttachment(SceneCaptureMeshHolder);
 }
 
@@ -481,6 +481,30 @@ void UCamera::PushStreamingViewHint()
 
 	IStreamingManager::Get().AddViewInformation(SceneCaptureComponent2D->GetComponentLocation(), ScreenSize, FOVScreenSize);
 }
+
+void UCamera::ApplyViewportLook(USceneCaptureComponent2D* Capture)
+{ //{
+	struct FGameFlags
+	{
+		FEngineShowFlags& Flags;
+		FEngineShowFlags  Game{ESFIM_Game};
+		bool OnEngineShowFlag(const uint32 Index, const FString&)
+		{
+			Flags.SetSingleFlag(Index, Game.GetSingleFlag(Index));
+			return true;
+		}
+		bool OnCustomShowFlag(const uint32 Index, const FString& Name) { return OnEngineShowFlag(Index, Name); }
+	} GameFlags{Capture->ShowFlags};
+	FEngineShowFlags::IterateAllFlags(GameFlags);
+	Capture->PostProcessSettings    = FPostProcessSettings();
+	Capture->PostProcessBlendWeight = 1.0f;
+	Capture->CaptureSource          = SCS_FinalColorLDR;
+	Capture->bUseRayTracingIfEnabled = true;
+	if (ULookCapture* Look = Cast<ULookCapture>(Capture))
+	{
+		Look->bViewportLook = true;
+	}
+} //}
 
 void UCamera::ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture)
 {

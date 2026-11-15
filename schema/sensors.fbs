@@ -114,10 +114,10 @@ table CameraLensEffects {
   fstop: double;
   focal_distance: double;  // m, <= 0 disables depth of field
   sensor_width_mm: double;  // mm
-  vignette_intensity: double;
-  chromatic_aberration: double;
-  bloom_intensity: double;
-  lens_flare_intensity: double;
+  vignette_intensity: double = -1;  // < 0 keeps the world's value, as the viewport shows it; so do the next three
+  chromatic_aberration: double = -1;
+  bloom_intensity: double = -1;
+  lens_flare_intensity: double = -1;
   white_temp: double;  // K, <= 0 keeps the engine default
   white_tint: double;
   motion_blur_from_shutter: bool;

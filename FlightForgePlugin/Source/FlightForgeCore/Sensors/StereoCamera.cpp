@@ -16,7 +16,7 @@ UStereoCamera::UStereoCamera() : UCamera()
 	SceneCaptureMeshHolderStereoRight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SceneCaptureMeshHolderStereoRight"));
 	SceneCaptureMeshHolderStereoRight->SetupAttachment(this);
 
-	SceneCaptureComponent2DStereoRight = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCaptureComponent2DStereoRight"));
+	SceneCaptureComponent2DStereoRight = CreateDefaultSubobject<ULookCapture>(TEXT("SceneCaptureComponent2DStereoRight"));
 	SceneCaptureComponent2DStereoRight->SetupAttachment(SceneCaptureMeshHolderStereoRight);
 
 	MultiView = CreateDefaultSubobject<UMultiViewCapture>(TEXT("StereoMultiView"));
@@ -40,21 +40,15 @@ void UStereoCamera::BeginPlay()
 	RenderTarget2DStereoRight->RenderTargetFormat = RTF_RGBA8;
 	RenderTarget2DStereoRight->bGPUSharedFlag     = true;
 
-	SceneCaptureComponent2D->CaptureSource = SCS_FinalColorHDR;
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
-	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(true);
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
-	SceneCaptureComponent2D->bUseRayTracingIfEnabled      = true;
-	
-	SceneCaptureComponent2DStereoRight->CaptureSource = SCS_FinalColorHDR;
+
 	SceneCaptureComponent2DStereoRight->TextureTarget = RenderTarget2DStereoRight;
-	SceneCaptureComponent2DStereoRight->ShowFlags.SetTemporalAA(true);
 	SceneCaptureComponent2DStereoRight->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2DStereoRight->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2DStereoRight->bCaptureOnMovement           = false;
-	SceneCaptureComponent2DStereoRight->bUseRayTracingIfEnabled      = true;
 	
 	
 	stereo_camera_config_.ShowCameraComponent = false;
@@ -66,10 +60,8 @@ void UStereoCamera::BeginPlay()
 	stereo_camera_config_.Width               = 640;
 	stereo_camera_config_.Height              = 480;
 	
-	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
-	ApplyLevelPostProcessBaseline(SceneCaptureComponent2DStereoRight);
-
 	MultiView->SetViews({SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight});
+	MultiView->bSharedExposure = true;
 
 	SetStereoCameraConfig(stereo_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
@@ -169,19 +161,12 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height,
                          {SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight}, {RenderTarget2D, RenderTarget2DStereoRight});
 
-  if (Config.enable_hdr) {
-    SceneCaptureComponent2D->CaptureSource  = SCS_FinalColorHDR;
-    SceneCaptureComponent2DStereoRight->CaptureSource = SCS_FinalColorHDR;
-  } else {
-    SceneCaptureComponent2D->CaptureSource  = SCS_FinalColorLDR;
-    SceneCaptureComponent2DStereoRight->CaptureSource = SCS_FinalColorLDR;
+  for (USceneCaptureComponent2D* Eye : {SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight}) {
+    ApplyViewportLook(Eye);
+    Eye->CaptureSource = Config.enable_hdr ? SCS_FinalColorHDR : SCS_FinalColorLDR;
+    Eye->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
+    Eye->bUseRayTracingIfEnabled = Config.enable_raytracing;
   }
-
-  SceneCaptureComponent2D->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-  SceneCaptureComponent2DStereoRight->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-
-  SceneCaptureComponent2D->bUseRayTracingIfEnabled  = Config.enable_raytracing;
-  SceneCaptureComponent2DStereoRight->bUseRayTracingIfEnabled = Config.enable_raytracing;
 
 
   CameraBufferCriticalSection->Unlock();

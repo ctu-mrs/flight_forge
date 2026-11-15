@@ -1890,10 +1890,10 @@ struct CameraLensEffectsT : public ::flatbuffers::NativeTable {
   double fstop = 0.0;
   double focal_distance = 0.0;
   double sensor_width_mm = 0.0;
-  double vignette_intensity = 0.0;
-  double chromatic_aberration = 0.0;
-  double bloom_intensity = 0.0;
-  double lens_flare_intensity = 0.0;
+  double vignette_intensity = -1.0;
+  double chromatic_aberration = -1.0;
+  double bloom_intensity = -1.0;
+  double lens_flare_intensity = -1.0;
   double white_temp = 0.0;
   double white_tint = 0.0;
   bool motion_blur_from_shutter = false;
@@ -1925,16 +1925,16 @@ struct CameraLensEffects FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
     return GetField<double>(VT_SENSOR_WIDTH_MM, 0.0);
   }
   double vignette_intensity() const {
-    return GetField<double>(VT_VIGNETTE_INTENSITY, 0.0);
+    return GetField<double>(VT_VIGNETTE_INTENSITY, -1.0);
   }
   double chromatic_aberration() const {
-    return GetField<double>(VT_CHROMATIC_ABERRATION, 0.0);
+    return GetField<double>(VT_CHROMATIC_ABERRATION, -1.0);
   }
   double bloom_intensity() const {
-    return GetField<double>(VT_BLOOM_INTENSITY, 0.0);
+    return GetField<double>(VT_BLOOM_INTENSITY, -1.0);
   }
   double lens_flare_intensity() const {
-    return GetField<double>(VT_LENS_FLARE_INTENSITY, 0.0);
+    return GetField<double>(VT_LENS_FLARE_INTENSITY, -1.0);
   }
   double white_temp() const {
     return GetField<double>(VT_WHITE_TEMP, 0.0);
@@ -1979,16 +1979,16 @@ struct CameraLensEffectsBuilder {
     fbb_.AddElement<double>(CameraLensEffects::VT_SENSOR_WIDTH_MM, sensor_width_mm, 0.0);
   }
   void add_vignette_intensity(double vignette_intensity) {
-    fbb_.AddElement<double>(CameraLensEffects::VT_VIGNETTE_INTENSITY, vignette_intensity, 0.0);
+    fbb_.AddElement<double>(CameraLensEffects::VT_VIGNETTE_INTENSITY, vignette_intensity, -1.0);
   }
   void add_chromatic_aberration(double chromatic_aberration) {
-    fbb_.AddElement<double>(CameraLensEffects::VT_CHROMATIC_ABERRATION, chromatic_aberration, 0.0);
+    fbb_.AddElement<double>(CameraLensEffects::VT_CHROMATIC_ABERRATION, chromatic_aberration, -1.0);
   }
   void add_bloom_intensity(double bloom_intensity) {
-    fbb_.AddElement<double>(CameraLensEffects::VT_BLOOM_INTENSITY, bloom_intensity, 0.0);
+    fbb_.AddElement<double>(CameraLensEffects::VT_BLOOM_INTENSITY, bloom_intensity, -1.0);
   }
   void add_lens_flare_intensity(double lens_flare_intensity) {
-    fbb_.AddElement<double>(CameraLensEffects::VT_LENS_FLARE_INTENSITY, lens_flare_intensity, 0.0);
+    fbb_.AddElement<double>(CameraLensEffects::VT_LENS_FLARE_INTENSITY, lens_flare_intensity, -1.0);
   }
   void add_white_temp(double white_temp) {
     fbb_.AddElement<double>(CameraLensEffects::VT_WHITE_TEMP, white_temp, 0.0);
@@ -2015,10 +2015,10 @@ inline ::flatbuffers::Offset<CameraLensEffects> CreateCameraLensEffects(
     double fstop = 0.0,
     double focal_distance = 0.0,
     double sensor_width_mm = 0.0,
-    double vignette_intensity = 0.0,
-    double chromatic_aberration = 0.0,
-    double bloom_intensity = 0.0,
-    double lens_flare_intensity = 0.0,
+    double vignette_intensity = -1.0,
+    double chromatic_aberration = -1.0,
+    double bloom_intensity = -1.0,
+    double lens_flare_intensity = -1.0,
     double white_temp = 0.0,
     double white_tint = 0.0,
     bool motion_blur_from_shutter = false) {

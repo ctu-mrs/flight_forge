@@ -26,6 +26,12 @@ TAutoConsoleVariable<int32> CVarMultiView(TEXT("FlightForge.Camera.MultiView"), 
 TAutoConsoleVariable<int32> CVarRobotBatch(TEXT("FlightForge.Camera.RobotBatch"), 1,
                                             TEXT("1: a robot's rgb cameras due on the same tick with matching settings render as one view family"));
 
+TAutoConsoleVariable<int32> CVarViewportLook(TEXT("FlightForge.Camera.ViewportLook"), 1,
+                                             TEXT("1: rgb, stereo and fisheye captures render with the main viewport's post-process chain, Lumen and screen percentage; 0: the engine's scene capture defaults"));
+
+TAutoConsoleVariable<int32> CVarSharedExposure(TEXT("FlightForge.Camera.MultiView.SharedExposure"), 1,
+                                               TEXT("1: a stereo pair's or fisheye's views take view 0's exposure; 0: each view meters its own"));
+
 TAutoConsoleVariable<int32> CVarMultiViewShareLumen(TEXT("FlightForge.Camera.MultiView.ShareLumen"), 1,
                                                     TEXT("1: a family's views share one Lumen scene, any number of views; 0: families with Lumen split into pairs"));
 
@@ -115,9 +121,53 @@ void HiddenAndShowOnly(const USceneCaptureComponent2D* Capture, FSceneView& View
 bool WantsLumen(const USceneCaptureComponent2D* Capture)
 {
 	const FPostProcessSettings& Settings = Capture->PostProcessSettings;
-	return Capture->PostProcessBlendWeight > 0.0f &&
-	       ((Settings.bOverride_DynamicGlobalIlluminationMethod && Settings.DynamicGlobalIlluminationMethod == EDynamicGlobalIlluminationMethod::Lumen) ||
-	        (Settings.bOverride_ReflectionMethod && Settings.ReflectionMethod == EReflectionMethod::Lumen));
+	if (Capture->PostProcessBlendWeight > 0.0f && (Settings.bOverride_DynamicGlobalIlluminationMethod || Settings.bOverride_ReflectionMethod))
+	{
+		return (Settings.bOverride_DynamicGlobalIlluminationMethod && Settings.DynamicGlobalIlluminationMethod == EDynamicGlobalIlluminationMethod::Lumen) ||
+		       (Settings.bOverride_ReflectionMethod && Settings.ReflectionMethod == EReflectionMethod::Lumen);
+	}
+	if (!UMultiViewCapture::HasLook(Capture))
+	{
+		return false;
+	}
+	// the viewport's methods: the project's, unless a volume overrides them
+	static const IConsoleVariable* GI         = IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicGlobalIlluminationMethod"));
+	static const IConsoleVariable* Reflection = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ReflectionMethod"));
+	return (GI && GI->GetInt() == 1) || (Reflection && Reflection->GetInt() == 1);
+}
+
+// show flags can carry padding bits, so a bytewise difference is only a hint
+bool SameShowFlags(const FEngineShowFlags& A, const FEngineShowFlags& B)
+{
+	if (FMemory::Memcmp(&A, &B, sizeof(FEngineShowFlags)) == 0)
+	{
+		return true;
+	}
+	struct FSink
+	{
+		const FEngineShowFlags& A;
+		const FEngineShowFlags& B;
+		bool                    bSame = true;
+		bool OnEngineShowFlag(const uint32 Index, const FString&)
+		{
+			bSame = A.GetSingleFlag(Index) == B.GetSingleFlag(Index);
+			return bSame;
+		}
+		bool OnCustomShowFlag(const uint32 Index, const FString& Name) { return OnEngineShowFlag(Index, Name); }
+	} Sink{A, B};
+	FEngineShowFlags::IterateAllFlags(Sink);
+	return Sink.bSame;
+}
+
+// eye adaptation and motion blur step by the world time since this view last rendered, as the viewport's do every frame
+FGameTime LookTime(const UWorld& World, const FSceneViewStateInterface* State)
+{
+	static TMap<const FSceneViewStateInterface*, double> LastRender;
+	const double Now   = World.GetTimeSeconds();
+	double&      Last  = LastRender.FindOrAdd(State, Now - World.GetDeltaSeconds());
+	const double Delta = FMath::Clamp(Now - Last, 0.0, 1.0);
+	Last               = Now;
+	return FGameTime::CreateDilated(World.GetRealTimeSeconds(), World.DeltaRealTimeSeconds, Now, Delta);
 }
 
 bool UsesRayTracing(const USceneCaptureComponent2D* Capture)
@@ -164,6 +214,17 @@ void UMultiViewCapture::Capture(const bool bDeferred)
 	{
 		bDeferred ? View->CaptureSceneDeferred() : View->CaptureScene();
 	}
+}
+
+bool UMultiViewCapture::LookEnabled()
+{
+	return CVarViewportLook.GetValueOnGameThread() != 0;
+}
+
+bool UMultiViewCapture::HasLook(const USceneCaptureComponent2D* View)
+{
+	const ULookCapture* Look = Cast<ULookCapture>(View);
+	return Look && Look->bViewportLook && LookEnabled();
 }
 
 bool UMultiViewCapture::BatchEnabled()
@@ -254,9 +315,8 @@ bool UMultiViewCapture::Compatible(const USceneCaptureComponent2D* A, const USce
 {
 	const UTextureRenderTarget2D* TargetA = A->TextureTarget.Get();
 	const UTextureRenderTarget2D* TargetB = B->TextureTarget.Get();
-	return TargetA && TargetB && TargetA->GetFormat() == TargetB->GetFormat() && TargetA->bForceLinearGamma == TargetB->bForceLinearGamma &&
-	       TargetA->TargetGamma == TargetB->TargetGamma && A->CaptureSource == B->CaptureSource && A->IsUnlit() == B->IsUnlit() &&
-	       A->UnlitViewmode == B->UnlitViewmode && FMemory::Memcmp(&A->ShowFlags, &B->ShowFlags, sizeof(FEngineShowFlags)) == 0;
+	return TargetA && TargetB && TargetA->GetFormat() == TargetB->GetFormat() && TargetA->GetDisplayGamma() == TargetB->GetDisplayGamma() && A->CaptureSource == B->CaptureSource && A->IsUnlit() == B->IsUnlit() &&
+	       A->UnlitViewmode == B->UnlitViewmode && SameShowFlags(A->ShowFlags, B->ShowFlags);
 }
 
 bool UMultiViewCapture::PrepareAtlas(TArrayView<USceneCaptureComponent2D* const> Members, const int32 Slot, TArray<FIntRect>& OutTiles)
@@ -295,13 +355,14 @@ bool UMultiViewCapture::PrepareAtlas(TArrayView<USceneCaptureComponent2D* const>
 		Atlases.Add(NewObject<UTextureRenderTarget2D>(this));
 	}
 	UTextureRenderTarget2D* Atlas = Atlases[Slot];
-	if (Atlas->SizeX != Extent.X || Atlas->SizeY != Extent.Y || Atlas->GetFormat() != First->GetFormat() || Atlas->bForceLinearGamma != First->bForceLinearGamma ||
-	    Atlas->TargetGamma != First->TargetGamma)
+	// a non-sRGB atlas told the members' display gamma: an sRGB one encodes LDR output a second time, about a stop too bright
+	const float Gamma = First->GetDisplayGamma();
+	if (Atlas->SizeX != Extent.X || Atlas->SizeY != Extent.Y || Atlas->GetFormat() != First->GetFormat() || !Atlas->bForceLinearGamma || Atlas->TargetGamma != Gamma)
 	{
 		Atlas->RenderTargetFormat = First->RenderTargetFormat;
-		Atlas->TargetGamma        = First->TargetGamma;
+		Atlas->TargetGamma        = Gamma;
 		Atlas->ClearColor         = First->ClearColor;
-		Atlas->InitCustomFormat(Extent.X, Extent.Y, First->GetFormat(), First->bForceLinearGamma);
+		Atlas->InitCustomFormat(Extent.X, Extent.Y, First->GetFormat(), true);
 	}
 	return Atlas->GameThread_GetRenderTargetResource() != nullptr;
 }
@@ -384,9 +445,9 @@ void UMultiViewCapture::RenderFamilies(FSceneInterface* Scene, ISceneRenderBuild
 
 void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members,
                                      const int32 Slot, const bool bSharedLumen)
-{
-	TArray<FIntRect> Tiles;
-	if (Members.Num() < 2 || !PrepareAtlas(Members, Slot, Tiles))
+{ //{
+	FFamilySetup Setup;
+	if (Members.Num() < 2 || !PrepareAtlas(Members, Slot, Setup.Tiles))
 	{
 		for (USceneCaptureComponent2D* View : Members)
 		{
@@ -398,11 +459,40 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 		return;
 	}
 
-	FTextureRenderTargetResource* AtlasResource = Atlases[Slot]->GameThread_GetRenderTargetResource();
-	const USceneCaptureComponent2D* Lead = Members[0];
-	const bool bSceneColor = Lead->CaptureSource != SCS_FinalColorLDR && Lead->CaptureSource != SCS_FinalColorHDR && Lead->CaptureSource != SCS_FinalToneCurveHDR;
+	Setup.Target          = Atlases[Slot]->GameThread_GetRenderTargetResource();
+	Setup.bSharedExposure = bSharedExposure && CVarSharedExposure.GetValueOnGameThread() != 0;
+	Setup.bCube           = bSharedLumen && Members.Num() > MaxLumenViews;
+	Setup.LumenAnchor     = bSharedLumen ? GetViewState(0) : nullptr;
+	Setup.StateFor        = [this, bSharedLumen](USceneCaptureComponent2D* Capture) { return bSharedLumen ? FamilyState(Capture) : Capture->GetViewState(0); };
+	Setup.Name            = GetOwner() ? FString::Printf(TEXT("FlightForgeMultiView %s"), *GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeMultiView"));
+	RenderViews(Scene, SceneRenderBuilder, Members, MoveTemp(Setup));
+} //}
 
-	FSceneViewFamilyContext       Family(FSceneViewFamily::ConstructionValues(AtlasResource, Scene, Lead->ShowFlags).SetResolveScene(!bSceneColor).SetRealtimeUpdate(true));
+void UMultiViewCapture::RenderSingle(USceneCaptureComponent2D* View, FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder)
+{ //{
+	UTextureRenderTarget2D*       Texture = View ? View->TextureTarget.Get() : nullptr;
+	FTextureRenderTargetResource* Target  = Texture ? Texture->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Target)
+	{
+		return;
+	}
+	FFamilySetup Setup;
+	Setup.Target     = Target;
+	Setup.Tiles      = {FIntRect(0, 0, Texture->SizeX, Texture->SizeY)};
+	Setup.bCopyTiles = false;
+	Setup.StateFor   = [](USceneCaptureComponent2D* Capture) { return Capture->GetViewState(0); };
+	Setup.Name       = View->GetOwner() ? FString::Printf(TEXT("FlightForgeLook %s"), *View->GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeLook"));
+	RenderViews(Scene, SceneRenderBuilder, MakeArrayView(&View, 1), MoveTemp(Setup));
+} //}
+
+void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members,
+                                    FFamilySetup&& Setup)
+{ //{
+	const USceneCaptureComponent2D* Lead        = Members[0];
+	const bool                      bLook       = HasLook(Lead);
+	const bool                      bSceneColor = Lead->CaptureSource != SCS_FinalColorLDR && Lead->CaptureSource != SCS_FinalColorHDR && Lead->CaptureSource != SCS_FinalToneCurveHDR;
+
+	FSceneViewFamilyContext Family(FSceneViewFamily::ConstructionValues(Setup.Target, Scene, Lead->ShowFlags).SetResolveScene(!bSceneColor).SetRealtimeUpdate(true));
 
 	FSceneViewExtensionContext ExtensionContext(Scene);
 	Family.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(ExtensionContext);
@@ -411,12 +501,17 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 
 	const UWorld* World = Scene->GetWorld();
 
-	TArray<FSceneView*>     FamilyViews;
-	TArray<FMultiViewTile>  TileTargets;
+	TArray<FSceneView*>       FamilyViews;
+	TArray<FMultiViewTile>    TileTargets;
+	FSceneViewStateInterface* ExposureOwner = nullptr;
+	if (bLook && World)
+	{
+		Family.Time = LookTime(*World, Setup.StateFor(Members[0]));
+	}
 	for (int32 Index = 0; Index < Members.Num(); ++Index)
 	{
 		USceneCaptureComponent2D* Capture = Members[Index];
-		const FIntRect            Rect    = Tiles[Index];
+		const FIntRect            Rect    = Setup.Tiles[Index];
 		const FVector             Origin  = Capture->GetComponentLocation();
 
 		FSceneViewInitOptions Options;
@@ -434,10 +529,11 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 		Options.bIsSceneCapture                  = true;
 		Options.FOV                              = Capture->FOVAngle;
 		Options.DesiredFOV                       = Capture->FOVAngle;
-		Options.SceneViewStateInterface          = bSharedLumen ? FamilyState(Capture) : Capture->GetViewState(0);
-		Options.ExposureSceneViewStateInterface  = Options.SceneViewStateInterface;
+		Options.SceneViewStateInterface          = Setup.StateFor(Capture);
+		Options.ExposureSceneViewStateInterface  = Setup.bSharedExposure && ExposureOwner ? ExposureOwner : Options.SceneViewStateInterface;
+		ExposureOwner                            = ExposureOwner ? ExposureOwner : Options.SceneViewStateInterface;
 		// the engine's one-origin Lumen path for wide families; its only other effects are no DFAO history and no water
-		Options.bIsSceneCaptureCube              = bSharedLumen && Members.Num() > MaxLumenViews;
+		Options.bIsSceneCaptureCube              = Setup.bCube;
 		Options.LODDistanceFactor                = FMath::Clamp(Capture->LODDistanceFactor, .01f, 100.0f);
 		Options.bSceneCaptureUsesRayTracing      = UsesRayTracing(Capture);
 		Options.bExcludeFromSceneTextureExtents  = Capture->bExcludeFromSceneTextureExtents;
@@ -459,10 +555,14 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 		Family.Views.Add(View);
 		FamilyViews.Add(View);
 
+		// the viewport's chain: project defaults, then the volumes at the view, then the camera's own settings
 		View->StartFinalPostprocessSettings(Origin);
-		View->FinalPostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::None;
-		View->FinalPostProcessSettings.ReflectionMethod                = EReflectionMethod::None;
-		View->FinalPostProcessSettings.LumenSurfaceCacheResolution     = 0.5f;
+		if (!bLook)
+		{
+			View->FinalPostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::None;
+			View->FinalPostProcessSettings.ReflectionMethod                = EReflectionMethod::None;
+			View->FinalPostProcessSettings.LumenSurfaceCacheResolution     = 0.5f;
+		}
 		View->OverridePostProcessSettings(Capture->PostProcessSettings, Capture->PostProcessBlendWeight);
 		View->EndFinalPostprocessSettings(Options);
 		View->ViewLightingChannelMask = Capture->ViewLightingChannels.GetMaskForStruct();
@@ -474,7 +574,7 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 			View->bAllowTemporalJitter  = false;
 		}
 
-		if (FSceneViewStateInterface* State = bSharedLumen ? GetViewState(0) : Options.SceneViewStateInterface)
+		if (FSceneViewStateInterface* State = Setup.LumenAnchor ? Setup.LumenAnchor : Options.SceneViewStateInterface)
 		{
 			const FFinalPostProcessSettings& Settings = View->FinalPostProcessSettings;
 			if (Settings.DynamicGlobalIlluminationMethod == EDynamicGlobalIlluminationMethod::Lumen || Settings.ReflectionMethod == EReflectionMethod::Lumen)
@@ -496,12 +596,28 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 			}
 		}
 
-		TileTargets.Add(FMultiViewTile{Rect, Capture->TextureTarget->GameThread_GetRenderTargetResource()});
+		if (Setup.bCopyTiles)
+		{
+			TileTargets.Add(FMultiViewTile{Rect, Capture->TextureTarget->GameThread_GetRenderTargetResource()});
+		}
 	}
 
-	Family.SceneCaptureSource              = Lead->CaptureSource;
-	Family.EngineShowFlags.ScreenPercentage = false;
-	Family.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(Family, 1.0f));
+	Family.SceneCaptureSource = Lead->CaptureSource;
+	if (bLook && !bSceneColor)
+	{
+		// the viewport's screen percentage, as for a viewport of one view's size
+		Family.EngineShowFlags.ScreenPercentage = true;
+		FStaticResolutionFractionHeuristic Heuristic;
+		Heuristic.Settings.PullRunTimeRenderingSettings(EViewStatusForScreenPercentage::Desktop);
+		Heuristic.PullViewFamilyRenderingSettings(Family);
+		Heuristic.TotalDisplayedPixelCount = Setup.Tiles[0].Area();
+		Family.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(Family, Heuristic.ResolveResolutionFraction()));
+	}
+	else
+	{
+		Family.EngineShowFlags.ScreenPercentage = false;
+		Family.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(Family, 1.0f));
+	}
 	if (Lead->IsUnlit())
 	{
 		Family.EngineShowFlags.DisableFeaturesForUnlit(Lead->CaptureSource == SCS_SceneColorHDR || Lead->CaptureSource == SCS_SceneColorHDRNoAlpha ||
@@ -509,7 +625,7 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 	}
 	Family.EngineShowFlags.SetUnlitViewmode(Lead->UnlitViewmode != ESceneCaptureUnlitViewmode::Disabled);
 
-	if (Lead->ShowFlags.TemporalAA)
+	if (Lead->ShowFlags.TemporalAA && Setup.bCopyTiles)
 	{
 		Family.ViewExtensions.Add(FMultiViewRender::OutputExtension());
 	}
@@ -525,8 +641,21 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 		}
 	}
 
-	FString Name = GetOwner() ? FString::Printf(TEXT("FlightForgeMultiView %s"), *GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeMultiView"));
-	FMultiViewRender::Add(SceneRenderBuilder, Family, MoveTemp(Name), AtlasResource, MoveTemp(TileTargets));
-}
+	FMultiViewRender::Add(SceneRenderBuilder, Family, MoveTemp(Setup.Name), Setup.Target, MoveTemp(TileTargets));
+} //}
+
+/* //} */
+
+/* ULookCapture //{ */
+
+void ULookCapture::UpdateSceneCaptureContents(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder)
+{ //{
+	if (UMultiViewCapture::HasLook(this) && TextureTarget && !ShouldRenderInMainRenderer())
+	{
+		UMultiViewCapture::RenderSingle(this, Scene, SceneRenderBuilder);
+		return;
+	}
+	Super::UpdateSceneCaptureContents(Scene, SceneRenderBuilder);
+} //}
 
 /* //} */

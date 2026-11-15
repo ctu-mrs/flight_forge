@@ -23,10 +23,11 @@ struct FCameraLensEffects
 	double Fstop               = 4.0;
 	double FocalDistance       = 0.0;  // meters; <= 0 disables depth of field
 	double SensorWidthMm       = 23.76;
-	double VignetteIntensity   = 0.0;
-	double ChromaticAberration = 0.0;
-	double BloomIntensity      = 0.675;
-	double LensFlareIntensity  = 0.0;
+	// < 0 keeps the world's value, as the viewport shows it
+	double VignetteIntensity   = -1.0;
+	double ChromaticAberration = -1.0;
+	double BloomIntensity      = -1.0;
+	double LensFlareIntensity  = -1.0;
 	double WhiteTemp           = 0.0;  // Kelvin; <= 0 keeps engine default
 	double WhiteTint           = 0.0;
 

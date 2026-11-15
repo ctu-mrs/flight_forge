@@ -34,12 +34,9 @@ void URgbCamera::BeginPlay()
 	RenderTarget2D->bGPUSharedFlag     = true;
 
 	SceneCaptureComponent2D->TextureTarget = RenderTarget2D;
-	SceneCaptureComponent2D->ShowFlags.SetTemporalAA(false);
 	SceneCaptureComponent2D->bAlwaysPersistRenderingState = true;
 	SceneCaptureComponent2D->bCaptureEveryFrame           = false;
 	SceneCaptureComponent2D->bCaptureOnMovement           = false;
-
-	ApplyLevelPostProcessBaseline(SceneCaptureComponent2D);
 
 	SetRgbCameraConfig(rgb_camera_config_);
 	SetCameraCaptureMode(Owner->GetCameraCaptureMode());
@@ -128,16 +125,16 @@ void URgbCamera::ApplyExposureAndLens(const FCameraExposure& Exposure, const FCa
     PP.DepthOfFieldSensorWidth           = Lens.SensorWidthMm;
   }
 
-  PP.bOverride_VignetteIntensity = true;
+  PP.bOverride_VignetteIntensity = Lens.VignetteIntensity >= 0.0;
   PP.VignetteIntensity           = Lens.VignetteIntensity;
 
-  PP.bOverride_SceneFringeIntensity = true;
+  PP.bOverride_SceneFringeIntensity = Lens.ChromaticAberration >= 0.0;
   PP.SceneFringeIntensity           = Lens.ChromaticAberration;
 
-  PP.bOverride_BloomIntensity = true;
+  PP.bOverride_BloomIntensity = Lens.BloomIntensity >= 0.0;
   PP.BloomIntensity           = Lens.BloomIntensity;
 
-  PP.bOverride_LensFlareIntensity = true;
+  PP.bOverride_LensFlareIntensity = Lens.LensFlareIntensity >= 0.0;
   PP.LensFlareIntensity           = Lens.LensFlareIntensity;
 
   if (Lens.WhiteTemp > 0.0) {
@@ -187,6 +184,7 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
 
   const bool bFilmic = CVarFilmicToneCurve.GetValueOnGameThread() != 0;
 
+  ApplyViewportLook(SceneCaptureComponent2D);
   SceneCaptureComponent2D->CaptureSource = !Config.enable_hdr ? SCS_FinalColorLDR : (bFilmic ? SCS_FinalToneCurveHDR : SCS_FinalColorHDR);
 
   SceneCaptureComponent2D->bUseRayTracingIfEnabled = Config.enable_raytracing;
@@ -195,27 +193,11 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureComponent2D->bAlwaysPersistRenderingState         = true;
   bEveryFrameWanted = false;
   SceneCaptureComponent2D->bCaptureOnMovement                   = false;
-  SceneCaptureComponent2D->PostProcessSettings.MotionBlurAmount = Config.motion_blur_amount;
-  SceneCaptureComponent2D->PostProcessSettings.MotionBlurMax    = Config.motion_blur_distortion;
-
-  FPostProcessSettings& PPSettings = SceneCaptureComponent2D->PostProcessSettings;
-
-  // Force Lumen for Global Illumination
-  PPSettings.bOverride_DynamicGlobalIlluminationMethod = true;
-  PPSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
-
-  // Force Lumen for Reflections
-  PPSettings.bOverride_ReflectionMethod = true;
-  PPSettings.ReflectionMethod = EReflectionMethod::Lumen;
 
   SceneCaptureComponent2D->ShowFlags.SetMotionBlur(Config.enable_motion_blur);
   SceneCaptureComponent2D->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
-  SceneCaptureComponent2D->ShowFlags.SetNaniteMeshes(true);
-  SceneCaptureComponent2D->ShowFlags.SetAtmosphere(true);
-  SceneCaptureComponent2D->ShowFlags.SetLumenReflections(true);
-  SceneCaptureComponent2D->ShowFlags.SetLumenGlobalIllumination(true);
 
-  ApplyExposureAndLens(Config.Exposure, Config.Lens, PPSettings);
+  ApplyExposureAndLens(Config.Exposure, Config.Lens, SceneCaptureComponent2D->PostProcessSettings);
 
 
   CameraBufferCriticalSection->Unlock();
