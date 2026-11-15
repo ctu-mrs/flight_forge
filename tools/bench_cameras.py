@@ -9,6 +9,7 @@ Cameras in the per-capture phases render every tick (capture_rate 0) and are rea
 over the robot alone is the GPU cost of one capture of that rig. Timings come from the plugin's FlightForgeStats log
 lines (FlightForge.Bench.StatsInterval); console variables are switched at run time through -FlightForgeBenchCommands.
 --snapshot instead saves one raw frame per camera type in lockstep for each --cvars setting, for image comparisons.
+--profile adds a per-pass GPU breakdown of each free-running phase from the CSV profiler (r.GPUCsvStatsEnabled).
 """
 
 import argparse
@@ -61,7 +62,7 @@ class Sim:
         if shutil.disk_usage("/").free < 15e9:
             sys.exit("less than 15 GB free on /")
         host = HOSTS[args.engine]
-        exec_cmds = ",".join(["FlightForge.Bench.StatsInterval 1", *args.exec_cmds])
+        exec_cmds = ",".join(["FlightForge.Bench.StatsInterval 1", *(["r.GPUCsvStatsEnabled 1"] if args.profile else []), *args.exec_cmds])
         cmd = [os.path.join(host, "run-editor.sh"), WORLDS.get(world, world), "-game", "-RenderOffScreen", "-unattended", "-nopause", "-nosplash",
                "-stdout", "-AllowStdOutLogVerbosity", f"-FlightForgePort={args.port}", f"-FlightForgeGameModePort={args.port}",
                f"-FlightForgeDroneStartPort={args.port + 10}", f"-FlightForgeBenchCommands={self.cmds}", f"-ExecCmds={exec_cmds}", *args.extra]
@@ -192,6 +193,48 @@ def window(stamps, t0, t1):
     return len(set(inside)) / (t1 - t0) if inside else 0.0
 
 
+def profile_window(args, t0, t1):
+    """CSV-profiles [t0, t1] of a phase; returns the per-pass GPU ms per frame, averaged."""
+    if not args.profile:
+        time.sleep(max(0.0, t1 - time.time()))
+        return None
+    time.sleep(max(0.0, t0 - time.time()))
+    folder = os.path.join(HOSTS[args.engine], "Saved", "Profiling", "CSV")
+    before = set(os.listdir(folder)) if os.path.isdir(folder) else set()
+    args.sim.exec("csvprofile start")
+    time.sleep(max(0.0, t1 - time.time()))
+    args.sim.exec("csvprofile stop")
+    for _ in range(60):
+        fresh = sorted(set(os.listdir(folder)) - before) if os.path.isdir(folder) else []
+        if fresh and "[HasHeaderRowAtEnd]" in open(os.path.join(folder, fresh[-1]), errors="replace").read():
+            return gpu_passes(os.path.join(folder, fresh[-1]))
+        time.sleep(0.5)
+    print("no CSV profile for this phase", flush=True)
+    return None
+
+
+def gpu_passes(path):
+    rows = [line.rstrip("\n").split(",") for line in open(path, errors="replace")]
+    header = rows[0]
+    def number(x):
+        try:
+            float(x)
+            return True
+        except ValueError:
+            return False
+
+    data = [r for r in rows[1:] if len(r) == len(header) and not r[0].startswith("[") and number(r[1])]
+    out = {}
+    for i, name in enumerate(header):
+        if name.startswith("GPU/"):
+            values = [float(r[i]) for r in data if number(r[i])]
+            if values:
+                out[name[4:]] = round(sum(values) / len(values), 3)
+    if out:
+        os.remove(path)
+    return out
+
+
 def run_phase(client, robot, name, args):
     for s in robot.sensors():
         robot.remove_sensor(s.id)
@@ -199,7 +242,7 @@ def run_phase(client, robot, name, args):
     rec = {"phase": name}
     if name == "base":
         t0 = time.time() + args.warmup
-        time.sleep(args.warmup + args.duration)
+        rec["gpu_passes"] = profile_window(args, t0, t0 + args.duration)
         rec["t0"], rec["t1"] = t0, time.time()
         return rec
 
@@ -253,6 +296,7 @@ def run_phase(client, robot, name, args):
     until = time.time() + args.warmup + args.duration
     threads, stamps, errors = readers(client, robot.id, cams, hz, until)
     t0 = time.time() + args.warmup
+    rec["gpu_passes"] = profile_window(args, t0, until)
     for t in threads:
         t.join()
     rec["t0"], rec["t1"] = t0, until
@@ -289,6 +333,21 @@ def report(results, path):
         hz = "/".join(f"{h:.1f}" for h in r.get("hz", [])) if r.get("hz") else ""
         rtf = f"{r['rtf']:.3f}" if "rtf" in r else ""
         lines.append(f"| {r['world']} | {r['quality']} | {r['phase']} | {r.get('fps', '')} | {r.get('gpu', '')} | {over} | {r.get('render', '')} | {r.get('game', '')} | {hz} | {rtf} |")
+    open(path, "w").write("\n".join(lines) + "\n")
+    print("\n".join(lines), flush=True)
+
+
+def report_passes(results, path, top=12):
+    """GPU ms per frame by pass, each phase over its world's and setting's base phase."""
+    lines = []
+    for r in results:
+        if not r.get("gpu_passes") or r["phase"] == "base":
+            continue
+        base = next((b for b in results if b["world"] == r["world"] and b["quality"] == r["quality"] and b["cvars"] == r["cvars"] and b["phase"] == "base"
+                     and b.get("gpu_passes")), {"gpu_passes": {}})
+        over = {k: v - base["gpu_passes"].get(k, 0.0) for k, v in r["gpu_passes"].items()}
+        ranked = sorted(over.items(), key=lambda kv: -kv[1])[:top]
+        lines.append(f"{r['world']} {r['quality']} {r['phase']} [{r['cvars'] or 'default'}]: " + ", ".join(f"{k} {v:.2f}" for k, v in ranked))
     open(path, "w").write("\n".join(lines) + "\n")
     print("\n".join(lines), flush=True)
 
@@ -379,6 +438,7 @@ def main():
     ap.add_argument("--duration", type=float, default=8.0)
     ap.add_argument("--settle", type=int, default=30, help="lockstep steps before a snapshot read")
     ap.add_argument("--snapshot", action="store_true")
+    ap.add_argument("--profile", action="store_true", help="per-pass GPU ms of each free-running phase (CSV profiler)")
     ap.add_argument("--pose", default="0,0,2", help="robot position, ground frame m")
     ap.add_argument("--robot", default="x500", help="robot model; empty has no spinning propellers in view, for snapshots")
     ap.add_argument("--no-taa", action="store_true", help="rgb and stereo cameras without temporal AA")
@@ -395,6 +455,7 @@ def main():
     for world in args.worlds.split(","):
         log = os.path.join(args.out, f"{args.engine}_{world}.log")
         sim = Sim(args, world, log)
+        args.sim = sim
         try:
             client = connect(sim, args)
             time.sleep(10)
@@ -430,9 +491,12 @@ def main():
         for rec in results:
             if rec["world"] == world:
                 summarize(rec, stats)
+        json.dump(results, open(os.path.join(args.out, f"bench_{args.engine}.json"), "w"), indent=1)
 
     if results:
         json.dump(results, open(os.path.join(args.out, f"bench_{args.engine}.json"), "w"), indent=1)
+        if args.profile:
+            report_passes(results, os.path.join(args.out, f"passes_{args.engine}.md"))
         report(results, os.path.join(args.out, f"bench_{args.engine}.md"))
 
 
