@@ -36,18 +36,20 @@ public:
 	bool CapturesEveryFrame() const { return bEveryFrame; }
 
 	virtual void UpdateSceneCaptureContents(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder) override;
+	virtual void OnUnregister() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
 	static bool Groupable(const USceneCaptureComponent2D* View);
 	static bool Compatible(const USceneCaptureComponent2D* A, const USceneCaptureComponent2D* B);
 	bool        PrepareAtlas(TArrayView<USceneCaptureComponent2D* const> Members, int32 Slot, TArray<FIntRect>& OutTiles);
-	void        RenderFamilies(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32& Slot,
-	                           bool bOwnStates);
+	void        RenderFamilies(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32& Slot);
 	void        RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members, int32 Slot,
-	                         bool bOwnStates, int32 FirstState);
+	                         bool bSharedLumen);
 	void ApplyEveryFrame();
-	void ResetViewStates();
+	// a member's state inside a shared-Lumen family: shares this component's origin, so its Lumen scene; the member's own state stays untouched
+	FSceneViewStateInterface* FamilyState(USceneCaptureComponent2D* Capture);
+	void                      PruneFamilyStates();
 
 	UPROPERTY()
 	TArray<TObjectPtr<USceneCaptureComponent2D>> Views;
@@ -57,9 +59,11 @@ private:
 
 	TArray<TWeakObjectPtr<USceneCaptureComponent2D>> Pending;
 
+	// destroyed before ViewStates[0], their share origin
+	TMap<TWeakObjectPtr<USceneCaptureComponent2D>, TUniquePtr<FSceneViewStateReference>> FamilyStates;
+
 	bool bEveryFrame   = false;
 	bool bAppliedGroup = false;
-	int32 SharedLumen  = -1;
 };
 
 /* //} */
