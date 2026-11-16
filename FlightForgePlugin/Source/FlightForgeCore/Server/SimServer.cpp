@@ -401,6 +401,17 @@ void FSimServer::AttachGameMode(AFlightForgeGameModeBase* InGameMode)
 {
 	std::lock_guard<std::mutex> Lock(GameModeMutex);
 	AttachedGameMode = InGameMode;
+	AttachedWorld    = UWorld::RemovePIEPrefix(InGameMode->GetWorld()->GetOutermost()->GetName());
+	++AttachCount;
+}
+
+void FSimServer::FailWorldSwitch(const FString& Error)
+{
+	std::lock_guard<std::mutex> Lock(GameModeMutex);
+	if (!SwitchTarget.IsEmpty() && SwitchFailure.IsEmpty())
+	{
+		SwitchFailure = Error;
+	}
 }
 
 void FSimServer::DetachGameMode(AFlightForgeGameModeBase* InGameMode, TFunctionRef<void()> Pump)
@@ -412,6 +423,7 @@ void FSimServer::DetachGameMode(AFlightForgeGameModeBase* InGameMode, TFunctionR
 			return;
 		}
 		AttachedGameMode = nullptr;
+		AttachedWorld.Empty();
 	}
 
 	while (GameModeInFlight > 0)
@@ -502,7 +514,9 @@ FSimServer::FRobotLease FSimServer::LeaseRobot(const int32 RobotId, FWireReply& 
 	const FRobotEntry* Entry = Robots.Find(RobotId);
 	if (!Entry || Entry->Sync->bClosing)
 	{
-		Reply.Fail(FString::Printf(TEXT("no robot %d"), RobotId));
+		const FString* Switch = RobotsLostToSwitch.Find(RobotId);
+		Reply.Fail(Switch ? FString::Printf(TEXT("no robot %d: it went with its world when switch_world loaded %s"), RobotId, **Switch)
+		                  : FString::Printf(TEXT("no robot %d"), RobotId));
 		return Lease;
 	}
 
@@ -560,6 +574,7 @@ const FSimServer::FHandler* FSimServer::Handlers()
 		Add(B::StepRequest, &FSimServer::Step);
 
 		Add(B::SwitchWorldRequest, &FSimServer::SwitchWorld);
+		Add(B::ListWorldsRequest, &FSimServer::ListWorlds);
 		Add(B::SetWeatherRequest, &FSimServer::SetWeather);
 		Add(B::SetDaytimeRequest, &FSimServer::SetDaytime);
 		Add(B::GetDaytimeRequest, &FSimServer::GetDaytime);

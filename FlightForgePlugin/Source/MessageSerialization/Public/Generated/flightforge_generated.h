@@ -105,11 +105,12 @@ enum class RequestBody : uint8_t {
   GetSurfaceHeightRequest = 67,
   GetDaytimeRequest = 68,
   GetViewportImageRequest = 69,
+  ListWorldsRequest = 70,
   MIN = NONE,
-  MAX = GetViewportImageRequest
+  MAX = ListWorldsRequest
 };
 
-inline const RequestBody (&EnumValuesRequestBody())[70] {
+inline const RequestBody (&EnumValuesRequestBody())[71] {
   static const RequestBody values[] = {
     RequestBody::NONE,
     RequestBody::PingRequest,
@@ -180,13 +181,14 @@ inline const RequestBody (&EnumValuesRequestBody())[70] {
     RequestBody::GetRangefinderDataRequest,
     RequestBody::GetSurfaceHeightRequest,
     RequestBody::GetDaytimeRequest,
-    RequestBody::GetViewportImageRequest
+    RequestBody::GetViewportImageRequest,
+    RequestBody::ListWorldsRequest
   };
   return values;
 }
 
 inline const char * const *EnumNamesRequestBody() {
-  static const char * const names[71] = {
+  static const char * const names[72] = {
     "NONE",
     "PingRequest",
     "GetInfoRequest",
@@ -257,13 +259,14 @@ inline const char * const *EnumNamesRequestBody() {
     "GetSurfaceHeightRequest",
     "GetDaytimeRequest",
     "GetViewportImageRequest",
+    "ListWorldsRequest",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameRequestBody(RequestBody e) {
-  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::GetViewportImageRequest)) return "";
+  if (::flatbuffers::IsOutRange(e, RequestBody::NONE, RequestBody::ListWorldsRequest)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesRequestBody()[index];
 }
@@ -548,6 +551,10 @@ template<> struct RequestBodyTraits<flightforge::wire::GetViewportImageRequest> 
   static const RequestBody enum_value = RequestBody::GetViewportImageRequest;
 };
 
+template<> struct RequestBodyTraits<flightforge::wire::ListWorldsRequest> {
+  static const RequestBody enum_value = RequestBody::ListWorldsRequest;
+};
+
 template<typename T> struct RequestBodyUnionTraits {
   static const RequestBody enum_value = RequestBody::NONE;
 };
@@ -826,6 +833,10 @@ template<> struct RequestBodyUnionTraits<flightforge::wire::GetDaytimeRequestT> 
 
 template<> struct RequestBodyUnionTraits<flightforge::wire::GetViewportImageRequestT> {
   static const RequestBody enum_value = RequestBody::GetViewportImageRequest;
+};
+
+template<> struct RequestBodyUnionTraits<flightforge::wire::ListWorldsRequestT> {
+  static const RequestBody enum_value = RequestBody::ListWorldsRequest;
 };
 
 struct RequestBodyUnion {
@@ -1410,6 +1421,14 @@ struct RequestBodyUnion {
     return type == RequestBody::GetViewportImageRequest ?
       reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(value) : nullptr;
   }
+  flightforge::wire::ListWorldsRequestT *AsListWorldsRequest() {
+    return type == RequestBody::ListWorldsRequest ?
+      reinterpret_cast<flightforge::wire::ListWorldsRequestT *>(value) : nullptr;
+  }
+  const flightforge::wire::ListWorldsRequestT *AsListWorldsRequest() const {
+    return type == RequestBody::ListWorldsRequest ?
+      reinterpret_cast<const flightforge::wire::ListWorldsRequestT *>(value) : nullptr;
+  }
 };
 
 
@@ -1695,6 +1714,10 @@ inline bool operator==(const RequestBodyUnion &lhs, const RequestBodyUnion &rhs)
       return *(reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(rhs.value));
     }
+    case RequestBody::ListWorldsRequest: {
+      return *(reinterpret_cast<const flightforge::wire::ListWorldsRequestT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::ListWorldsRequestT *>(rhs.value));
+    }
     default: {
       return false;
     }
@@ -1761,11 +1784,13 @@ enum class ResponseBody : uint8_t {
   GetSurfaceHeightResponse = 47,
   GetDaytimeResponse = 48,
   ViewportImageResponse = 49,
+  ListWorldsResponse = 50,
+  SwitchWorldResponse = 51,
   MIN = NONE,
-  MAX = ViewportImageResponse
+  MAX = SwitchWorldResponse
 };
 
-inline const ResponseBody (&EnumValuesResponseBody())[50] {
+inline const ResponseBody (&EnumValuesResponseBody())[52] {
   static const ResponseBody values[] = {
     ResponseBody::NONE,
     ResponseBody::GetInfoResponse,
@@ -1816,13 +1841,15 @@ inline const ResponseBody (&EnumValuesResponseBody())[50] {
     ResponseBody::RangefinderDataResponse,
     ResponseBody::GetSurfaceHeightResponse,
     ResponseBody::GetDaytimeResponse,
-    ResponseBody::ViewportImageResponse
+    ResponseBody::ViewportImageResponse,
+    ResponseBody::ListWorldsResponse,
+    ResponseBody::SwitchWorldResponse
   };
   return values;
 }
 
 inline const char * const *EnumNamesResponseBody() {
-  static const char * const names[51] = {
+  static const char * const names[53] = {
     "NONE",
     "GetInfoResponse",
     "GetTimeResponse",
@@ -1873,13 +1900,15 @@ inline const char * const *EnumNamesResponseBody() {
     "GetSurfaceHeightResponse",
     "GetDaytimeResponse",
     "ViewportImageResponse",
+    "ListWorldsResponse",
+    "SwitchWorldResponse",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameResponseBody(ResponseBody e) {
-  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::ViewportImageResponse)) return "";
+  if (::flatbuffers::IsOutRange(e, ResponseBody::NONE, ResponseBody::SwitchWorldResponse)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesResponseBody()[index];
 }
@@ -2084,6 +2113,14 @@ template<> struct ResponseBodyTraits<flightforge::wire::ViewportImageResponse> {
   static const ResponseBody enum_value = ResponseBody::ViewportImageResponse;
 };
 
+template<> struct ResponseBodyTraits<flightforge::wire::ListWorldsResponse> {
+  static const ResponseBody enum_value = ResponseBody::ListWorldsResponse;
+};
+
+template<> struct ResponseBodyTraits<flightforge::wire::SwitchWorldResponse> {
+  static const ResponseBody enum_value = ResponseBody::SwitchWorldResponse;
+};
+
 template<typename T> struct ResponseBodyUnionTraits {
   static const ResponseBody enum_value = ResponseBody::NONE;
 };
@@ -2282,6 +2319,14 @@ template<> struct ResponseBodyUnionTraits<flightforge::wire::GetDaytimeResponseT
 
 template<> struct ResponseBodyUnionTraits<flightforge::wire::ViewportImageResponseT> {
   static const ResponseBody enum_value = ResponseBody::ViewportImageResponse;
+};
+
+template<> struct ResponseBodyUnionTraits<flightforge::wire::ListWorldsResponseT> {
+  static const ResponseBody enum_value = ResponseBody::ListWorldsResponse;
+};
+
+template<> struct ResponseBodyUnionTraits<flightforge::wire::SwitchWorldResponseT> {
+  static const ResponseBody enum_value = ResponseBody::SwitchWorldResponse;
 };
 
 struct ResponseBodyUnion {
@@ -2706,6 +2751,22 @@ struct ResponseBodyUnion {
     return type == ResponseBody::ViewportImageResponse ?
       reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(value) : nullptr;
   }
+  flightforge::wire::ListWorldsResponseT *AsListWorldsResponse() {
+    return type == ResponseBody::ListWorldsResponse ?
+      reinterpret_cast<flightforge::wire::ListWorldsResponseT *>(value) : nullptr;
+  }
+  const flightforge::wire::ListWorldsResponseT *AsListWorldsResponse() const {
+    return type == ResponseBody::ListWorldsResponse ?
+      reinterpret_cast<const flightforge::wire::ListWorldsResponseT *>(value) : nullptr;
+  }
+  flightforge::wire::SwitchWorldResponseT *AsSwitchWorldResponse() {
+    return type == ResponseBody::SwitchWorldResponse ?
+      reinterpret_cast<flightforge::wire::SwitchWorldResponseT *>(value) : nullptr;
+  }
+  const flightforge::wire::SwitchWorldResponseT *AsSwitchWorldResponse() const {
+    return type == ResponseBody::SwitchWorldResponse ?
+      reinterpret_cast<const flightforge::wire::SwitchWorldResponseT *>(value) : nullptr;
+  }
 };
 
 
@@ -2910,6 +2971,14 @@ inline bool operator==(const ResponseBodyUnion &lhs, const ResponseBodyUnion &rh
     case ResponseBody::ViewportImageResponse: {
       return *(reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(lhs.value)) ==
              *(reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(rhs.value));
+    }
+    case ResponseBody::ListWorldsResponse: {
+      return *(reinterpret_cast<const flightforge::wire::ListWorldsResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::ListWorldsResponseT *>(rhs.value));
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      return *(reinterpret_cast<const flightforge::wire::SwitchWorldResponseT *>(lhs.value)) ==
+             *(reinterpret_cast<const flightforge::wire::SwitchWorldResponseT *>(rhs.value));
     }
     default: {
       return false;
@@ -3167,6 +3236,9 @@ struct Request FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const flightforge::wire::GetViewportImageRequest *body_as_GetViewportImageRequest() const {
     return body_type() == flightforge::wire::RequestBody::GetViewportImageRequest ? static_cast<const flightforge::wire::GetViewportImageRequest *>(body()) : nullptr;
+  }
+  const flightforge::wire::ListWorldsRequest *body_as_ListWorldsRequest() const {
+    return body_type() == flightforge::wire::RequestBody::ListWorldsRequest ? static_cast<const flightforge::wire::ListWorldsRequest *>(body()) : nullptr;
   }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
@@ -3460,6 +3532,10 @@ template<> inline const flightforge::wire::GetViewportImageRequest *Request::bod
   return body_as_GetViewportImageRequest();
 }
 
+template<> inline const flightforge::wire::ListWorldsRequest *Request::body_as<flightforge::wire::ListWorldsRequest>() const {
+  return body_as_ListWorldsRequest();
+}
+
 struct RequestBuilder {
   typedef Request Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
@@ -3695,6 +3771,12 @@ struct Response FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const flightforge::wire::ViewportImageResponse *body_as_ViewportImageResponse() const {
     return body_type() == flightforge::wire::ResponseBody::ViewportImageResponse ? static_cast<const flightforge::wire::ViewportImageResponse *>(body()) : nullptr;
   }
+  const flightforge::wire::ListWorldsResponse *body_as_ListWorldsResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::ListWorldsResponse ? static_cast<const flightforge::wire::ListWorldsResponse *>(body()) : nullptr;
+  }
+  const flightforge::wire::SwitchWorldResponse *body_as_SwitchWorldResponse() const {
+    return body_type() == flightforge::wire::ResponseBody::SwitchWorldResponse ? static_cast<const flightforge::wire::SwitchWorldResponse *>(body()) : nullptr;
+  }
   template <bool B = false>
   bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3906,6 +3988,14 @@ template<> inline const flightforge::wire::GetDaytimeResponse *Response::body_as
 
 template<> inline const flightforge::wire::ViewportImageResponse *Response::body_as<flightforge::wire::ViewportImageResponse>() const {
   return body_as_ViewportImageResponse();
+}
+
+template<> inline const flightforge::wire::ListWorldsResponse *Response::body_as<flightforge::wire::ListWorldsResponse>() const {
+  return body_as_ListWorldsResponse();
+}
+
+template<> inline const flightforge::wire::SwitchWorldResponse *Response::body_as<flightforge::wire::SwitchWorldResponse>() const {
+  return body_as_SwitchWorldResponse();
 }
 
 struct ResponseBuilder {
@@ -4364,6 +4454,10 @@ inline bool VerifyRequestBody(::flatbuffers::VerifierTemplate<B> &verifier, cons
       auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequest *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case RequestBody::ListWorldsRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsRequest *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -4660,6 +4754,10 @@ inline void *RequestBodyUnion::UnPack(const void *obj, RequestBody type, const :
       auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequest *>(obj);
       return ptr->UnPack(resolver);
     }
+    case RequestBody::ListWorldsRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsRequest *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -4943,6 +5041,10 @@ inline ::flatbuffers::Offset<void> RequestBodyUnion::Pack(::flatbuffers::FlatBuf
       auto ptr = reinterpret_cast<const flightforge::wire::GetViewportImageRequestT *>(value);
       return CreateGetViewportImageRequest(_fbb, ptr, _rehasher).Union();
     }
+    case RequestBody::ListWorldsRequest: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsRequestT *>(value);
+      return CreateListWorldsRequest(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -5223,6 +5325,10 @@ inline RequestBodyUnion::RequestBodyUnion(const RequestBodyUnion &u) : type(u.ty
     }
     case RequestBody::GetViewportImageRequest: {
       value = new flightforge::wire::GetViewportImageRequestT(*reinterpret_cast<flightforge::wire::GetViewportImageRequestT *>(u.value));
+      break;
+    }
+    case RequestBody::ListWorldsRequest: {
+      value = new flightforge::wire::ListWorldsRequestT(*reinterpret_cast<flightforge::wire::ListWorldsRequestT *>(u.value));
       break;
     }
     default:
@@ -5577,6 +5683,11 @@ inline void RequestBodyUnion::Reset() {
       delete ptr;
       break;
     }
+    case RequestBody::ListWorldsRequest: {
+      auto ptr = reinterpret_cast<flightforge::wire::ListWorldsRequestT *>(value);
+      delete ptr;
+      break;
+    }
     default: break;
   }
   value = nullptr;
@@ -5783,6 +5894,14 @@ inline bool VerifyResponseBody(::flatbuffers::VerifierTemplate<B> &verifier, con
     }
     case ResponseBody::ViewportImageResponse: {
       auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case ResponseBody::ListWorldsResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsResponse *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::SwitchWorldResponse *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -6001,6 +6120,14 @@ inline void *ResponseBodyUnion::UnPack(const void *obj, ResponseBody type, const
       auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponse *>(obj);
       return ptr->UnPack(resolver);
     }
+    case ResponseBody::ListWorldsResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsResponse *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::SwitchWorldResponse *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -6204,6 +6331,14 @@ inline ::flatbuffers::Offset<void> ResponseBodyUnion::Pack(::flatbuffers::FlatBu
       auto ptr = reinterpret_cast<const flightforge::wire::ViewportImageResponseT *>(value);
       return CreateViewportImageResponse(_fbb, ptr, _rehasher).Union();
     }
+    case ResponseBody::ListWorldsResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::ListWorldsResponseT *>(value);
+      return CreateListWorldsResponse(_fbb, ptr, _rehasher).Union();
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      auto ptr = reinterpret_cast<const flightforge::wire::SwitchWorldResponseT *>(value);
+      return CreateSwitchWorldResponse(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6404,6 +6539,14 @@ inline ResponseBodyUnion::ResponseBodyUnion(const ResponseBodyUnion &u) : type(u
     }
     case ResponseBody::ViewportImageResponse: {
       value = new flightforge::wire::ViewportImageResponseT(*reinterpret_cast<flightforge::wire::ViewportImageResponseT *>(u.value));
+      break;
+    }
+    case ResponseBody::ListWorldsResponse: {
+      value = new flightforge::wire::ListWorldsResponseT(*reinterpret_cast<flightforge::wire::ListWorldsResponseT *>(u.value));
+      break;
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      value = new flightforge::wire::SwitchWorldResponseT(*reinterpret_cast<flightforge::wire::SwitchWorldResponseT *>(u.value));
       break;
     }
     default:
@@ -6655,6 +6798,16 @@ inline void ResponseBodyUnion::Reset() {
     }
     case ResponseBody::ViewportImageResponse: {
       auto ptr = reinterpret_cast<flightforge::wire::ViewportImageResponseT *>(value);
+      delete ptr;
+      break;
+    }
+    case ResponseBody::ListWorldsResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::ListWorldsResponseT *>(value);
+      delete ptr;
+      break;
+    }
+    case ResponseBody::SwitchWorldResponse: {
+      auto ptr = reinterpret_cast<flightforge::wire::SwitchWorldResponseT *>(value);
       delete ptr;
       break;
     }

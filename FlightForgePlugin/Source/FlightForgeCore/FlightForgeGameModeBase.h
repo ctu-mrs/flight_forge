@@ -141,17 +141,13 @@ private:
 			Server->AttachGameMode(this);
 		}
 
-		FString NextMapNameStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapName"));
-		FString NextMapPathStr = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapPath"));
-		if (!NextMapNameStr.IsEmpty() && !NextMapPathStr.IsEmpty())
+		const FString NextMapPath = UGameplayStatics::ParseOption(OptionsString, TEXT("NextMapPath"));
+		if (!NextMapPath.IsEmpty())
 		{
-			StartAsyncLoadingTargetMap(NextMapNameStr, NextMapPathStr);
-
-			UE_LOG(LogTemp, Warning, TEXT("Loading screen, switching to: %s"), *NextMapPathStr);
+			StartAsyncLoadingTargetMap(NextMapPath);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Starting game mode server (Normal Map)"));
 			InitializeDronePool();
 		}
 	}
@@ -695,58 +691,42 @@ public:
 	
 	}
 
-	//UFUNCTION(BlueprintCallable)
-	bool SwitchWorldLevel(const FString& WorldLevelStr)
+	/* world switching //{ */
+
+	// a package path; the Entry map keeps the game thread ticking while the target loads
+	void SwitchWorldLevel(const FString& Package)
 	{
-		// full package path: preload the map through the Entry level for a fast switch
-		if (WorldLevelStr.Contains(TEXT("/")))
-		{
-			const FString NameOfWorld = FPackageName::GetShortName(WorldLevelStr);
-			const FString Options = FString::Printf(TEXT("?game=/Script/FlightForgeCore.FlightForgeGameModeBase?NextMapName=%s?NextMapPath=%s"),
-				*NameOfWorld,
-				*WorldLevelStr);
-
-			UE_LOG(LogTemp, Warning, TEXT("OpenLevel: Empty"));
-			UGameplayStatics::OpenLevel(this, "/Engine/Maps/Entry", true, Options);
-		}
-		else
-		{
-			UGameplayStatics::OpenLevel(this, FName(WorldLevelStr), true, TEXT("?game=/Script/FlightForgeCore.FlightForgeGameModeBase"));
-		}
-
-		return true;
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: switching to %s through the Entry map"), *Package);
+		UGameplayStatics::OpenLevel(this, TEXT("/Engine/Maps/Entry"), true, FString::Printf(TEXT("?game=%s?NextMapPath=%s"), *ForcedGameMode(), *Package));
 	}
 
-	void StartAsyncLoadingTargetMap(const FString& NextMapNameStr, const FString& NextMapPathStr)
+	void StartAsyncLoadingTargetMap(const FString& Package)
 	{
-		FName TargetMapName = FName(*NextMapNameStr);
-		
-		FLoadPackageAsyncDelegate CompletionDelegate = FLoadPackageAsyncDelegate::CreateUObject(
-			this, 
-			&AFlightForgeGameModeBase::OnMapPackageLoaded, 
-			TargetMapName
-		);
-		
-		LoadPackageAsync(NextMapPathStr, CompletionDelegate, 0, PKG_ContainsMap);
+		LoadPackageAsync(Package, FLoadPackageAsyncDelegate::CreateUObject(this, &AFlightForgeGameModeBase::OnMapPackageLoaded), 0, PKG_ContainsMap);
 	}
-	
 
-	void OnMapPackageLoaded(const FName& PackageName, UPackage* LoadedPackage, EAsyncLoadingResult::Type Result, FName MapNameToOpen)
+	void OnMapPackageLoaded(const FName& PackageName, UPackage* LoadedPackage, EAsyncLoadingResult::Type Result)
 	{
-		if (Result == EAsyncLoadingResult::Succeeded)
+		if (Result != EAsyncLoadingResult::Succeeded)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Target Map %s is fully in RAM. Executing fast switch."), *MapNameToOpen.ToString());
+			UE_LOG(LogTemp, Error, TEXT("FlightForge: failed to load map package %s"), *PackageName.ToString());
+			if (FSimServer* Server = GetServer())
+			{
+				Server->FailWorldSwitch(FString::Printf(TEXT("could not load %s"), *PackageName.ToString()));
+			}
+			return;
+		}
 
-			// Without the override the destination map uses its own GameModeOverride, and a
-			// map that carries one leaves the server with no game mode registered: the
-			// simulator comes up but answers nothing.
-			UGameplayStatics::OpenLevel(this, MapNameToOpen, true, TEXT("?game=/Script/FlightForgeCore.FlightForgeGameModeBase"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to load map package to RAM: %s"), *PackageName.ToString());
-		}
+		// without the override a map carrying its own GameModeOverride leaves the server with no game mode
+		UGameplayStatics::OpenLevel(this, PackageName, true, FString::Printf(TEXT("?game=%s"), *ForcedGameMode()));
 	}
+
+	static FString ForcedGameMode()
+	{
+		return TEXT("/Script/FlightForgeCore.FlightForgeGameModeBase");
+	}
+
+	/* //} */
 
 	// Unreal cm; set at BeginPlay, read by any thread
 	FVector GetGroundOrigin() const

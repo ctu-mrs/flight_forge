@@ -10,12 +10,13 @@
 #include "FlightForgeCore/Utils/DistanceFieldQuery.h"
 #include "FlightForgeCore/Utils/SkyControl.h"
 #include "FlightForgeCore/Utils/SurfaceHeightQuery.h"
+#include "FlightForgeCore/Utils/WorldCatalog.h"
 #include "FlightForgeCore/Utils/WorldMeshExtractor.h"
 #include "FlightForgeCore/RenderSettings/ViewportMatch.h"
 #include "FlightForgeCore/Sensors/SensorWire.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 6;
+static constexpr uint16 ApiMinor = 7;
 
 /* connection //{ */
 
@@ -198,22 +199,136 @@ void FSimServer::Step(const ffw::Request& Request, FWireReply& Reply)
 
 void FSimServer::SwitchWorld(const ffw::Request& Request, FWireReply& Reply)
 {
-	const FString Level = WireString(Request.body_as_SwitchWorldRequest()->level());
-	if (Level.IsEmpty())
+	FString Package;
+	FString Error;
+	if (!FWorldCatalog::Resolve(WireString(Request.body_as_SwitchWorldRequest()->level()), Package, Error))
 	{
-		Reply.Fail(TEXT("switch_world needs a level"));
+		Reply.Fail(Error);
 		return;
 	}
 
 	std::lock_guard<std::mutex> Lock(WorldMutex);
-	const FGameModeLease        GameMode = LeaseGameMode(Reply);
-	if (!GameMode)
+
+	uint64        SinceAttach = 0;
+	TArray<int32> Removed;
 	{
+		const FGameModeLease GameMode = LeaseGameMode(Reply);
+		if (!GameMode)
+		{
+			return;
+		}
+
+		{
+			std::lock_guard<std::mutex> StateLock(GameModeMutex);
+			SinceAttach   = AttachCount;
+			SwitchTarget  = Package;
+			SwitchFailure = FString();
+		}
+		{
+			std::lock_guard<std::mutex> RobotsLock(RobotsMutex);
+			Robots.GetKeys(Removed);
+		}
+
+		PostToGameThread(*GameMode.GameMode, [Package](AFlightForgeGameModeBase& Mode) { Mode.SwitchWorldLevel(Package); });
+	}
+
+	const bool bLoaded = WaitForWorld(Package, SinceAttach, Error);
+	{
+		std::lock_guard<std::mutex> StateLock(GameModeMutex);
+		SwitchTarget = FString();
+	}
+	{
+		std::lock_guard<std::mutex> RobotsLock(RobotsMutex);
+		Removed.RemoveAll([this](const int32 Id) { return Robots.Contains(Id); });
+		for (const int32 Id : Removed)
+		{
+			RobotsLostToSwitch.Add(Id, Package);
+		}
+	}
+
+	if (!bLoaded)
+	{
+		Reply.Fail(Error);
 		return;
 	}
 
-	// the reply goes out before the level unloads under this connection
-	PostToGameThread(*GameMode.GameMode, [Level](AFlightForgeGameModeBase& Mode) { Mode.SwitchWorldLevel(Level); });
+	Removed.Sort();
+	Reply.Set(ffw::CreateSwitchWorldResponse(Reply.Builder, Reply.String(Package), Reply.Builder.CreateVector(Removed.GetData(), Removed.Num())));
+}
+
+// the old game mode detaches, the Entry map's may come and go, and the target's must tick once
+bool FSimServer::WaitForWorld(const FString& Package, const uint64 SinceAttach, FString& OutError)
+{
+	constexpr double TimeoutSeconds = 1800.0;
+	const double     Deadline       = FPlatformTime::Seconds() + TimeoutSeconds;
+
+	while (bRunning && FPlatformTime::Seconds() < Deadline)
+	{
+		FString Attached;
+		{
+			std::lock_guard<std::mutex> Lock(GameModeMutex);
+			if (!SwitchFailure.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("switch_world to %s failed: %s"), *Package, *SwitchFailure);
+				return false;
+			}
+			if (AttachedGameMode && AttachCount != SinceAttach)
+			{
+				Attached = AttachedWorld;
+			}
+		}
+
+		if (!Attached.IsEmpty() && Attached != TEXT("/Engine/Maps/Entry"))
+		{
+			if (!Attached.Equals(Package, ESearchCase::IgnoreCase))
+			{
+				OutError = FString::Printf(TEXT("switch_world to %s loaded %s instead"), *Package, *Attached);
+				return false;
+			}
+
+			FWireReply           Scratch;
+			const FGameModeLease GameMode = LeaseGameMode(Scratch);
+			bool                 bTicking = false;
+			if (GameMode)
+			{
+				RunOnGameThread(*GameMode.GameMode, [&bTicking](AFlightForgeGameModeBase& Mode) { bTicking = Mode.GetWorld()->HasBegunPlay(); });
+			}
+			if (bTicking)
+			{
+				return true;
+			}
+		}
+
+		FPlatformProcess::SleepNoStats(0.01f);
+	}
+
+	OutError = bRunning ? FString::Printf(TEXT("switch_world to %s did not finish within %.0f s"), *Package, TimeoutSeconds) : TEXT("the simulator is shutting down");
+	return false;
+}
+
+void FSimServer::ListWorlds(const ffw::Request& Request, FWireReply& Reply)
+{
+	const TArray<FWorldEntry>& Worlds = FWorldCatalog::Get();
+
+	std::vector<flatbuffers::Offset<ffw::WorldInfo>> Infos;
+	Infos.reserve(Worlds.Num());
+	for (const FWorldEntry& World : Worlds)
+	{
+		Infos.push_back(ffw::CreateWorldInfo(Reply.Builder, Reply.String(World.Name), Reply.String(World.Package), Reply.String(World.DisplayName)));
+	}
+
+	FString Current;
+	FString Loading;
+	{
+		std::lock_guard<std::mutex> Lock(GameModeMutex);
+		Loading = SwitchTarget;
+		if (Loading.IsEmpty() && AttachedWorld != TEXT("/Engine/Maps/Entry"))
+		{
+			Current = AttachedWorld;
+		}
+	}
+
+	Reply.Set(ffw::CreateListWorldsResponse(Reply.Builder, Reply.Builder.CreateVector(Infos), Reply.String(Current), Reply.String(Loading)));
 }
 
 void FSimServer::SetWeather(const ffw::Request& Request, FWireReply& Reply)

@@ -69,8 +69,29 @@ table StepResponse {
 
 /* world //{ */
 
+// a name from list_worlds, a package path, or a map's short name in any case where it is unique
 table SwitchWorldRequest {
   level: string;
+}
+
+// answered once the new world ticks; robots do not survive a switch
+table SwitchWorldResponse {
+  package: string;
+  removed_robots: [int];
+}
+
+table ListWorldsRequest {}
+
+table WorldInfo {
+  name: string;  // what switch_world takes: the short name, or the package path where another map shares it
+  package: string;
+  display_name: string;
+}
+
+table ListWorldsResponse {
+  worlds: [WorldInfo];
+  current: string;  // package of the world that has begun play, empty while none has
+  loading: string;  // package a switch_world in progress is loading, else empty
 }
 
 enum Weather : ubyte {

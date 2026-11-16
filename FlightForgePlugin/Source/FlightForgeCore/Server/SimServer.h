@@ -52,6 +52,9 @@ public:
 	void RegisterRobot(ARobotPawn* Pawn);
 	void ReleaseRobot(ARobotPawn* Pawn, TFunctionRef<void()> Pump);
 
+	// ends a switch_world in progress with this error
+	void FailWorldSwitch(const FString& Error);
+
 	/* //} */
 
 	static int32 AllocateRobotId();
@@ -143,6 +146,12 @@ private:
 	AFlightForgeGameModeBase* AttachedGameMode = nullptr;
 	std::atomic<int32>        GameModeInFlight{0};
 
+	// guarded by GameModeMutex
+	FString AttachedWorld;
+	uint64  AttachCount = 0;
+	FString SwitchTarget;
+	FString SwitchFailure;
+
 	struct FRobotEntry
 	{
 		ARobotPawn*                 Pawn = nullptr;
@@ -151,6 +160,7 @@ private:
 
 	std::mutex              RobotsMutex;
 	TMap<int32, FRobotEntry> Robots;
+	TMap<int32, FString>     RobotsLostToSwitch;
 
 	// spawn, remove, world switch, scene edits and the clock take turns
 	std::mutex WorldMutex;
@@ -172,6 +182,8 @@ private:
 	void SetLockstep(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void Step(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SwitchWorld(const flightforge::wire::Request& Request, FWireReply& Reply);
+	void ListWorlds(const flightforge::wire::Request& Request, FWireReply& Reply);
+	bool WaitForWorld(const FString& Package, uint64 SinceAttach, FString& OutError);
 	void SetWeather(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void SetDaytime(const flightforge::wire::Request& Request, FWireReply& Reply);
 	void GetDaytime(const flightforge::wire::Request& Request, FWireReply& Reply);

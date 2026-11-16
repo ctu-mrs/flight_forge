@@ -3,6 +3,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Engine/Engine.h"
 #include "Scalability.h"
 
 #include "Server/SimServer.h"
@@ -90,6 +91,13 @@ void UFlightForgeGameInstance::Init()
 
 	Server = std::make_shared<FSimServer>(Port, BindAddress);
 	Server->Start();
+
+	TravelFailureHandle = GEngine->OnTravelFailure().AddLambda([Weak = std::weak_ptr<FSimServer>(Server)](UWorld*, ETravelFailure::Type, const FString& Error) {
+		if (const std::shared_ptr<FSimServer> Locked = Weak.lock())
+		{
+			Locked->FailWorldSwitch(Error);
+		}
+	});
 }
 
 //}
@@ -99,6 +107,10 @@ void UFlightForgeGameInstance::Init()
 void UFlightForgeGameInstance::Shutdown()
 {
 	FTSTicker::GetCoreTicker().RemoveTicker(FrameCapTicker);
+	if (GEngine)
+	{
+		GEngine->OnTravelFailure().Remove(TravelFailureHandle);
+	}
 	ViewportMode.reset();
 
 	if (Server)

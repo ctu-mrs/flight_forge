@@ -79,6 +79,22 @@ struct SwitchWorldRequest;
 struct SwitchWorldRequestBuilder;
 struct SwitchWorldRequestT;
 
+struct SwitchWorldResponse;
+struct SwitchWorldResponseBuilder;
+struct SwitchWorldResponseT;
+
+struct ListWorldsRequest;
+struct ListWorldsRequestBuilder;
+struct ListWorldsRequestT;
+
+struct WorldInfo;
+struct WorldInfoBuilder;
+struct WorldInfoT;
+
+struct ListWorldsResponse;
+struct ListWorldsResponseBuilder;
+struct ListWorldsResponseT;
+
 struct SetWeatherRequest;
 struct SetWeatherRequestBuilder;
 struct SetWeatherRequestT;
@@ -273,6 +289,14 @@ bool operator==(const StepResponseT &lhs, const StepResponseT &rhs);
 bool operator!=(const StepResponseT &lhs, const StepResponseT &rhs);
 bool operator==(const SwitchWorldRequestT &lhs, const SwitchWorldRequestT &rhs);
 bool operator!=(const SwitchWorldRequestT &lhs, const SwitchWorldRequestT &rhs);
+bool operator==(const SwitchWorldResponseT &lhs, const SwitchWorldResponseT &rhs);
+bool operator!=(const SwitchWorldResponseT &lhs, const SwitchWorldResponseT &rhs);
+bool operator==(const ListWorldsRequestT &lhs, const ListWorldsRequestT &rhs);
+bool operator!=(const ListWorldsRequestT &lhs, const ListWorldsRequestT &rhs);
+bool operator==(const WorldInfoT &lhs, const WorldInfoT &rhs);
+bool operator!=(const WorldInfoT &lhs, const WorldInfoT &rhs);
+bool operator==(const ListWorldsResponseT &lhs, const ListWorldsResponseT &rhs);
+bool operator!=(const ListWorldsResponseT &lhs, const ListWorldsResponseT &rhs);
 bool operator==(const SetWeatherRequestT &lhs, const SetWeatherRequestT &rhs);
 bool operator!=(const SetWeatherRequestT &lhs, const SetWeatherRequestT &rhs);
 bool operator==(const SetDaytimeRequestT &lhs, const SetDaytimeRequestT &rhs);
@@ -1407,6 +1431,339 @@ inline ::flatbuffers::Offset<SwitchWorldRequest> CreateSwitchWorldRequestDirect(
 }
 
 ::flatbuffers::Offset<SwitchWorldRequest> CreateSwitchWorldRequest(::flatbuffers::FlatBufferBuilder &_fbb, const SwitchWorldRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct SwitchWorldResponseT : public ::flatbuffers::NativeTable {
+  typedef SwitchWorldResponse TableType;
+  std::string package{};
+  std::vector<int32_t> removed_robots{};
+};
+
+struct SwitchWorldResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SwitchWorldResponseT NativeTableType;
+  typedef SwitchWorldResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PACKAGE = 4,
+    VT_REMOVED_ROBOTS = 6
+  };
+  const ::flatbuffers::String *package() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_PACKAGE);
+  }
+  const ::flatbuffers::Vector<int32_t> *removed_robots() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_REMOVED_ROBOTS);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_PACKAGE) &&
+           verifier.VerifyString(package()) &&
+           VerifyOffset(verifier, VT_REMOVED_ROBOTS) &&
+           verifier.VerifyVector(removed_robots()) &&
+           verifier.EndTable();
+  }
+  SwitchWorldResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SwitchWorldResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<SwitchWorldResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const SwitchWorldResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SwitchWorldResponseBuilder {
+  typedef SwitchWorldResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_package(::flatbuffers::Offset<::flatbuffers::String> package) {
+    fbb_.AddOffset(SwitchWorldResponse::VT_PACKAGE, package);
+  }
+  void add_removed_robots(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> removed_robots) {
+    fbb_.AddOffset(SwitchWorldResponse::VT_REMOVED_ROBOTS, removed_robots);
+  }
+  explicit SwitchWorldResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SwitchWorldResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SwitchWorldResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SwitchWorldResponse> CreateSwitchWorldResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> package = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> removed_robots = 0) {
+  SwitchWorldResponseBuilder builder_(_fbb);
+  builder_.add_removed_robots(removed_robots);
+  builder_.add_package(package);
+  return builder_.Finish();
+}
+
+struct SwitchWorldResponse::Traits {
+  using type = SwitchWorldResponse;
+  static auto constexpr Create = CreateSwitchWorldResponse;
+};
+
+inline ::flatbuffers::Offset<SwitchWorldResponse> CreateSwitchWorldResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *package = nullptr,
+    const std::vector<int32_t> *removed_robots = nullptr) {
+  auto package__ = package ? _fbb.CreateString(package) : 0;
+  auto removed_robots__ = removed_robots ? _fbb.CreateVector<int32_t>(*removed_robots) : 0;
+  return flightforge::wire::CreateSwitchWorldResponse(
+      _fbb,
+      package__,
+      removed_robots__);
+}
+
+::flatbuffers::Offset<SwitchWorldResponse> CreateSwitchWorldResponse(::flatbuffers::FlatBufferBuilder &_fbb, const SwitchWorldResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ListWorldsRequestT : public ::flatbuffers::NativeTable {
+  typedef ListWorldsRequest TableType;
+};
+
+struct ListWorldsRequest FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ListWorldsRequestT NativeTableType;
+  typedef ListWorldsRequestBuilder Builder;
+  struct Traits;
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ListWorldsRequestT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ListWorldsRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<ListWorldsRequest> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ListWorldsRequestBuilder {
+  typedef ListWorldsRequest Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit ListWorldsRequestBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ListWorldsRequest> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ListWorldsRequest>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ListWorldsRequest> CreateListWorldsRequest(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  ListWorldsRequestBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+struct ListWorldsRequest::Traits {
+  using type = ListWorldsRequest;
+  static auto constexpr Create = CreateListWorldsRequest;
+};
+
+::flatbuffers::Offset<ListWorldsRequest> CreateListWorldsRequest(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct WorldInfoT : public ::flatbuffers::NativeTable {
+  typedef WorldInfo TableType;
+  std::string name{};
+  std::string package{};
+  std::string display_name{};
+};
+
+struct WorldInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef WorldInfoT NativeTableType;
+  typedef WorldInfoBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_PACKAGE = 6,
+    VT_DISPLAY_NAME = 8
+  };
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
+  }
+  const ::flatbuffers::String *package() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_PACKAGE);
+  }
+  const ::flatbuffers::String *display_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_DISPLAY_NAME);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyOffset(verifier, VT_PACKAGE) &&
+           verifier.VerifyString(package()) &&
+           VerifyOffset(verifier, VT_DISPLAY_NAME) &&
+           verifier.VerifyString(display_name()) &&
+           verifier.EndTable();
+  }
+  WorldInfoT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(WorldInfoT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<WorldInfo> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const WorldInfoT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct WorldInfoBuilder {
+  typedef WorldInfo Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
+    fbb_.AddOffset(WorldInfo::VT_NAME, name);
+  }
+  void add_package(::flatbuffers::Offset<::flatbuffers::String> package) {
+    fbb_.AddOffset(WorldInfo::VT_PACKAGE, package);
+  }
+  void add_display_name(::flatbuffers::Offset<::flatbuffers::String> display_name) {
+    fbb_.AddOffset(WorldInfo::VT_DISPLAY_NAME, display_name);
+  }
+  explicit WorldInfoBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<WorldInfo> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<WorldInfo>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<WorldInfo> CreateWorldInfo(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> package = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> display_name = 0) {
+  WorldInfoBuilder builder_(_fbb);
+  builder_.add_display_name(display_name);
+  builder_.add_package(package);
+  builder_.add_name(name);
+  return builder_.Finish();
+}
+
+struct WorldInfo::Traits {
+  using type = WorldInfo;
+  static auto constexpr Create = CreateWorldInfo;
+};
+
+inline ::flatbuffers::Offset<WorldInfo> CreateWorldInfoDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    const char *package = nullptr,
+    const char *display_name = nullptr) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto package__ = package ? _fbb.CreateString(package) : 0;
+  auto display_name__ = display_name ? _fbb.CreateString(display_name) : 0;
+  return flightforge::wire::CreateWorldInfo(
+      _fbb,
+      name__,
+      package__,
+      display_name__);
+}
+
+::flatbuffers::Offset<WorldInfo> CreateWorldInfo(::flatbuffers::FlatBufferBuilder &_fbb, const WorldInfoT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ListWorldsResponseT : public ::flatbuffers::NativeTable {
+  typedef ListWorldsResponse TableType;
+  std::vector<std::unique_ptr<flightforge::wire::WorldInfoT>> worlds{};
+  std::string current{};
+  std::string loading{};
+  ListWorldsResponseT() = default;
+  ListWorldsResponseT(const ListWorldsResponseT &o);
+  ListWorldsResponseT(ListWorldsResponseT&&) FLATBUFFERS_NOEXCEPT = default;
+  ListWorldsResponseT &operator=(ListWorldsResponseT o) FLATBUFFERS_NOEXCEPT;
+};
+
+struct ListWorldsResponse FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ListWorldsResponseT NativeTableType;
+  typedef ListWorldsResponseBuilder Builder;
+  struct Traits;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_WORLDS = 4,
+    VT_CURRENT = 6,
+    VT_LOADING = 8
+  };
+  const ::flatbuffers::Vector<::flatbuffers::Offset<flightforge::wire::WorldInfo>> *worlds() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<flightforge::wire::WorldInfo>> *>(VT_WORLDS);
+  }
+  const ::flatbuffers::String *current() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_CURRENT);
+  }
+  const ::flatbuffers::String *loading() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_LOADING);
+  }
+  template <bool B = false>
+  bool Verify(::flatbuffers::VerifierTemplate<B> &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_WORLDS) &&
+           verifier.VerifyVector(worlds()) &&
+           verifier.VerifyVectorOfTables(worlds()) &&
+           VerifyOffset(verifier, VT_CURRENT) &&
+           verifier.VerifyString(current()) &&
+           VerifyOffset(verifier, VT_LOADING) &&
+           verifier.VerifyString(loading()) &&
+           verifier.EndTable();
+  }
+  ListWorldsResponseT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ListWorldsResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<ListWorldsResponse> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ListWorldsResponseBuilder {
+  typedef ListWorldsResponse Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_worlds(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<flightforge::wire::WorldInfo>>> worlds) {
+    fbb_.AddOffset(ListWorldsResponse::VT_WORLDS, worlds);
+  }
+  void add_current(::flatbuffers::Offset<::flatbuffers::String> current) {
+    fbb_.AddOffset(ListWorldsResponse::VT_CURRENT, current);
+  }
+  void add_loading(::flatbuffers::Offset<::flatbuffers::String> loading) {
+    fbb_.AddOffset(ListWorldsResponse::VT_LOADING, loading);
+  }
+  explicit ListWorldsResponseBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ListWorldsResponse> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ListWorldsResponse>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ListWorldsResponse> CreateListWorldsResponse(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<flightforge::wire::WorldInfo>>> worlds = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> current = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> loading = 0) {
+  ListWorldsResponseBuilder builder_(_fbb);
+  builder_.add_loading(loading);
+  builder_.add_current(current);
+  builder_.add_worlds(worlds);
+  return builder_.Finish();
+}
+
+struct ListWorldsResponse::Traits {
+  using type = ListWorldsResponse;
+  static auto constexpr Create = CreateListWorldsResponse;
+};
+
+inline ::flatbuffers::Offset<ListWorldsResponse> CreateListWorldsResponseDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<::flatbuffers::Offset<flightforge::wire::WorldInfo>> *worlds = nullptr,
+    const char *current = nullptr,
+    const char *loading = nullptr) {
+  auto worlds__ = worlds ? _fbb.CreateVector<::flatbuffers::Offset<flightforge::wire::WorldInfo>>(*worlds) : 0;
+  auto current__ = current ? _fbb.CreateString(current) : 0;
+  auto loading__ = loading ? _fbb.CreateString(loading) : 0;
+  return flightforge::wire::CreateListWorldsResponse(
+      _fbb,
+      worlds__,
+      current__,
+      loading__);
+}
+
+::flatbuffers::Offset<ListWorldsResponse> CreateListWorldsResponse(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct SetWeatherRequestT : public ::flatbuffers::NativeTable {
   typedef SetWeatherRequest TableType;
@@ -5088,6 +5445,184 @@ inline ::flatbuffers::Offset<SwitchWorldRequest> SwitchWorldRequest::Pack(::flat
   return flightforge::wire::CreateSwitchWorldRequest(
       _fbb,
       _level);
+}
+
+
+inline bool operator==(const SwitchWorldResponseT &lhs, const SwitchWorldResponseT &rhs) {
+  return
+      (lhs.package == rhs.package) &&
+      (lhs.removed_robots == rhs.removed_robots);
+}
+
+inline bool operator!=(const SwitchWorldResponseT &lhs, const SwitchWorldResponseT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline SwitchWorldResponseT *SwitchWorldResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<SwitchWorldResponseT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void SwitchWorldResponse::UnPackTo(SwitchWorldResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = package(); if (_e) _o->package = _e->str(); }
+  { auto _e = removed_robots(); if (_e) { _o->removed_robots.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->removed_robots[_i] = _e->Get(_i); } } else { _o->removed_robots.resize(0); } }
+}
+
+inline ::flatbuffers::Offset<SwitchWorldResponse> CreateSwitchWorldResponse(::flatbuffers::FlatBufferBuilder &_fbb, const SwitchWorldResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return SwitchWorldResponse::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<SwitchWorldResponse> SwitchWorldResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const SwitchWorldResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const SwitchWorldResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _package = _o->package.empty() ? 0 : _fbb.CreateString(_o->package);
+  auto _removed_robots = _o->removed_robots.size() ? _fbb.CreateVector(_o->removed_robots) : 0;
+  return flightforge::wire::CreateSwitchWorldResponse(
+      _fbb,
+      _package,
+      _removed_robots);
+}
+
+
+inline bool operator==(const ListWorldsRequestT &, const ListWorldsRequestT &) {
+  return true;
+}
+
+inline bool operator!=(const ListWorldsRequestT &lhs, const ListWorldsRequestT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline ListWorldsRequestT *ListWorldsRequest::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<ListWorldsRequestT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ListWorldsRequest::UnPackTo(ListWorldsRequestT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<ListWorldsRequest> CreateListWorldsRequest(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsRequestT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return ListWorldsRequest::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<ListWorldsRequest> ListWorldsRequest::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsRequestT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const ListWorldsRequestT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return flightforge::wire::CreateListWorldsRequest(
+      _fbb);
+}
+
+
+inline bool operator==(const WorldInfoT &lhs, const WorldInfoT &rhs) {
+  return
+      (lhs.name == rhs.name) &&
+      (lhs.package == rhs.package) &&
+      (lhs.display_name == rhs.display_name);
+}
+
+inline bool operator!=(const WorldInfoT &lhs, const WorldInfoT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline WorldInfoT *WorldInfo::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<WorldInfoT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void WorldInfo::UnPackTo(WorldInfoT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = name(); if (_e) _o->name = _e->str(); }
+  { auto _e = package(); if (_e) _o->package = _e->str(); }
+  { auto _e = display_name(); if (_e) _o->display_name = _e->str(); }
+}
+
+inline ::flatbuffers::Offset<WorldInfo> CreateWorldInfo(::flatbuffers::FlatBufferBuilder &_fbb, const WorldInfoT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return WorldInfo::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<WorldInfo> WorldInfo::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const WorldInfoT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const WorldInfoT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
+  auto _package = _o->package.empty() ? 0 : _fbb.CreateString(_o->package);
+  auto _display_name = _o->display_name.empty() ? 0 : _fbb.CreateString(_o->display_name);
+  return flightforge::wire::CreateWorldInfo(
+      _fbb,
+      _name,
+      _package,
+      _display_name);
+}
+
+
+inline bool operator==(const ListWorldsResponseT &lhs, const ListWorldsResponseT &rhs) {
+  return
+      (lhs.worlds.size() == rhs.worlds.size() && std::equal(lhs.worlds.cbegin(), lhs.worlds.cend(), rhs.worlds.cbegin(), [](std::unique_ptr<flightforge::wire::WorldInfoT> const &a, std::unique_ptr<flightforge::wire::WorldInfoT> const &b) { return (a == b) || (a && b && *a == *b); })) &&
+      (lhs.current == rhs.current) &&
+      (lhs.loading == rhs.loading);
+}
+
+inline bool operator!=(const ListWorldsResponseT &lhs, const ListWorldsResponseT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline ListWorldsResponseT::ListWorldsResponseT(const ListWorldsResponseT &o)
+      : current(o.current),
+        loading(o.loading) {
+  worlds.reserve(o.worlds.size());
+  for (const auto &worlds_ : o.worlds) { worlds.emplace_back((worlds_) ? new flightforge::wire::WorldInfoT(*worlds_) : nullptr); }
+}
+
+inline ListWorldsResponseT &ListWorldsResponseT::operator=(ListWorldsResponseT o) FLATBUFFERS_NOEXCEPT {
+  std::swap(worlds, o.worlds);
+  std::swap(current, o.current);
+  std::swap(loading, o.loading);
+  return *this;
+}
+
+inline ListWorldsResponseT *ListWorldsResponse::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::make_unique<ListWorldsResponseT>();
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ListWorldsResponse::UnPackTo(ListWorldsResponseT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = worlds(); if (_e) { _o->worlds.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->worlds[_i]) { _e->Get(_i)->UnPackTo(_o->worlds[_i].get(), _resolver); } else { _o->worlds[_i] = std::unique_ptr<flightforge::wire::WorldInfoT>(_e->Get(_i)->UnPack(_resolver)); } } } else { _o->worlds.resize(0); } }
+  { auto _e = current(); if (_e) _o->current = _e->str(); }
+  { auto _e = loading(); if (_e) _o->loading = _e->str(); }
+}
+
+inline ::flatbuffers::Offset<ListWorldsResponse> CreateListWorldsResponse(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsResponseT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return ListWorldsResponse::Pack(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<ListWorldsResponse> ListWorldsResponse::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ListWorldsResponseT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const ListWorldsResponseT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _worlds = _o->worlds.size() ? _fbb.CreateVector<::flatbuffers::Offset<flightforge::wire::WorldInfo>> (_o->worlds.size(), [](size_t i, _VectorArgs *__va) { return CreateWorldInfo(*__va->__fbb, __va->__o->worlds[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _current = _o->current.empty() ? 0 : _fbb.CreateString(_o->current);
+  auto _loading = _o->loading.empty() ? 0 : _fbb.CreateString(_o->loading);
+  return flightforge::wire::CreateListWorldsResponse(
+      _fbb,
+      _worlds,
+      _current,
+      _loading);
 }
 
 

@@ -36,6 +36,7 @@ private:
 	TObjectPtr<UDeviceMeshLibrary> DeviceMeshes;
 
 	FTSTicker::FDelegateHandle FrameCapTicker;
+	FDelegateHandle            TravelFailureHandle;
 
 	std::unique_ptr<FViewportMode> ViewportMode;
 };
