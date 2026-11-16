@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Lumen memory and camera warm-up: colour cameras in a world at one level, per-camera Lumen scenes or the shared one.
 
-  tools/lumen_share.py -e stock|src -w DeadSpruceForest -q high -n 3 [--rig rgb|mixed] [--far 300,600]
-                       [--exec "FlightForge.Camera.SharedLumenScene 0"] [-o ~/Data/fflook/shared_lumen/mem]
+  tools/lumen_share.py -e stock|src -w DeadSpruceForest -q high -n 3 [--rig rgb|mixed|none] [--size 640x480] [--far 300,600]
+                       [--defaults] [--exec "FlightForge.Camera.SharedLumenScene 0"] [-o ~/Data/fflook/shared_lumen/mem]
 
 Adds the cameras (rgb rig: n rgb cameras at spread yaws, each its own family; mixed: rgb + stereo + fisheye on one mount; --far:
-one more robot with an rgb camera at each distance along x), puts the viewport on camera 0's view, sets the level and lets the
+one more robot with an rgb camera at each distance along x; none: the viewport alone, no robot), puts the viewport on camera 0's view, sets the level and lets the
 viewport settle with the cameras idle. Then reads every camera every lockstep step; warm-up = first step from which camera 0
 stays within its settled match to the viewport in 16 x 16 block means (wind and readback lag average out). Dumps RHI resource memory
 (rhi.DumpResourceMemory) before and after, grouped by resource name, the process's GPU memory, and r.LumenScene.DumpStats.
@@ -84,9 +84,8 @@ def dump_memory(sim, log, tag):
     return dict(sizes), rows
 
 
-def add_rig(client, robot, rig, n, far, pose):
+def add_rig(client, robot, rig, n, far, pose, size):
     raw = {"encoding": {"compression": 0}}
-    size = {"width": 512, "height": 512}
     mount = Pose((0.25, 0.0, 0.0), quat_from_rpy(0.0, 0.0, 0.0))
     cams = []
     if rig == "mixed":
@@ -177,7 +176,9 @@ def main():
     ap.add_argument("-w", "--world", default="DeadSpruceForest")
     ap.add_argument("-q", "--quality", default="high")
     ap.add_argument("-n", "--cameras", type=int, default=1)
-    ap.add_argument("--rig", choices=["rgb", "mixed"], default="rgb")
+    ap.add_argument("--rig", choices=["rgb", "mixed", "none"], default="rgb")
+    ap.add_argument("--size", default="512x512", help="rgb and stereo image size")
+    ap.add_argument("--defaults", action="store_true", help="keep the plugin's camera batching (no RobotBatch 0)")
     ap.add_argument("--far", type=lambda x: [float(v) for v in x.split(",")], default=[], help="metres: one more robot with an rgb camera at each distance")
     ap.add_argument("--stats-every", type=int, default=100)
     ap.add_argument("--far-steps", type=int, default=60, help="steps the viewport stays on each far camera at the end")
@@ -198,33 +199,38 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     tag = args.tag or f"{args.engine}_{args.world}_{args.quality}_{args.rig}{args.cameras}" + "".join(f"_far{int(d)}" for d in args.far) + ("_probe" if args.probe else "")
     log = os.path.join(args.out, f"{tag}.log")
-    if not args.attach:
+    if not args.attach and not args.defaults:
         args.exec_cmds = ["FlightForge.Camera.RobotBatch 0", *args.exec_cmds]
     sim = Sim(args, args.world, log)
+    width, height = (int(v) for v in args.size.split("x"))
+    size = {"width": width, "height": height}
     rec = {"tag": tag, "engine": args.engine, "world": args.world, "level": args.quality, "rig": args.rig, "cameras": args.cameras,
-           "far": args.far, "exec": args.exec_cmds}
+           "size": args.size, "far": args.far, "exec": args.exec_cmds}
     try:
         client = connect(sim, args)
         time.sleep(10)
         for r in client.robots():
             client.remove_robot(r.id)
         pose = tuple(float(x) for x in args.pose.split(","))
-        robot = client.spawn_robot(pose, "empty", label="lumen")
+        robot = client.spawn_robot(pose, "empty", label="lumen") if args.rig != "none" else None
         time.sleep(3)
         client.set_daytime(12, 0, animate=False)
         client.set_fixed_timestep(1.0 / 30.0)
         client.set_lockstep(True)
         client.set_graphics_settings(args.quality.upper())
-        if args.probe:
+        if args.rig == "none":
+            step(client, args.settle)
+            cams = []
+        elif args.probe:
             # the viewport holds a probe camera's view (same mount as camera 0) while the world settles; the measured cameras come after
             probe = robot.add_sensor(SensorType.RGB_CAMERA, pose=Pose((0.25, 0.0, 0.0), quat_from_rpy(0.0, 0.0, 0.0)))
-            robot.set_rgb_camera_config(sensor_id=probe, encoding={"compression": 0}, width=512, height=512)
+            robot.set_rgb_camera_config(sensor_id=probe, encoding={"compression": 0}, **size)
             client.viewport_image(robot, probe)
             step(client, args.settle)
-            cams = add_rig(client, robot, args.rig, args.cameras, args.far, pose)
+            cams = add_rig(client, robot, args.rig, args.cameras, args.far, pose, size)
         else:
             # added in lockstep: a TSR camera added while free running rendered zoomed and smeared until the viewport resized
-            cams = add_rig(client, robot, args.rig, args.cameras, args.far, pose)
+            cams = add_rig(client, robot, args.rig, args.cameras, args.far, pose, size)
             client.viewport_image(cams[0][0], cams[0][2])
             step(client, args.settle)
         steps, errs, full, stats, far_means, first_last = [], [], [], [], [], []
@@ -236,7 +242,7 @@ def main():
         t0 = time.time()
         while k <= args.steps:
             imgs = [read(r, kind, sid) for r, kind, sid in cams]
-            if k % args.every == 0:
+            if cams and k % args.every == 0:
                 vp = client.viewport_image()[0]
                 steps.append(k)
                 errs.append(low_mad(imgs[0], vp))
@@ -250,15 +256,16 @@ def main():
             if k < args.steps:
                 client.step(1)
             k += 1
-            if k % 100 == 0:
+            if k % 100 == 0 and errs:
                 print(f"{tag}: step {k} {time.time() - t0:.0f} s MAD {errs[-1]:.2f}", flush=True)
         rec["seconds"] = round(time.time() - t0, 1)
-        warm, settled, limit = warm_step(errs, steps)
-        rec["warm"] = {"warm_step": warm, "settled": round(settled, 2), "limit": round(limit, 2), "first": round(errs[0], 2),
-                       "errs": [round(e, 2) for e in errs], "full": [round(e, 2) for e in full], "steps": steps}
         rec["lumen_stats"] = stats
         rec["far_means"] = far_means
-        print(f"{tag}: cam0 vs viewport warm at step {warm} (settled {settled:.2f}, first {errs[0]:.2f}); lumen {stats[-1][1] if stats else ''}", flush=True)
+        if errs:
+            warm, settled, limit = warm_step(errs, steps)
+            rec["warm"] = {"warm_step": warm, "settled": round(settled, 2), "limit": round(limit, 2), "first": round(errs[0], 2),
+                           "errs": [round(e, 2) for e in errs], "full": [round(e, 2) for e in full], "steps": steps}
+            print(f"{tag}: cam0 vs viewport warm at step {warm} (settled {settled:.2f}, first {errs[0]:.2f}); lumen {stats[-1][1] if stats else ''}", flush=True)
         rec["far_check"] = []
         for i in range(len(args.far)):
             far_robot, _, far_sid = cams[len(cams) - len(args.far) + i]
