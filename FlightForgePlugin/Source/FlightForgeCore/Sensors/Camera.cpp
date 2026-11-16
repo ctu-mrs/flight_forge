@@ -504,6 +504,8 @@ void UCamera::ApplyViewportLook(USceneCaptureComponent2D* Capture)
 	{
 		Look->bViewportLook = true;
 	}
+	// made here, not inside the capture update that renders with its view state
+	UMultiViewCapture::RobotBatch(Capture->GetOwner());
 } //}
 
 void UCamera::ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture)

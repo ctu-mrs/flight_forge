@@ -13,6 +13,7 @@
 #include "SceneViewExtension.h"
 #include "TextureResource.h"
 
+#include "LumenViewOrigins.h"
 #include "MultiViewRender.h"
 
 /* console variables //{ */
@@ -31,6 +32,12 @@ TAutoConsoleVariable<int32> CVarViewportLook(TEXT("FlightForge.Camera.ViewportLo
 
 TAutoConsoleVariable<int32> CVarSharedExposure(TEXT("FlightForge.Camera.MultiView.SharedExposure"), 1,
                                                TEXT("1: a stereo pair's or fisheye's views take view 0's exposure; 0: each view meters its own"));
+
+TAutoConsoleVariable<int32> CVarSharedLumenScene(TEXT("FlightForge.Camera.SharedLumenScene"), 1,
+                                                 TEXT("1: every camera traces and updates the world's one Lumen scene, the viewport's; 0: each camera (or family) owns a Lumen scene"));
+
+TAutoConsoleVariable<int32> CVarRobotOrigin(TEXT("FlightForge.Camera.RobotViewOrigin"), 1,
+                                            TEXT("1: a robot's colour cameras share one view-state origin, so one global distance field; 0: one per camera"));
 
 TAutoConsoleVariable<int32> CVarMultiViewShareLumen(TEXT("FlightForge.Camera.MultiView.ShareLumen"), 1,
                                                     TEXT("1: a family's views share one Lumen scene, any number of views; 0: families with Lumen split into pairs"));
@@ -170,6 +177,16 @@ FGameTime LookTime(const UWorld& World, const FSceneViewStateInterface* State)
 	return FGameTime::CreateDilated(World.GetRealTimeSeconds(), World.DeltaRealTimeSeconds, Now, Delta);
 }
 
+// a capture's first render comes before its target takes the configured size: the next frame must not blur against that projection
+bool ProjectionChanged(const FSceneViewStateInterface* State, const FMatrix& Projection)
+{
+	static TMap<const FSceneViewStateInterface*, FMatrix> Last;
+	FMatrix*   Previous = Last.Find(State);
+	const bool bChanged = Previous && !Previous->Equals(Projection, 1e-6);
+	Last.Add(State, Projection);
+	return bChanged;
+}
+
 bool UsesRayTracing(const USceneCaptureComponent2D* Capture)
 {
 	static const IConsoleVariable* SceneCaptures = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing.SceneCaptures"));
@@ -232,25 +249,37 @@ bool UMultiViewCapture::BatchEnabled()
 	return CVarRobotBatch.GetValueOnGameThread() != 0;
 }
 
+UMultiViewCapture* UMultiViewCapture::FindRobotBatch(const AActor* Robot)
+{ //{
+	static const FName BatchName(TEXT("FlightForgeRobotBatch"));
+	if (Robot)
+	{
+		for (UActorComponent* Component : Robot->GetComponents())
+		{
+			if (Component->GetFName() == BatchName)
+			{
+				return Cast<UMultiViewCapture>(Component);
+			}
+		}
+	}
+	return nullptr;
+} //}
+
 UMultiViewCapture* UMultiViewCapture::RobotBatch(AActor* Robot)
-{
+{ //{
 	if (!Robot)
 	{
 		return nullptr;
 	}
-	static const FName BatchName(TEXT("FlightForgeRobotBatch"));
-	for (UActorComponent* Component : Robot->GetComponents())
+	if (UMultiViewCapture* Batch = FindRobotBatch(Robot))
 	{
-		if (Component->GetFName() == BatchName)
-		{
-			return Cast<UMultiViewCapture>(Component);
-		}
+		return Batch;
 	}
-	UMultiViewCapture* Batch = NewObject<UMultiViewCapture>(Robot, BatchName);
+	UMultiViewCapture* Batch = NewObject<UMultiViewCapture>(Robot, TEXT("FlightForgeRobotBatch"));
 	Batch->SetupAttachment(Robot->GetRootComponent());
 	Batch->RegisterComponent();
 	return Batch;
-}
+} //}
 
 void UMultiViewCapture::Defer(USceneCaptureComponent2D* View)
 {
@@ -298,6 +327,23 @@ FSceneViewStateInterface* UMultiViewCapture::FamilyState(USceneCaptureComponent2
 		Capture->bCameraCutThisFrame = true;
 	}
 	return State->GetReference();
+} //}
+
+FSceneViewStateInterface* UMultiViewCapture::RobotState(USceneCaptureComponent2D* Capture)
+{ //{
+	UMultiViewCapture* Batch = CVarRobotOrigin.GetValueOnGameThread() != 0 ? FindRobotBatch(Capture->GetOwner()) : nullptr;
+	if (!Batch)
+	{
+		return Capture->GetViewState(0);
+	}
+	Batch->PruneFamilyStates();
+	return Batch->FamilyState(Capture);
+} //}
+
+FSceneViewStateInterface* UMultiViewCapture::RobotAnchor(USceneCaptureComponent2D* Capture)
+{ //{
+	UMultiViewCapture* Batch = CVarRobotOrigin.GetValueOnGameThread() != 0 ? FindRobotBatch(Capture->GetOwner()) : nullptr;
+	return Batch ? Batch->GetViewState(0) : nullptr;
 } //}
 
 void UMultiViewCapture::OnUnregister()
@@ -462,8 +508,16 @@ void UMultiViewCapture::RenderFamily(FSceneInterface* Scene, ISceneRenderBuilder
 	Setup.Target          = Atlases[Slot]->GameThread_GetRenderTargetResource();
 	Setup.bSharedExposure = bSharedExposure && CVarSharedExposure.GetValueOnGameThread() != 0;
 	Setup.bCube           = bSharedLumen && Members.Num() > MaxLumenViews;
-	Setup.LumenAnchor     = bSharedLumen ? GetViewState(0) : nullptr;
-	Setup.StateFor        = [this, bSharedLumen](USceneCaptureComponent2D* Capture) { return bSharedLumen ? FamilyState(Capture) : Capture->GetViewState(0); };
+	if (FSceneViewStateInterface* Anchor = RobotAnchor(Members[0]))
+	{
+		Setup.LumenAnchor = Anchor;
+		Setup.StateFor    = &RobotState;
+	}
+	else
+	{
+		Setup.LumenAnchor = bSharedLumen ? GetViewState(0) : nullptr;
+		Setup.StateFor    = [this, bSharedLumen](USceneCaptureComponent2D* Capture) { return bSharedLumen ? FamilyState(Capture) : Capture->GetViewState(0); };
+	}
 	Setup.Name            = GetOwner() ? FString::Printf(TEXT("FlightForgeMultiView %s"), *GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeMultiView"));
 	RenderViews(Scene, SceneRenderBuilder, Members, MoveTemp(Setup));
 } //}
@@ -477,17 +531,20 @@ void UMultiViewCapture::RenderSingle(USceneCaptureComponent2D* View, FSceneInter
 		return;
 	}
 	FFamilySetup Setup;
-	Setup.Target     = Target;
-	Setup.Tiles      = {FIntRect(0, 0, Texture->SizeX, Texture->SizeY)};
-	Setup.bCopyTiles = false;
-	Setup.StateFor   = [](USceneCaptureComponent2D* Capture) { return Capture->GetViewState(0); };
-	Setup.Name       = View->GetOwner() ? FString::Printf(TEXT("FlightForgeLook %s"), *View->GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeLook"));
+	Setup.Target      = Target;
+	Setup.Tiles       = {FIntRect(0, 0, Texture->SizeX, Texture->SizeY)};
+	Setup.bCopyTiles  = false;
+	Setup.StateFor    = &RobotState;
+	Setup.LumenAnchor = RobotAnchor(View);
+	Setup.Name        = View->GetOwner() ? FString::Printf(TEXT("FlightForgeLook %s"), *View->GetOwner()->GetActorNameOrLabel()) : FString(TEXT("FlightForgeLook"));
 	RenderViews(Scene, SceneRenderBuilder, MakeArrayView(&View, 1), MoveTemp(Setup));
 } //}
 
 void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder& SceneRenderBuilder, TArrayView<USceneCaptureComponent2D* const> Members,
                                     FFamilySetup&& Setup)
 { //{
+	FLumenViewOrigins::Register();
+
 	const USceneCaptureComponent2D* Lead        = Members[0];
 	const bool                      bLook       = HasLook(Lead);
 	const bool                      bSceneColor = Lead->CaptureSource != SCS_FinalColorLDR && Lead->CaptureSource != SCS_FinalColorHDR && Lead->CaptureSource != SCS_FinalToneCurveHDR;
@@ -507,6 +564,8 @@ void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder&
 	if (bLook && World)
 	{
 		Family.Time = LookTime(*World, Setup.StateFor(Members[0]));
+		// lockstep pauses the world between steps; a paused family freezes the view's previous frame, TSR and Lumen histories
+		Family.bWorldIsPaused = false;
 	}
 	for (int32 Index = 0; Index < Members.Num(); ++Index)
 	{
@@ -566,7 +625,7 @@ void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder&
 		View->OverridePostProcessSettings(Capture->PostProcessSettings, Capture->PostProcessBlendWeight);
 		View->EndFinalPostprocessSettings(Options);
 		View->ViewLightingChannelMask = Capture->ViewLightingChannels.GetMaskForStruct();
-		View->bCameraCut              = Capture->bCameraCutThisFrame;
+		View->bCameraCut              = Capture->bCameraCutThisFrame || ProjectionChanged(Options.SceneViewStateInterface, Options.ProjectionMatrix);
 		Capture->bCameraCutThisFrame  = false;
 		if (Capture->bEnableClipPlane)
 		{
@@ -577,7 +636,9 @@ void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder&
 		if (FSceneViewStateInterface* State = Setup.LumenAnchor ? Setup.LumenAnchor : Options.SceneViewStateInterface)
 		{
 			const FFinalPostProcessSettings& Settings = View->FinalPostProcessSettings;
-			if (Settings.DynamicGlobalIlluminationMethod == EDynamicGlobalIlluminationMethod::Lumen || Settings.ReflectionMethod == EReflectionMethod::Lumen)
+			const bool bLumen = Settings.DynamicGlobalIlluminationMethod == EDynamicGlobalIlluminationMethod::Lumen || Settings.ReflectionMethod == EReflectionMethod::Lumen;
+			// a view state without its own Lumen scene resolves to the scene's default one (FScene::FindLumenSceneData)
+			if (bLumen && CVarSharedLumenScene.GetValueOnGameThread() == 0)
 			{
 				State->AddLumenSceneData(Scene, Settings.LumenSurfaceCacheResolution);
 			}

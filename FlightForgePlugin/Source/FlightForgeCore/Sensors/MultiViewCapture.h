@@ -36,6 +36,7 @@ public:
 
 	// the robot's batch, made on first use
 	static UMultiViewCapture* RobotBatch(AActor* Robot);
+	static UMultiViewCapture* FindRobotBatch(const AActor* Robot);
 
 	// joins this frame's batch instead of rendering alone
 	void Defer(USceneCaptureComponent2D* View);
@@ -75,6 +76,9 @@ private:
 	void ApplyEveryFrame();
 	// a member's state inside a shared-Lumen family: shares this component's origin, so its Lumen scene; the member's own state stays untouched
 	FSceneViewStateInterface* FamilyState(USceneCaptureComponent2D* Capture);
+	// a camera's state sharing its robot batch's origin: one global distance field per robot
+	static FSceneViewStateInterface* RobotState(USceneCaptureComponent2D* Capture);
+	static FSceneViewStateInterface* RobotAnchor(USceneCaptureComponent2D* Capture);
 	void                      PruneFamilyStates();
 
 	UPROPERTY()
