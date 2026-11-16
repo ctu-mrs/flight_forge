@@ -309,6 +309,7 @@ table GetDistanceBatchResponse {
 table GetSurfaceHeightRequest {
   points: [Vec3];  // m; a NaN z traces from the top of the world
   ignore_robots: bool = true;
+  robot_ids: [int];  // since 1.8, one per point: each point leaves out only its own robot (-1 none), other robots are surface; overrides ignore_robots
 }
 
 table GetSurfaceHeightResponse {

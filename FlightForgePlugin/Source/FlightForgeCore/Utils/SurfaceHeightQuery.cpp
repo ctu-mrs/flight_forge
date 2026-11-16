@@ -7,7 +7,8 @@
 
 /* Batch() //{ */
 
-void FSurfaceHeightQuery::Batch(UWorld* World, const FVector& GroundOrigin, const TArray<FVector>& PointsM, const bool bIgnoreRobots, TArray<double>& OutHeightsM)
+void FSurfaceHeightQuery::Batch(UWorld* World, const FVector& GroundOrigin, const TArray<FVector>& PointsM, const bool bIgnoreRobots, TArray<double>& OutHeightsM,
+                                const TArray<const AActor*>* IgnoredPerPoint)
 {
 	constexpr double ReachCm  = 1.0e6;
 	constexpr int32  MaxSkips = 8;
@@ -32,7 +33,7 @@ void FSurfaceHeightQuery::Batch(UWorld* World, const FVector& GroundOrigin, cons
 			Responses  = FCollisionResponseParams(Body->GetCollisionResponseToChannels());
 			bFoundBody = true;
 		}
-		if (bIgnoreRobots)
+		if (bIgnoreRobots && !IgnoredPerPoint)
 		{
 			Params.AddIgnoredActor(*It);
 		}
@@ -46,6 +47,10 @@ void FSurfaceHeightQuery::Batch(UWorld* World, const FVector& GroundOrigin, cons
 		const FVector  End(At.X, At.Y, GroundOrigin.Z - ReachCm);
 
 		FCollisionQueryParams Query = Params;
+		if (IgnoredPerPoint && IgnoredPerPoint->IsValidIndex(i) && (*IgnoredPerPoint)[i])
+		{
+			Query.AddIgnoredActor((*IgnoredPerPoint)[i]);
+		}
 		for (int32 Skip = 0; Skip <= MaxSkips; ++Skip)
 		{
 			FHitResult Hit;

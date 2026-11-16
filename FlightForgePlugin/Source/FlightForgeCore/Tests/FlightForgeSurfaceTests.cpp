@@ -51,6 +51,14 @@ bool FFlightForgeApiSurfaceHeightTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("nothing below a start under the block"), FMath::IsNaN(Heights[2]));
 			TestTrue(TEXT("nothing beside the block"), FMath::IsNaN(Heights[3]));
 		}
+
+		const TArray<const AActor*> Own = {Block, nullptr};
+		FSurfaceHeightQuery::Batch(World, FVector::ZeroVector, {FVector(0.0, 0.0, Nan), FVector(0.0, 0.0, Nan)}, true, Heights, &Own);
+		if (TestEqual(TEXT("one height per point, per-point ignores"), Heights.Num(), 2))
+		{
+			TestTrue(TEXT("a point leaves out its own actor"), FMath::IsNaN(Heights[0]));
+			TestEqual(TEXT("the next point still sees it"), Heights[1], 1.0, 0.001);
+		}
 	}
 
 	GEngine->DestroyWorldContext(World);

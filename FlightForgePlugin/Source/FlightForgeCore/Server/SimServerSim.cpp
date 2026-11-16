@@ -16,7 +16,7 @@
 #include "FlightForgeCore/Sensors/SensorWire.h"
 
 static constexpr uint16 ApiMajor = 1;
-static constexpr uint16 ApiMinor = 7;
+static constexpr uint16 ApiMinor = 8;
 
 /* connection //{ */
 
@@ -904,18 +904,54 @@ void FSimServer::GetSurfaceHeight(const ffw::Request& Request, FWireReply& Reply
 		}
 	}
 
+	const auto* RobotIds = Ask->robot_ids();
+	if (RobotIds && RobotIds->size() != static_cast<uint32>(Points.Num()))
+	{
+		Reply.Fail(FString::Printf(TEXT("get_surface_height takes one robot id per point, got %u ids for %d points"), RobotIds->size(), Points.Num()));
+		return;
+	}
+
 	const FGameModeLease GameMode = LeaseGameMode(Reply);
 	if (!GameMode)
 	{
 		return;
 	}
 
+	std::vector<FRobotLease> Leases;
+	TArray<const AActor*>    Own;
+	if (RobotIds)
+	{
+		Own.Init(nullptr, Points.Num());
+		TMap<int32, const AActor*> Leased;
+		for (int32 i = 0; i < Points.Num(); ++i)
+		{
+			const int32 Id = RobotIds->Get(i);
+			if (Id < 0)
+			{
+				continue;
+			}
+			if (const AActor** Known = Leased.Find(Id))
+			{
+				Own[i] = *Known;
+				continue;
+			}
+			FRobotLease Robot = LeaseRobot(Id, Reply);
+			if (!Robot)
+			{
+				return;
+			}
+			Own[i] = Leased.Add(Id, Robot.Pawn);
+			Leases.push_back(MoveTemp(Robot));
+		}
+	}
+
 	TArray<double> Heights;
 	if (Points.Num() > 0)
 	{
-		const bool bIgnoreRobots = Ask->ignore_robots();
-		RunOnGameThread(*GameMode.GameMode, [&Points, &Heights, bIgnoreRobots](AFlightForgeGameModeBase& Mode) {
-			FSurfaceHeightQuery::Batch(Mode.GetWorld(), Mode.GetGroundOrigin(), Points, bIgnoreRobots, Heights);
+		const bool                   bIgnoreRobots = Ask->ignore_robots();
+		const TArray<const AActor*>* PerPoint      = RobotIds ? &Own : nullptr;
+		RunOnGameThread(*GameMode.GameMode, [&Points, &Heights, bIgnoreRobots, PerPoint](AFlightForgeGameModeBase& Mode) {
+			FSurfaceHeightQuery::Batch(Mode.GetWorld(), Mode.GetGroundOrigin(), Points, bIgnoreRobots, Heights, PerPoint);
 		});
 		if (Heights.Num() != Points.Num())
 		{
