@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Exports the Renderer declarations the Nanite id pass links against. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
+# Exports the Renderer declarations the Nanite id pass links against and lets one Lumen scene keep cards around every view. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
 import json, os, sys
 
 SUPPORTED = (5, 7)
@@ -22,6 +22,15 @@ EXPORTS = {
     ],
     "ScenePrivate.h": [
         "\tvirtual FPrimitiveSceneInfo* GetPrimitiveSceneInfo(FPrimitiveComponentId PrimitiveId) const final;",
+    ],
+}
+
+
+# whole-line replacements: (plain, patched)
+REPLACEMENTS = {
+    # the shared Lumen scene's card culling takes every origin the plugin hands a family, not just LUMEN_MAX_VIEWS (2) including its own views
+    "Lumen/LumenSceneRendering.cpp": [
+        ("\t\tif (bAddOrigin && OutOrigins.Num() < LUMEN_MAX_VIEWS)", "\t\tif (bAddOrigin)"),
     ],
 }
 
@@ -51,23 +60,29 @@ if (version["MajorVersion"], version["MinorVersion"]) != SUPPORTED:
     fail(f"written for {SUPPORTED[0]}.{SUPPORTED[1]}, this engine is {version['MajorVersion']}.{version['MinorVersion']}")
 
 revert = "--revert" in flags
-plan, missing = {}, 0
+edits = {}
 for header, lines in EXPORTS.items():
-    path = os.path.join(root, RENDERER, header)
+    edits.setdefault(header, []).extend((line, exported(line)) for line in lines)
+for source_file, pairs in REPLACEMENTS.items():
+    edits.setdefault(source_file, []).extend(pairs)
+total = sum(len(pairs) for pairs in edits.values())
+
+plan, missing = {}, 0
+for name, pairs in edits.items():
+    path = os.path.join(root, RENDERER, name)
     have = open(path, newline="").read().split("\n")
-    for line in lines:
-        plain, done = have.count(line), have.count(exported(line))
+    for plain_line, patched_line in pairs:
+        plain, done = have.count(plain_line), have.count(patched_line)
         if plain + done != 1:
-            fail(f"{header}: expected one declaration of '{line.strip()}', found {plain + done}")
-        source, target = (exported(line), line) if revert else (line, exported(line))
+            fail(f"{name}: expected one line '{plain_line.strip()}', found {plain + done}")
+        source, target = (patched_line, plain_line) if revert else (plain_line, patched_line)
         if have.count(source):
             missing += 1
             have[have.index(source)] = target
     plan[path] = "\n".join(have)
 
 if "--check" in flags:
-    total = sum(len(lines) for lines in EXPORTS.values())
-    print(f"{total - missing}/{total} declarations exported")
+    print(f"{total - missing}/{total} edits applied")
     sys.exit(1 if missing else 0)
 
 for path, text in plan.items():
@@ -79,5 +94,5 @@ if revert:
     if os.path.exists(marker):
         os.remove(marker)
 else:
-    json.dump({"exports": sum(len(lines) for lines in EXPORTS.values())}, open(marker, "w"))
-print(f"{'reverted' if revert else 'exported'} {missing} declaration(s), {'removed' if revert else 'wrote'} {MARKER}")
+    json.dump({"exports": sum(len(lines) for lines in EXPORTS.values()), "replacements": sum(len(p) for p in REPLACEMENTS.values())}, open(marker, "w"))
+print(f"{'reverted' if revert else 'applied'} {missing} edit(s), {'removed' if revert else 'wrote'} {MARKER}")

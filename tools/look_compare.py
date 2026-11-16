@@ -181,6 +181,11 @@ def main():
             client.set_lockstep(True)
             # every view is 512 x 512, so the viewport resizes once, here
             client.viewport_image(robot, sids[views[0][0]], views[0][1])
+            # as the live test: every camera streams before the first level, so no view is a camera's first frame
+            client.set_graphics_settings(args.quality.split(",")[0].upper())
+            for kind in {k for k, _ in views}:
+                read_view(robot, sim, sids, kind, 0)
+            step(client, 150)
             for level in args.quality.split(","):
                 client.set_graphics_settings(level.upper())
                 step(client, args.settle)
