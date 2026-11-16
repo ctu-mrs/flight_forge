@@ -58,7 +58,9 @@ BLOCKS = {
         ("\tuint32 ShareOriginUniqueID;\n",
          "\tuint32 ShareOriginUniqueID;\n\n"
          "\tFSceneViewState* ShareOriginState = nullptr;\n"
-         "\tbool bShareOriginTarget = false;\n"),
+         "\tbool bShareOriginTarget = false;\n"
+         "\tuint32 SharedRadianceCacheFrameIndex = 0;\n"
+         "\tuint64 SharedRadianceCacheFrameCounter = 0;\n"),
         ("\tuint32 GetShareOriginViewKey() const\n\t{\n\t\treturn ShareOriginUniqueID;\n\t}\n",
          "\tuint32 GetShareOriginViewKey() const\n\t{\n\t\treturn ShareOriginUniqueID;\n\t}\n\n"
          "\tbool SharesRadianceCache() const\n\t{\n\t\treturn GLumenRadianceCacheShareOrigin != 0 && (ShareOriginState || bShareOriginTarget);\n\t}\n\n"
@@ -71,7 +73,7 @@ BLOCKS = {
          "\t\tShareOriginTarget->bShareOriginTarget = true;\n"),
     ],
     "Lumen/LumenRadianceCache.cpp": [
-        # a group's views render in different families and view states, so they age probes by the engine's frame clock
+        # a group's views render in different families and view states, so they age probes by one clock that ticks in frames the group renders
         ("int32 GRadianceCacheUpdate = 1;\n",
          "int32 GLumenRadianceCacheShareOrigin = 0;\n"
          "FAutoConsoleVariableRef CVarLumenRadianceCacheShareOrigin(\n"
@@ -81,7 +83,12 @@ BLOCKS = {
          "\tECVF_RenderThreadSafe\n);\n\n"
          "static uint32 RadianceCacheFrameIndex(const FViewInfo& View)\n{\n"
          "\tif (!View.ViewState)\n\t{\n\t\treturn View.Family->FrameNumber;\n\t}\n"
-         "\treturn View.ViewState->SharesRadianceCache() ? (uint32)GFrameCounterRenderThread : View.ViewState->GetFrameIndex();\n}\n\n"
+         "\tif (!View.ViewState->SharesRadianceCache())\n\t{\n\t\treturn View.ViewState->GetFrameIndex();\n\t}\n"
+         "\tFSceneViewState& Owner = View.ViewState->ShareOriginState ? *View.ViewState->ShareOriginState : *View.ViewState;\n"
+         "\tif (Owner.SharedRadianceCacheFrameCounter != GFrameCounterRenderThread)\n\t{\n"
+         "\t\tOwner.SharedRadianceCacheFrameCounter = GFrameCounterRenderThread;\n"
+         "\t\t++Owner.SharedRadianceCacheFrameIndex;\n\t}\n"
+         "\treturn Owner.SharedRadianceCacheFrameIndex;\n}\n\n"
          "int32 GRadianceCacheUpdate = 1;\n"),
         # a group's views stay within a cell of each other, so the clipmaps hold still instead of following whichever view rendered last
         ("\tconst FVector NewViewOrigin = View.ViewMatrices.GetViewOrigin();\n\n"
