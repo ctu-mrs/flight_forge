@@ -21,8 +21,30 @@ TAutoConsoleVariable<int32> CVarMaxOrigins(TEXT("FlightForge.Lumen.AllViewOrigin
 TAutoConsoleVariable<int32> CVarGdfCatchUp(TEXT("FlightForge.Lumen.DistanceFieldCatchUp"), 1,
                                             TEXT("1: a view's global distance field that skipped frames takes the primitive changes it missed; 0: the engine's own, which only a rendering view sees"));
 
+TAutoConsoleVariable<int32> CVarSharedRadianceCache(TEXT("FlightForge.Lumen.SharedRadianceCache"), 1,
+                                                     TEXT("1: a robot's colour cameras share one Lumen radiance cache (patched engine, r.Lumen.RadianceCache.ShareOrigin); 0, or a stock engine: one per view"));
+
 constexpr int32 GdfHistoryFrames = 600;
 static_assert(GDF_Num == 2, "FGdfFrame::Bounds holds one array per distance field cache type");
+
+void ApplySharedRadianceCache()
+{ //{
+#if FLIGHTFORGE_SHARED_RADIANCE_CACHE
+	static IConsoleVariable* EngineSwitch = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Lumen.RadianceCache.ShareOrigin"));
+	if (!EngineSwitch)
+	{
+		static bool bWarned = false;
+		UE_CLOG(!bWarned, LogTemp, Warning, TEXT("FlightForge.Lumen.SharedRadianceCache: the engine has no r.Lumen.RadianceCache.ShareOrigin (rebuild it after tools/apply_engine_patch.py); one radiance cache per view"));
+		bWarned = true;
+		return;
+	}
+	const int32 Want = CVarSharedRadianceCache.GetValueOnGameThread() != 0 ? 1 : 0;
+	if (EngineSwitch->GetInt() != Want)
+	{
+		EngineSwitch->Set(Want, ECVF_SetByCode);
+	}
+#endif
+} //}
 
 bool UsesLumen(const FSceneView& View)
 {
@@ -47,6 +69,7 @@ void FLumenViewOrigins::Register()
 	{
 		Extension = FSceneViewExtensions::NewExtension<FLumenViewOrigins>();
 	}
+	ApplySharedRadianceCache();
 } //}
 
 bool FLumenViewOrigins::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const

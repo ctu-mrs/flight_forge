@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# Exports the Renderer declarations the Nanite id pass links against and lets one Lumen scene keep cards around every view. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
+# Exports the Nanite id pass's Renderer declarations, keeps Lumen cards around every view, shares radiance caches across share-origin views. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
 import json, os, sys
 
 SUPPORTED = (5, 7)
 MACRO = "RENDERER_API "
 MARKER = os.path.join("Engine", "Build", "FlightForgeEnginePatch.json")
 RENDERER = os.path.join("Engine", "Source", "Runtime", "Renderer", "Private")
+FEATURES = ["nanite_ids", "lumen_view_origins", "shared_radiance_cache"]
 
 EXPORTS = {
     "Nanite/NaniteCullRaster.h": [
@@ -31,6 +32,80 @@ REPLACEMENTS = {
     # the shared Lumen scene's card culling takes every origin the plugin hands a family, not just LUMEN_MAX_VIEWS (2) including its own views
     "Lumen/LumenSceneRendering.cpp": [
         ("\t\tif (bAddOrigin && OutOrigins.Num() < LUMEN_MAX_VIEWS)", "\t\tif (bAddOrigin)"),
+    ],
+    # r.Lumen.RadianceCache.ShareOrigin: the screen probe and translucency volume caches of a share-origin view state are its target's
+    "Lumen/LumenScreenProbeGather.cpp": [
+        ("\t\t\t\tView.ViewState->Lumen.RadianceCacheState,", "\t\t\t\tView.ViewState->RadianceCacheOwner().RadianceCacheState,"),
+        ("\t\t\t\t\t\tView.ViewState->Lumen.TranslucencyVolumeRadianceCacheState,", "\t\t\t\t\t\tView.ViewState->RadianceCacheOwner().TranslucencyVolumeRadianceCacheState,"),
+    ],
+    "Lumen/LumenIrradianceFieldGather.cpp": [
+        ("\t\tView.ViewState->Lumen.RadianceCacheState,", "\t\tView.ViewState->RadianceCacheOwner().RadianceCacheState,"),
+        ("\t\t\tView.ViewState->Lumen.TranslucencyVolumeRadianceCacheState,", "\t\t\tView.ViewState->RadianceCacheOwner().TranslucencyVolumeRadianceCacheState,"),
+    ],
+    "Lumen/LumenTranslucencyVolumeLighting.cpp": [
+        ("\t\t\t\t\tView.ViewState->Lumen.TranslucencyVolumeRadianceCacheState,", "\t\t\t\t\tView.ViewState->RadianceCacheOwner().TranslucencyVolumeRadianceCacheState,"),
+    ],
+}
+
+# multi-line edits: (plain, patched); an insertion keeps its anchor inside the patched text
+FRAME_INDEX = "\t\t\t\tPassParameters->FrameNumber = View.ViewState ? View.ViewState->GetFrameIndex() : View.Family->FrameNumber;\n"
+SHARED_FRAME_INDEX = "\t\t\t\tPassParameters->FrameNumber = RadianceCacheFrameIndex(View);\n"
+BLOCKS = {
+    "ScenePrivate.h": [
+        ("/**\n * The scene manager's private implementation of persistent view state.\n",
+         "extern int32 GLumenRadianceCacheShareOrigin;\n\n"
+         "/**\n * The scene manager's private implementation of persistent view state.\n"),
+        ("\tuint32 ShareOriginUniqueID;\n",
+         "\tuint32 ShareOriginUniqueID;\n\n"
+         "\tFSceneViewState* ShareOriginState = nullptr;\n"
+         "\tbool bShareOriginTarget = false;\n"),
+        ("\tuint32 GetShareOriginViewKey() const\n\t{\n\t\treturn ShareOriginUniqueID;\n\t}\n",
+         "\tuint32 GetShareOriginViewKey() const\n\t{\n\t\treturn ShareOriginUniqueID;\n\t}\n\n"
+         "\tbool SharesRadianceCache() const\n\t{\n\t\treturn GLumenRadianceCacheShareOrigin != 0 && (ShareOriginState || bShareOriginTarget);\n\t}\n\n"
+         "\tFLumenViewState& RadianceCacheOwner()\n\t{\n\t\treturn GLumenRadianceCacheShareOrigin != 0 && ShareOriginState ? ShareOriginState->Lumen : Lumen;\n\t}\n"),
+    ],
+    "RendererScene.cpp": [
+        ("\t\tShareOriginUniqueID = ShareOriginTarget->UniqueID;\n",
+         "\t\tShareOriginUniqueID = ShareOriginTarget->UniqueID;\n"
+         "\t\tShareOriginState = ShareOriginTarget;\n"
+         "\t\tShareOriginTarget->bShareOriginTarget = true;\n"),
+    ],
+    "Lumen/LumenRadianceCache.cpp": [
+        # a group's views render in different families and view states, so they age probes by the engine's frame clock
+        ("int32 GRadianceCacheUpdate = 1;\n",
+         "int32 GLumenRadianceCacheShareOrigin = 0;\n"
+         "FAutoConsoleVariableRef CVarLumenRadianceCacheShareOrigin(\n"
+         "\tTEXT(\"r.Lumen.RadianceCache.ShareOrigin\"),\n"
+         "\tGLumenRadianceCacheShareOrigin,\n"
+         "\tTEXT(\"1: view states sharing an origin (FSceneViewStateReference::ShareOrigin) share their target's radiance caches\"),\n"
+         "\tECVF_RenderThreadSafe\n);\n\n"
+         "static uint32 RadianceCacheFrameIndex(const FViewInfo& View)\n{\n"
+         "\tif (!View.ViewState)\n\t{\n\t\treturn View.Family->FrameNumber;\n\t}\n"
+         "\treturn View.ViewState->SharesRadianceCache() ? (uint32)GFrameCounterRenderThread : View.ViewState->GetFrameIndex();\n}\n\n"
+         "int32 GRadianceCacheUpdate = 1;\n"),
+        # a group's views stay within a cell of each other, so the clipmaps hold still instead of following whichever view rendered last
+        ("\tconst FVector NewViewOrigin = View.ViewMatrices.GetViewOrigin();\n\n"
+         "\tCacheState.Clipmaps.SetNum(NumClipmaps);\n\n"
+         "\tdouble Level0CellSize = (ClipmapWorldExtent * 2.0f) / ClipmapResolution;\n",
+         "\tFVector NewViewOrigin = View.ViewMatrices.GetViewOrigin();\n"
+         "\tdouble Level0CellSize = (ClipmapWorldExtent * 2.0f) / ClipmapResolution;\n"
+         "\tif (View.ViewState && View.ViewState->SharesRadianceCache() && !bResetState && CacheState.Clipmaps.Num() > 0\n"
+         "\t\t&& FVector::Dist(NewViewOrigin, CacheState.Clipmaps[0].Center) < Level0CellSize)\n\t{\n"
+         "\t\tNewViewOrigin = CacheState.Clipmaps[0].Center;\n\t}\n\n"
+         "\tCacheState.Clipmaps.SetNum(NumClipmaps);\n"),
+        # the last update may have been another view's: reproject its probes through world space
+        ("\t\t\tSetupOutputs.LastFrameClipmaps = RadianceCacheState.Clipmaps;\n",
+         "\t\t\tSetupOutputs.LastFrameClipmaps = RadianceCacheState.Clipmaps;\n"
+         "\t\t\tif (View.ViewState && View.ViewState->SharesRadianceCache())\n\t\t\t{\n"
+         "\t\t\t\tfor (FRadianceCacheClipmap& Clipmap : SetupOutputs.LastFrameClipmaps)\n\t\t\t\t{\n"
+         "\t\t\t\t\tClipmap.CornerTranslatedWorldSpace = (FVector3f)(Clipmap.CornerWorldSpace + View.PrevViewInfo.ViewMatrices.GetPreViewTranslation());\n"
+         "\t\t\t\t}\n\t\t\t}\n"),
+        ("\t\t\t\t\tPassParameters->FrameNumber = View.ViewState->GetFrameIndex();\n",
+         "\t\t\t\t\tPassParameters->FrameNumber = RadianceCacheFrameIndex(View);\n"),
+        ("\t\t\t\tPassParameters->DownsampleDistanceFromCameraSq = GLumenRadianceCacheDownsampleDistanceFromCamera * GLumenRadianceCacheDownsampleDistanceFromCamera;\n" + FRAME_INDEX,
+         "\t\t\t\tPassParameters->DownsampleDistanceFromCameraSq = GLumenRadianceCacheDownsampleDistanceFromCamera * GLumenRadianceCacheDownsampleDistanceFromCamera;\n" + SHARED_FRAME_INDEX),
+        ("\t\t\t\tPassParameters->FirstClipmapWorldExtentRcp = 1.0f / FMath::Max(RadianceCacheInputs.ClipmapWorldExtent, 1.0f);\n" + FRAME_INDEX,
+         "\t\t\t\tPassParameters->FirstClipmapWorldExtentRcp = 1.0f / FMath::Max(RadianceCacheInputs.ClipmapWorldExtent, 1.0f);\n" + SHARED_FRAME_INDEX),
     ],
 }
 
@@ -62,24 +137,25 @@ if (version["MajorVersion"], version["MinorVersion"]) != SUPPORTED:
 revert = "--revert" in flags
 edits = {}
 for header, lines in EXPORTS.items():
-    edits.setdefault(header, []).extend((line, exported(line)) for line in lines)
+    edits.setdefault(header, []).extend((f"\n{line}\n", f"\n{exported(line)}\n") for line in lines)
 for source_file, pairs in REPLACEMENTS.items():
+    edits.setdefault(source_file, []).extend((f"\n{plain}\n", f"\n{patched}\n") for plain, patched in pairs)
+for source_file, pairs in BLOCKS.items():
     edits.setdefault(source_file, []).extend(pairs)
 total = sum(len(pairs) for pairs in edits.values())
 
 plan, missing = {}, 0
 for name, pairs in edits.items():
     path = os.path.join(root, RENDERER, name)
-    have = open(path, newline="").read().split("\n")
-    for plain_line, patched_line in pairs:
-        plain, done = have.count(plain_line), have.count(patched_line)
-        if plain + done != 1:
-            fail(f"{name}: expected one line '{plain_line.strip()}', found {plain + done}")
-        source, target = (patched_line, plain_line) if revert else (plain_line, patched_line)
-        if have.count(source):
+    text = open(path, newline="").read()
+    for plain, patched in pairs:
+        done = text.count(patched)
+        if done > 1 or (done == 0 and text.count(plain) != 1):
+            fail(f"{name}: expected one '{plain.strip().splitlines()[0]}', found {text.count(plain)} plain and {done} patched")
+        if (done == 0) != revert:
             missing += 1
-            have[have.index(source)] = target
-    plan[path] = "\n".join(have)
+            text = text.replace(patched, plain) if revert else text.replace(plain, patched)
+    plan[path] = text
 
 if "--check" in flags:
     print(f"{total - missing}/{total} edits applied")
@@ -94,5 +170,6 @@ if revert:
     if os.path.exists(marker):
         os.remove(marker)
 else:
-    json.dump({"exports": sum(len(lines) for lines in EXPORTS.values()), "replacements": sum(len(p) for p in REPLACEMENTS.values())}, open(marker, "w"))
+    json.dump({"features": FEATURES, "exports": sum(len(lines) for lines in EXPORTS.values()), "replacements": sum(len(p) for p in REPLACEMENTS.values()),
+               "blocks": sum(len(p) for p in BLOCKS.values())}, open(marker, "w"))
 print(f"{'reverted' if revert else 'applied'} {missing} edit(s), {'removed' if revert else 'wrote'} {MARKER}")
