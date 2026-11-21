@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# Exports the Nanite id pass's Renderer declarations, keeps Lumen cards around every view, shares radiance caches across share-origin views. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
+# Exports the Nanite id pass's Renderer declarations, keeps Lumen cards around every view, shares radiance caches across share-origin views, reports a hung Vulkan GPU. Usage: tools/apply_engine_patch.py <engine root> [--check | --revert]
 import json, os, sys
 
 SUPPORTED = (5, 7)
 MACRO = "RENDERER_API "
 MARKER = os.path.join("Engine", "Build", "FlightForgeEnginePatch.json")
 RENDERER = os.path.join("Engine", "Source", "Runtime", "Renderer", "Private")
-FEATURES = ["nanite_ids", "lumen_view_origins", "shared_radiance_cache"]
+FEATURES = ["nanite_ids", "lumen_view_origins", "shared_radiance_cache", "vulkan_gpu_timeout"]
+VULKAN_SUBMISSION = os.path.join("..", "..", "VulkanRHI", "Private", "VulkanSubmission.cpp")
 
 EXPORTS = {
     "Nanite/NaniteCullRaster.h": [
@@ -113,6 +114,35 @@ BLOCKS = {
          "\t\t\t\tPassParameters->DownsampleDistanceFromCameraSq = GLumenRadianceCacheDownsampleDistanceFromCamera * GLumenRadianceCacheDownsampleDistanceFromCamera;\n" + SHARED_FRAME_INDEX),
         ("\t\t\t\tPassParameters->FirstClipmapWorldExtentRcp = 1.0f / FMath::Max(RadianceCacheInputs.ClipmapWorldExtent, 1.0f);\n" + FRAME_INDEX,
          "\t\t\t\tPassParameters->FirstClipmapWorldExtentRcp = 1.0f / FMath::Max(RadianceCacheInputs.ClipmapWorldExtent, 1.0f);\n" + SHARED_FRAME_INDEX),
+    ],
+    # r.Vulkan.GPUTimeoutSeconds: a killed channel never returns VK_ERROR_DEVICE_LOST, so without it the interrupt thread waits forever
+    VULKAN_SUBMISSION: [
+        ("extern CORE_API bool GIsGPUCrashed;\n",
+         "extern CORE_API bool GIsGPUCrashed;\n\n"
+         "static float GVulkanGPUTimeoutSeconds = 0.0f;\n"
+         "static FAutoConsoleVariableRef CVarVulkanGPUTimeoutSeconds(\n"
+         "\tTEXT(\"r.Vulkan.GPUTimeoutSeconds\"),\n"
+         "\tGVulkanGPUTimeoutSeconds,\n"
+         "\tTEXT(\"Seconds the interrupt thread waits on the same unfinished submissions before it reports a GPU crash (breadcrumbs, OnGPUCrash); 0 waits forever\"),\n"
+         "\tECVF_Default\n);\n"),
+        ("\t\t\t// Some work completed and we made progress, or we stopped waiting because of CPUTimelineSemaphore\n",
+         "\t\t\tstatic thread_local FVulkanPayload* WaitedPayloads[NumQueues] = {};\n"
+         "\t\t\tstatic thread_local uint64 WaitedValues[NumQueues] = {};\n"
+         "\t\t\tstatic thread_local uint32 NumWaited = 0;\n"
+         "\t\t\tstatic thread_local double WaitStart = 0.0;\n"
+         "\t\t\tbool bSameWait = !bProgress && NumWaited == NumSyncs;\n"
+         "\t\t\tfor (uint32 Index = 0; Index < NumSyncs; ++Index)\n\t\t\t{\n"
+         "\t\t\t\tbSameWait &= WaitedPayloads[Index] == NextPayloads[Index] && WaitedValues[Index] == NextPayloads[Index]->TimelineSemaphoreValue;\n"
+         "\t\t\t\tWaitedPayloads[Index] = NextPayloads[Index];\n"
+         "\t\t\t\tWaitedValues[Index] = NextPayloads[Index]->TimelineSemaphoreValue;\n\t\t\t}\n"
+         "\t\t\tNumWaited = NumSyncs;\n"
+         "\t\t\tconst double Now = FPlatformTime::Seconds();\n"
+         "\t\t\tif (!bSameWait)\n\t\t\t{\n\t\t\t\tWaitStart = Now;\n\t\t\t}\n"
+         "\t\t\telse if (GVulkanGPUTimeoutSeconds > 0.0f && Now - WaitStart > GVulkanGPUTimeoutSeconds && !GIsGPUCrashed)\n\t\t\t{\n"
+         "\t\t\t\tUE_LOG(LogVulkanRHI, Error, TEXT(\"The GPU has not finished a submission for %.1f s (r.Vulkan.GPUTimeoutSeconds): treating it as lost\"), Now - WaitStart);\n"
+         "\t\t\t\tGIsGPUCrashed = true;\n"
+         "\t\t\t\tTerminateOnGPUCrash(TEXT(\"r.Vulkan.GPUTimeoutSeconds\"));\n\t\t\t}\n\n"
+         "\t\t\t// Some work completed and we made progress, or we stopped waiting because of CPUTimelineSemaphore\n"),
     ],
 }
 
