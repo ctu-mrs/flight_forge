@@ -141,7 +141,9 @@ TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> UCamera::EnqueueReadback(UTextu
 		{
 			if (FRHITexture* Texture = Resource->GetRenderTargetTexture())
 			{
+				RHICmdList.Transition(FRHITransitionInfo(Texture, ERHIAccess::SRVMask, ERHIAccess::CopySrc));
 				Slot->Readback->EnqueueCopy(RHICmdList, Texture, FResolveRect());
+				RHICmdList.Transition(FRHITransitionInfo(Texture, ERHIAccess::CopySrc, ERHIAccess::SRVMask));
 				WatchReadback_RenderThread(Slot);
 			}
 			else

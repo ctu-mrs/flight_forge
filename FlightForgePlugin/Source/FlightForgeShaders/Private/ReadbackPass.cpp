@@ -82,7 +82,7 @@ void FReadbackViewExtension::PostRenderViewFamily_RenderThread(FRDGBuilder& Grap
 		return;
 	}
 	FRHITexture* Texture = InViewFamily.RenderTarget->GetRenderTargetTexture();
-	CopyJob_RenderThread(GraphBuilder, InViewFamily.RenderTarget, Texture ? GraphBuilder.RegisterExternalTexture(CreateRenderTarget(Texture, TEXT("FlightForge.CaptureTarget"))) : nullptr,
+	CopyJob_RenderThread(GraphBuilder, InViewFamily.RenderTarget, Texture ? RegisterExternalTexture(GraphBuilder, Texture, TEXT("FlightForge.CaptureTarget")) : nullptr,
 	                     InViewFamily.FrameNumber, InViewFamily.Time.GetWorldTimeSeconds());
 }
 

@@ -57,12 +57,15 @@ void FMultiViewRender::Add(ISceneRenderBuilder& Builder, FSceneViewFamily& Famil
 
 	Builder.AddRenderer(Renderer, [Atlas, Tiles = MoveTemp(Tiles), Frame, Time](FRDGBuilder& GraphBuilder, const FSceneRenderFunctionInputs& Inputs) {
 		Inputs.Renderer->Render(GraphBuilder, Inputs.SceneUpdateInputs);
-		if (Tiles.IsEmpty())
+		FRHITexture* AtlasTexture = Atlas->GetRenderTargetTexture();
+		if (!AtlasTexture)
 		{
 			return true;
 		}
 
-		FRDGTextureRef Source = RegisterExternalTexture(GraphBuilder, Atlas->GetRenderTargetTexture(), TEXT("FlightForge.MultiViewAtlas"));
+		// the renderer leaves the view family texture in RTV
+		FRDGTextureRef Source = RegisterExternalTexture(GraphBuilder, AtlasTexture, TEXT("FlightForge.MultiViewAtlas"));
+		GraphBuilder.SetTextureAccessFinal(Source, ERHIAccess::SRVMask);
 		for (const FMultiViewTile& Tile : Tiles)
 		{
 			FRHITexture* TargetTexture = Tile.Target->GetRenderTargetTexture();
@@ -80,7 +83,6 @@ void FMultiViewRender::Add(ISceneRenderBuilder& Builder, FSceneViewFamily& Famil
 			FReadbackViewExtension::Get()->CopyJob_RenderThread(GraphBuilder, Tile.Target, Dest, Frame, Time);
 			GraphBuilder.SetTextureAccessFinal(Dest, ERHIAccess::SRVMask);
 		}
-		GraphBuilder.SetTextureAccessFinal(Source, ERHIAccess::SRVMask);
 		return true;
 	});
 }
