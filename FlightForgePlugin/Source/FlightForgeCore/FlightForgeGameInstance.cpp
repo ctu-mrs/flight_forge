@@ -22,6 +22,7 @@ void ApplyLaptopPreset()
 
 	const TPair<const TCHAR*, const TCHAR*> Vars[] = {
 	    {TEXT("r.ScreenPercentage"), TEXT("25")},
+	    {TEXT("FlightForge.Camera.ScreenPercentage"), TEXT("50")},
 	    {TEXT("r.VolumetricCloud"), TEXT("0")},
 	};
 
@@ -33,7 +34,7 @@ void ApplyLaptopPreset()
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("FlightForge: laptop preset, scalability low, main viewport at 25 %%, no volumetric clouds"));
+	UE_LOG(LogTemp, Log, TEXT("FlightForge: laptop preset, scalability low, main viewport at 25 %%, cameras at 50 %%, no volumetric clouds"));
 }
 
 }  // namespace
@@ -50,6 +51,13 @@ void UFlightForgeGameInstance::Init()
 	if (bLaptop)
 	{
 		ApplyLaptopPreset();
+	}
+
+	float CameraScreenPercentage = 0.0f;
+	if (FParse::Value(FCommandLine::Get(), TEXT("FlightForgeCameraScreenPercentage="), CameraScreenPercentage))
+	{
+		// at the preset's priority, after it, so the switch wins over -FlightForgeLaptop
+		IConsoleManager::Get().FindConsoleVariable(TEXT("FlightForge.Camera.ScreenPercentage"))->Set(CameraScreenPercentage, ECVF_SetByCode);
 	}
 
 	const bool bNoViewport = FParse::Param(FCommandLine::Get(), TEXT("FlightForgeNoViewport")) || FParse::Param(FCommandLine::Get(), TEXT("NoViewport")) ||

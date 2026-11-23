@@ -361,7 +361,7 @@ def snapshot(client, robot, sim, args, tag):
     """One raw frame per camera type in lockstep, for each cvar setting in --cvars (';'-separated settings, ',' within one)."""
     for s in robot.sensors():
         robot.remove_sensor(s.id)
-    kinds = ["rgb", "rgb_b", "stereo", "fisheye", "depth", "instance"]
+    kinds = args.kinds.split(",")
     sids = {k: add_camera(robot, k.split("_")[0], 0.0, 60.0 if k == "rgb_b" else 0.0, raw=True) for k in kinds}
     robot2 = client.robot(robot.id)
     client.set_fixed_timestep(1.0 / 30.0)
@@ -399,6 +399,12 @@ def snapshot(client, robot, sim, args, tag):
     return out
 
 
+def sharpness(img):
+    """Mean luma gradient magnitude; its ratio to the reference's measures blur (< 1) or aliasing/ringing (> 1)."""
+    y = img[..., :3].astype(np.float64) @ np.array([0.0722, 0.7152, 0.2126])
+    return float(np.hypot(np.diff(y, axis=0)[:, :-1], np.diff(y, axis=1)[:-1, :]).mean())
+
+
 def compare(args, tag, kinds, settings):
     """Mean absolute and max difference per channel of every setting against setting 0; instance ids as the share of differing pixels."""
     diffs = {}
@@ -411,6 +417,8 @@ def compare(args, tag, kinds, settings):
                 continue
             d = np.abs(img - ref).reshape(-1, ref.shape[-1] if ref.ndim == 3 else 1)
             rec = {"mad": [round(float(x), 4) for x in d.mean(0)], "max": [round(float(x), 3) for x in d.max(0)]}
+            if k.startswith("rgb"):
+                rec["sharpness"] = round(sharpness(img) / sharpness(ref), 4)
             if k == "instance":
                 rec["ids_differ"] = round(float((d[:, 0] > 0).mean()), 5)
             diffs[f"{k}/{i}"] = rec
@@ -441,6 +449,7 @@ def main():
     ap.add_argument("--profile", action="store_true", help="per-pass GPU ms of each free-running phase (CSV profiler)")
     ap.add_argument("--pose", default="0,0,2", help="robot position, ground frame m")
     ap.add_argument("--robot", default="x500", help="robot model; empty has no spinning propellers in view, for snapshots")
+    ap.add_argument("--kinds", default="rgb,rgb_b,stereo,fisheye,depth,instance", help="camera types in a snapshot; rgb_b is a second rgb yawed 60 deg")
     ap.add_argument("--no-taa", action="store_true", help="rgb and stereo cameras without temporal AA")
     args = ap.parse_args()
     global NO_TAA

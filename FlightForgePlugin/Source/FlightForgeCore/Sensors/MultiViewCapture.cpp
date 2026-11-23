@@ -30,6 +30,9 @@ TAutoConsoleVariable<int32> CVarRobotBatch(TEXT("FlightForge.Camera.RobotBatch")
 TAutoConsoleVariable<int32> CVarViewportLook(TEXT("FlightForge.Camera.ViewportLook"), 1,
                                              TEXT("1: rgb, stereo and fisheye captures render with the main viewport's post-process chain, Lumen and screen percentage; 0: the engine's scene capture defaults"));
 
+TAutoConsoleVariable<float> CVarCameraScreenPercentage(TEXT("FlightForge.Camera.ScreenPercentage"), 0.0f,
+                                                       TEXT("rgb, stereo and fisheye render resolution in % of the image, upscaled by the anti-aliasing method; 0: the viewport's screen percentage"));
+
 TAutoConsoleVariable<int32> CVarSharedExposure(TEXT("FlightForge.Camera.MultiView.SharedExposure"), 1,
                                                TEXT("1: a stereo pair's or fisheye's views take view 0's exposure; 0: each view meters its own"));
 
@@ -666,13 +669,19 @@ void UMultiViewCapture::RenderViews(FSceneInterface* Scene, ISceneRenderBuilder&
 	Family.SceneCaptureSource = Lead->CaptureSource;
 	if (bLook && !bSceneColor)
 	{
-		// the viewport's screen percentage, as for a viewport of one view's size
 		Family.EngineShowFlags.ScreenPercentage = true;
-		FStaticResolutionFractionHeuristic Heuristic;
-		Heuristic.Settings.PullRunTimeRenderingSettings(EViewStatusForScreenPercentage::Desktop);
-		Heuristic.PullViewFamilyRenderingSettings(Family);
-		Heuristic.TotalDisplayedPixelCount = Setup.Tiles[0].Area();
-		Family.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(Family, Heuristic.ResolveResolutionFraction()));
+		float Fraction = CVarCameraScreenPercentage.GetValueOnGameThread() / 100.0f;
+		if (Fraction <= 0.0f)
+		{
+			// the viewport's screen percentage, as for a viewport of one view's size
+			FStaticResolutionFractionHeuristic Heuristic;
+			Heuristic.Settings.PullRunTimeRenderingSettings(EViewStatusForScreenPercentage::Desktop);
+			Heuristic.PullViewFamilyRenderingSettings(Family);
+			Heuristic.TotalDisplayedPixelCount = Setup.Tiles[0].Area();
+			Fraction = Heuristic.ResolveResolutionFraction();
+		}
+		Fraction = FMath::Clamp(Fraction, ISceneViewFamilyScreenPercentage::kMinResolutionFraction, ISceneViewFamilyScreenPercentage::kMaxResolutionFraction);
+		Family.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(Family, Fraction));
 	}
 	else
 	{
