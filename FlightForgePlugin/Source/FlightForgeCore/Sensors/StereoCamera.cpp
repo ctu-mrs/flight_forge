@@ -158,12 +158,16 @@ bool UStereoCamera::SetStereoCameraConfig(const FStereoCameraConfig& Config) {
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolderStereoRight->SetRelativeRotation(Config.Orientation_right);
 
+  // an HDR capture into the 8-bit eyes stored linear values without the sRGB encode: about a stop dark
+  ApplyViewportLook(SceneCaptureComponent2D);
+  ApplyColorOutput(SceneCaptureComponent2D, RenderTarget2D, Config.enable_hdr);
+  ApplyViewportLook(SceneCaptureComponent2DStereoRight);
+  ApplyColorOutput(SceneCaptureComponent2DStereoRight, RenderTarget2DStereoRight, Config.enable_hdr);
+
   SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height,
                          {SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight}, {RenderTarget2D, RenderTarget2DStereoRight});
 
   for (USceneCaptureComponent2D* Eye : {SceneCaptureComponent2D, SceneCaptureComponent2DStereoRight}) {
-    ApplyViewportLook(Eye);
-    Eye->CaptureSource = Config.enable_hdr ? SCS_FinalColorHDR : SCS_FinalColorLDR;
     Eye->ShowFlags.SetTemporalAA(Config.enable_temporal_aa);
     Eye->bUseRayTracingIfEnabled = Config.enable_raytracing;
   }
@@ -184,19 +188,20 @@ void UStereoCamera::UpdateCamera(bool isExternallyLocked, double stamp)
 
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Left;
 	TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Right;
+	const bool bHdr = stereo_camera_config_.enable_hdr;
 
 	if (MultiView->CapturesEveryFrame())
 	{
 		// the components' own every-frame capture does not tick while lockstep holds the world paused
 		MultiView->Capture(true);
-		Left  = SubmitCaptureJob(RenderTarget2D);
-		Right = SubmitCaptureJob(RenderTarget2DStereoRight);
+		Left  = SubmitCaptureJob(RenderTarget2D, FVector::ZeroVector, false, bHdr, bHdr);
+		Right = SubmitCaptureJob(RenderTarget2DStereoRight, FVector::ZeroVector, false, bHdr, bHdr);
 	}
 	else
 	{
 		MultiView->Capture(false);
-		Left  = EnqueueReadback(RenderTarget2D, stamp);
-		Right = EnqueueReadback(RenderTarget2DStereoRight, stamp);
+		Left  = EnqueueReadback(RenderTarget2D, stamp, FVector::ZeroVector, false, bHdr, bHdr);
+		Right = EnqueueReadback(RenderTarget2DStereoRight, stamp, FVector::ZeroVector, false, bHdr, bHdr);
 	}
 
 	if (!Left || !Right) {

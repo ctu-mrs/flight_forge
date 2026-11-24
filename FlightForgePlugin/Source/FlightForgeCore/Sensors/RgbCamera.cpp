@@ -7,14 +7,6 @@
 #include "SensorWire.h"
 #include "MultiViewCapture.h"
 
-static TAutoConsoleVariable<int32> CVarHdrTargetBits(TEXT("FlightForge.Camera.HdrTargetBits"), 16,
-                                                     TEXT("Float bits per channel of the HDR capture target: 16 or 32."));
-
-// 1: filmic tone curve, highlights roll off like film. 0: linear until the pixel well
-// saturates, then hard clip - how a machine-vision sensor actually responds.
-static TAutoConsoleVariable<int32> CVarFilmicToneCurve(TEXT("FlightForge.Camera.FilmicToneCurve"), 1,
-                                                       TEXT("HDR capture transform: 1 filmic tone curve, 0 linear sensor with hard clipping."));
-
 URgbCamera::URgbCamera() : UCamera()
 {
 	SensorType = SensorType::RGB_CAMERA;
@@ -170,22 +162,10 @@ bool URgbCamera::SetRgbCameraConfig(const FRgbCameraConfig& Config)
   SceneCaptureMeshHolder->SetRelativeRotation(FRotator(0, 0, 0));
   SceneCaptureMeshHolder->SetRelativeRotation(Config.Orientation);
 
-  // float target so the sRGB encode reads the render's own values rather than an 8-bit
-  // rounding of them, which is what costs shadow gradation
-  const bool         bWant32       = CVarHdrTargetBits.GetValueOnGameThread() >= 32;
-  const EPixelFormat DesiredFormat = !Config.enable_hdr ? PF_B8G8R8A8 : (bWant32 ? PF_A32B32G32R32F : PF_FloatRGBA);
-
-  if (RenderTarget2D->GetFormat() != DesiredFormat) {
-    RenderTarget2D->RenderTargetFormat = !Config.enable_hdr ? RTF_RGBA8 : (bWant32 ? RTF_RGBA32f : RTF_RGBA16f);
-    RenderTarget2D->InitCustomFormat(RenderTarget2D->SizeX, RenderTarget2D->SizeY, DesiredFormat, Config.enable_hdr);
-  }
+  ApplyViewportLook(SceneCaptureComponent2D);
+  ApplyColorOutput(SceneCaptureComponent2D, RenderTarget2D, Config.enable_hdr);
 
   SetupCaptureProjection(Config.Intrinsics, Config.Distortion, Config.FOVAngle, Config.Width, Config.Height, {SceneCaptureComponent2D}, {RenderTarget2D});
-
-  const bool bFilmic = CVarFilmicToneCurve.GetValueOnGameThread() != 0;
-
-  ApplyViewportLook(SceneCaptureComponent2D);
-  SceneCaptureComponent2D->CaptureSource = !Config.enable_hdr ? SCS_FinalColorLDR : (bFilmic ? SCS_FinalToneCurveHDR : SCS_FinalColorHDR);
 
   SceneCaptureComponent2D->bUseRayTracingIfEnabled = Config.enable_raytracing;
 

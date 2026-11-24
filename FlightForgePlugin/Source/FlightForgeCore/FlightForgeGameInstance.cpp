@@ -7,6 +7,7 @@
 #include "Scalability.h"
 
 #include "Server/SimServer.h"
+#include "FlightForgeCore/Utils/WorldCatalog.h"
 
 /* ApplyLaptopPreset() //{ */
 
@@ -96,6 +97,9 @@ void UFlightForgeGameInstance::Init()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("FlightForge: -FlightForgeDroneStartPort is ignored, robots are addressed by id on port %d"), Port);
 	}
+
+	// cooked builds fill it from the asset registry, which asserts off the game thread
+	FWorldCatalog::Get();
 
 	Server = std::make_shared<FSimServer>(Port, BindAddress);
 	Server->Start();

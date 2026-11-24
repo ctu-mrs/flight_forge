@@ -75,9 +75,21 @@ void FMultiViewRender::Add(ISceneRenderBuilder& Builder, FSceneViewFamily& Famil
 			}
 			FRDGTextureRef Dest = RegisterExternalTexture(GraphBuilder, TargetTexture, TEXT("FlightForge.MultiViewTile"));
 
+			// a target resized after the tiles were laid out is smaller than its rect; an oversized copy hangs the GPU
+			const FIntPoint Size = Tile.Rect.Size().ComponentMin(Dest->Desc.Extent).ComponentMin(Source->Desc.Extent - Tile.Rect.Min);
+			if (Size != Tile.Rect.Size())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("FlightForge: multi-view tile %dx%d clamped to %dx%d (target %dx%d)"), Tile.Rect.Width(), Tile.Rect.Height(), Size.X,
+				    Size.Y, Dest->Desc.Extent.X, Dest->Desc.Extent.Y);
+				if (Size.X <= 0 || Size.Y <= 0)
+				{
+					continue;
+				}
+			}
+
 			FRHICopyTextureInfo Copy;
 			Copy.SourcePosition = FIntVector(Tile.Rect.Min.X, Tile.Rect.Min.Y, 0);
-			Copy.Size           = FIntVector(Tile.Rect.Width(), Tile.Rect.Height(), 1);
+			Copy.Size           = FIntVector(Size.X, Size.Y, 1);
 			AddCopyTexturePass(GraphBuilder, Source, Dest, Copy);
 
 			FReadbackViewExtension::Get()->CopyJob_RenderThread(GraphBuilder, Tile.Target, Dest, Frame, Time);

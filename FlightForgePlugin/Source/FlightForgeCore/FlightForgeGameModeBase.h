@@ -721,9 +721,10 @@ public:
 		UGameplayStatics::OpenLevel(this, PackageName, true, FString::Printf(TEXT("?game=%s"), *ForcedGameMode()));
 	}
 
-	static FString ForcedGameMode()
+	// the running class, so a Blueprint game mode (follow camera on N) survives the switch
+	FString ForcedGameMode() const
 	{
-		return TEXT("/Script/FlightForgeCore.FlightForgeGameModeBase");
+		return GetClass()->GetPathName();
 	}
 
 	/* //} */

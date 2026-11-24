@@ -510,6 +510,27 @@ void UCamera::ApplyViewportLook(USceneCaptureComponent2D* Capture)
 	UMultiViewCapture::RobotBatch(Capture->GetOwner());
 } //}
 
+static TAutoConsoleVariable<int32> CVarHdrTargetBits(TEXT("FlightForge.Camera.HdrTargetBits"), 16,
+                                                     TEXT("Float bits per channel of the HDR capture target: 16 or 32."));
+
+// 1: filmic tone curve, highlights roll off like film. 0: linear until the pixel well
+// saturates, then hard clip - how a machine-vision sensor actually responds.
+static TAutoConsoleVariable<int32> CVarFilmicToneCurve(TEXT("FlightForge.Camera.FilmicToneCurve"), 1,
+                                                       TEXT("HDR capture transform: 1 filmic tone curve, 0 linear sensor with hard clipping."));
+
+void UCamera::ApplyColorOutput(USceneCaptureComponent2D* Capture, UTextureRenderTarget2D* Target, const bool bHdr)
+{ //{
+	// float target so the sRGB encode reads the render's own values rather than an 8-bit rounding of them
+	const bool         bWant32 = CVarHdrTargetBits.GetValueOnGameThread() >= 32;
+	const EPixelFormat Format  = !bHdr ? PF_B8G8R8A8 : (bWant32 ? PF_A32B32G32R32F : PF_FloatRGBA);
+	if (Target && Target->GetFormat() != Format)
+	{
+		Target->RenderTargetFormat = !bHdr ? RTF_RGBA8 : (bWant32 ? RTF_RGBA32f : RTF_RGBA16f);
+		Target->InitCustomFormat(Target->SizeX, Target->SizeY, Format, bHdr);
+	}
+	Capture->CaptureSource = !bHdr ? SCS_FinalColorLDR : (CVarFilmicToneCurve.GetValueOnGameThread() != 0 ? SCS_FinalToneCurveHDR : SCS_FinalColorHDR);
+} //}
+
 void UCamera::ApplyLevelPostProcessBaseline(USceneCaptureComponent2D* Capture)
 {
 	UWorld* World = GetWorld();

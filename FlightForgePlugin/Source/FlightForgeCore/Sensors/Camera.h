@@ -218,6 +218,9 @@ protected:
 	// the colour cameras' one look: the viewport's show flags and post-process chain; a config then adds only what it sets itself
 	static void ApplyViewportLook(USceneCaptureComponent2D* Capture);
 
+	// after ApplyViewportLook, which resets the capture source to LDR
+	static void ApplyColorOutput(USceneCaptureComponent2D* Capture, UTextureRenderTarget2D* Target, bool bHdr);
+
 public:
 
 	static FMatrix IntrinsicsProjectionMatrix(const FCameraIntrinsics& Intrinsics, int32 Width, int32 Height);
