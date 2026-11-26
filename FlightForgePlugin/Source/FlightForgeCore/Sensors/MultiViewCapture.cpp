@@ -355,6 +355,19 @@ void UMultiViewCapture::OnUnregister()
 	Super::OnUnregister();
 } //}
 
+void UMultiViewCapture::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
+{ //{
+	// a view state's pooled post-process MIDs live only as long as someone reports them
+	for (const auto& Pair : CastChecked<UMultiViewCapture>(InThis)->FamilyStates)
+	{
+		if (FSceneViewStateInterface* State = Pair.Value ? Pair.Value->GetReference() : nullptr)
+		{
+			State->AddReferencedObjects(Collector);
+		}
+	}
+	Super::AddReferencedObjects(InThis, Collector);
+} //}
+
 bool UMultiViewCapture::Groupable(const USceneCaptureComponent2D* View)
 {
 	return View && View->TextureTarget && !View->ShouldRenderInMainRenderer();

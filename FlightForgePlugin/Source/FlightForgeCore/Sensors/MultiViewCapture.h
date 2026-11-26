@@ -52,6 +52,8 @@ public:
 	virtual void OnUnregister() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
+
 private:
 	static bool Groupable(const USceneCaptureComponent2D* View);
 	static bool Compatible(const USceneCaptureComponent2D* A, const USceneCaptureComponent2D* B);
