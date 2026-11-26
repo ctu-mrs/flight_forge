@@ -52,9 +52,9 @@ void UStereoCamera::BeginPlay()
 	
 	
 	stereo_camera_config_.ShowCameraComponent = false;
-	stereo_camera_config_.Offset_left         = DEFAULT_CAMERA_MOUNT;
+	stereo_camera_config_.Offset_left         = DEFAULT_CAMERA_MOUNT + FVector(0, -5.0, 0);
 	stereo_camera_config_.Orientation_left    = FRotator(0, 0, 0);
-	stereo_camera_config_.Offset_right        = DEFAULT_CAMERA_MOUNT;
+	stereo_camera_config_.Offset_right        = DEFAULT_CAMERA_MOUNT + FVector(0, 5.0, 0);
 	stereo_camera_config_.Orientation_right   = FRotator(0, 0, 0);
 	stereo_camera_config_.FOVAngle            = 90;
 	stereo_camera_config_.Width               = 640;
