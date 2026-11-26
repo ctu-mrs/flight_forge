@@ -26,6 +26,8 @@ class FEventGenCS : public FGlobalShader
 	SHADER_PARAMETER(uint32, FrameIndex)
 	SHADER_PARAMETER(uint32, Seed)
 	SHADER_PARAMETER(uint32, bSeedState)
+	SHADER_PARAMETER(uint32, bCountOnly)
+	SHADER_PARAMETER(uint32, Budget)
 	SHADER_PARAMETER(float, ThresholdPos)
 	SHADER_PARAMETER(float, ThresholdNeg)
 	SHADER_PARAMETER(float, ThresholdSigma)
@@ -60,31 +62,30 @@ void FlightForgeEventGen::Dispatch_RenderThread(FRHICommandListImmediate& RHICmd
 
 	FRDGBuilder GraphBuilder(RHICmdList);
 
-	const bool bRecreate = State.Size != Params.Size || State.Capacity != Params.MaxEvents || !State.State || !State.LastEvent || !State.Events;
+	const bool bRecreate = State.Size != Params.Size || !State.State || !State.LastEvent;
 	Params.bSeedState |= bRecreate;
 
 	FRDGTextureRef InputTexture = RegisterExternalTexture(GraphBuilder, Input, TEXT("FlightForge.EventInput"));
 
 	FRDGTextureRef StateTexture;
 	FRDGTextureRef LastEventTexture;
-	FRDGBufferRef  EventBuffer;
 
 	if (bRecreate)
 	{
 		const ETextureCreateFlags Flags = TexCreate_ShaderResource | TexCreate_UAV;
 		StateTexture     = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Params.Size, PF_A32B32G32R32F, FClearValueBinding::None, Flags), TEXT("FlightForge.EventState"));
 		LastEventTexture = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Params.Size, PF_R32_UINT, FClearValueBinding::None, Flags), TEXT("FlightForge.EventLastEvent"));
-		EventBuffer      = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 2, Params.MaxEvents), TEXT("FlightForge.EventBuffer"));
 
-		State.Size     = Params.Size;
-		State.Capacity = Params.MaxEvents;
+		State.Size = Params.Size;
 	}
 	else
 	{
 		StateTexture     = GraphBuilder.RegisterExternalTexture(State.State, TEXT("FlightForge.EventState"));
 		LastEventTexture = GraphBuilder.RegisterExternalTexture(State.LastEvent, TEXT("FlightForge.EventLastEvent"));
-		EventBuffer      = GraphBuilder.RegisterExternalBuffer(State.Events, TEXT("FlightForge.EventBuffer"));
 	}
+
+	// one buffer per frame in flight, so a frame that outgrew its first readback can still be copied again
+	FRDGBufferRef EventBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 2, Params.MaxEvents), TEXT("FlightForge.EventBuffer"));
 
 	FRDGBufferRef HeaderBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4), TEXT("FlightForge.EventHeader"));
 	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(HeaderBuffer), 0u);
@@ -112,12 +113,20 @@ void FlightForgeEventGen::Dispatch_RenderThread(FRHICommandListImmediate& RHICmd
 	PassParameters->ShotNoiseRateHz  = Params.ShotNoiseRateHz;
 	PassParameters->HotPixelFraction = Params.HotPixelFraction;
 	PassParameters->LogEps           = Params.LogEps;
+	PassParameters->Budget           = Params.Budget;
+	PassParameters->bCountOnly       = 0u;
+
+	auto* CountParameters       = GraphBuilder.AllocParameters<FEventGenCS::FParameters>();
+	*CountParameters            = *PassParameters;
+	CountParameters->bCountOnly = 1u;
 
 	TShaderMapRef<FEventGenCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-	FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("FlightForgeEventGen"), ComputeShader, PassParameters,
-	                             FComputeShaderUtils::GetGroupCount(Params.Size, FIntPoint(8, 8)));
+	const FIntVector           Groups = FComputeShaderUtils::GetGroupCount(Params.Size, FIntPoint(8, 8));
+	FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("FlightForgeEventCount"), ComputeShader, CountParameters, Groups);
+	FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("FlightForgeEventGen"), ComputeShader, PassParameters, Groups);
 
 	const uint32 CopyEvents = FMath::Clamp(Params.CopyEvents, 1u, Params.MaxEvents);
+	Slot->Capacity          = Params.MaxEvents;
 	Slot->CopiedCapacity    = CopyEvents;
 
 	if (!Slot->Header)
@@ -136,8 +145,8 @@ void FlightForgeEventGen::Dispatch_RenderThread(FRHICommandListImmediate& RHICmd
 	{
 		GraphBuilder.QueueTextureExtraction(StateTexture, &State.State);
 		GraphBuilder.QueueTextureExtraction(LastEventTexture, &State.LastEvent);
-		GraphBuilder.QueueBufferExtraction(EventBuffer, &State.Events);
 	}
+	GraphBuilder.QueueBufferExtraction(EventBuffer, &Slot->Buffer, ERHIAccess::CopySrc);
 
 	GraphBuilder.Execute();
 }
@@ -146,18 +155,32 @@ void FlightForgeEventGen::Dispatch_RenderThread(FRHICommandListImmediate& RHICmd
 
 /* Resolve_RenderThread() //{ */
 
-void FlightForgeEventGen::Resolve_RenderThread(const TSharedPtr<FEventReadback, ESPMode::ThreadSafe>& Slot)
+void FlightForgeEventGen::Resolve_RenderThread(FRHICommandListImmediate& RHICmdList, const TSharedPtr<FEventReadback, ESPMode::ThreadSafe>& Slot)
 {
 	if (Slot->Header && Slot->Events)
 	{
-		if (const uint32* Header = static_cast<const uint32*>(Slot->Header->Lock(sizeof(uint32) * 4)))
+		if (!Slot->bHeaderRead)
 		{
-			Slot->Count        = Header[0];
-			Slot->MaxLogChange = *reinterpret_cast<const float*>(&Header[1]);
-			Slot->Header->Unlock();
+			if (const uint32* Header = static_cast<const uint32*>(Slot->Header->Lock(sizeof(uint32) * 4)))
+			{
+				Slot->Count        = Header[0];
+				Slot->MaxLogChange = *reinterpret_cast<const float*>(&Header[1]);
+				Slot->Kept         = Header[2];
+				Slot->Header->Unlock();
+			}
+			Slot->bHeaderRead = true;
 		}
 
-		const uint32 Available = FMath::Min(Slot->Count, Slot->CopiedCapacity);
+		const uint32 Available = FMath::Min(Slot->Kept, Slot->Capacity);
+
+		if (Available > Slot->CopiedCapacity && Slot->Buffer)
+		{
+			Slot->Events = MakeUnique<FRHIGPUBufferReadback>(TEXT("FlightForgeEvents"));
+			Slot->Events->EnqueueCopy(RHICmdList, Slot->Buffer->GetRHI(), Available * sizeof(uint32) * 2);
+			Slot->CopiedCapacity = Available;
+			Slot->bResolveIssued = false;
+			return;
+		}
 
 		if (Available > 0)
 		{
@@ -173,6 +196,7 @@ void FlightForgeEventGen::Resolve_RenderThread(const TSharedPtr<FEventReadback, 
 		}
 	}
 
+	Slot->Buffer.SafeRelease();
 	Slot->bCopied = true;
 }
 

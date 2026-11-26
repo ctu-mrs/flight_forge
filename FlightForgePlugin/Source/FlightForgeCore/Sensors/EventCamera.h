@@ -36,8 +36,8 @@ struct FEventCameraConfig
 	double ShotNoiseRateHz;
 	double HotPixelFraction;
 
-	double MaxEventRateHz;  // readout ceiling, 0 = unlimited
-	int    MaxEventsPerFrame;
+	double MaxEventRateHz;     // readout ceiling, 0 = unlimited
+	int    MaxEventsPerFrame;  // 0 = the buffer grows with the scene up to ff.EventCamera.MaxBufferMB
 
 	bool   UseGpu;
 	uint32 Seed;
@@ -97,7 +97,8 @@ protected:
 	uint32 FrameIndex    = 0;
 	uint32 FramesFolded  = 0;
 	uint32 LastCount     = 0;
-	bool   bLastFrameTruncated = false;
+	uint32 EventCapacity = 0;
+	bool   bGuardLogged  = false;
 	double LastCaptureStamp = 0.0;
 	double TimeEpoch     = 0.0;  // origin of the wrapping microsecond clock
 	FTransform LastCaptureTransform;
@@ -109,11 +110,10 @@ protected:
 	struct FCpuFrame
 	{
 		TSharedPtr<FCameraReadback, ESPMode::ThreadSafe> Slot;
-		double                                           TPrev      = 0.0;
-		double                                           TCur       = 0.0;
-		bool                                             bSeed      = false;
-		bool                                             bCompare   = false;
-		uint32                                           FrameIndex = 0;
+		double                                           TPrev    = 0.0;
+		double                                           TCur     = 0.0;
+		bool                                             bCompare = false;
+		FEventGenParams                                  Params;  // as the GPU got them, or parity drifts with the budget
 	};
 
 	TMap<uint32, TArray<uint64>> ParityPending;
@@ -127,13 +127,13 @@ protected:
 	TArray<uint32>    CpuLastEvent;
 	FIntPoint         CpuStateSize = FIntPoint::ZeroValue;
 
-	FEventGenParams BuildParams(double TPrev, double TCur) const;
+	FEventGenParams BuildParams(double TPrev, double TCur);
 
 	void EnqueueGpuFrame(const FEventGenParams& Params, double TPrev, double TCur);
 	void PumpInflight();
-	void RunCpuModel(const FCameraReadback& Frame, const FEventGenParams& Params, TArray<uint64>& OutPacked, float& OutMaxLogChange);
+	void RunCpuModel(const FCameraReadback& Frame, const FEventGenParams& Params, TArray<uint64>& OutPacked, uint32& OutCount, float& OutMaxLogChange);
 
-	void PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxLogChange, double TPrev, double TCur);
+	void PublishFrame(TArray<uint64>& Packed, uint32 Count, float MaxLogChange, double TPrev, double TCur, bool bBudgetIsGuard);
 
 	//}
 

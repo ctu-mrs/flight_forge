@@ -206,7 +206,7 @@ table EventCameraConfig {
   shot_noise_rate_hz: double;  // Hz per pixel at full scale, up to 4x in the dark
   hot_pixel_fraction: double;
   max_event_rate_hz: double;  // Hz, 0 unlimited
-  max_events_per_frame: uint;
+  max_events_per_frame: uint;  // 0 grows with the scene up to the ff.EventCamera.MaxBufferMB guard
   use_gpu: bool;
   seed: uint;
 }

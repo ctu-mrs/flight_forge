@@ -30,8 +30,10 @@ struct FEventGenParams
 	float  HotPixelFraction = 1e-4f;
 	float  LogEps           = 1e-3f;
 
-	uint32 MaxEvents  = 1u << 20;  // GPU append capacity; CopyEvents of it come back this frame
-	uint32 CopyEvents = 16384;
+	uint32 MaxEvents  = 1u << 20;  // this frame's buffer; the camera sizes it from the last frames
+	uint32 CopyEvents = 16384;     // first readback; a frame that kept more is copied again in full
+	uint32 Budget     = 1u << 20;  // events delivered at most, the rest thinned uniformly
+	bool   bBudgetIsGuard = false;  // the buffer, not the rate ceiling, set Budget; CPU side only
 };
 
 //}
@@ -43,17 +45,22 @@ struct FEventReadback
 {
 	TUniquePtr<FRHIGPUBufferReadback> Header;
 	TUniquePtr<FRHIGPUBufferReadback> Events;
+	TRefCountPtr<FRDGPooledBuffer>    Buffer;  // the frame's own events, held until they are read back
 
+	uint32 Capacity       = 0;
 	uint32 CopiedCapacity = 0;
+	bool   bHeaderRead    = false;
 
 	// filled by the resolve
-	uint32         Count        = 0;  // as appended, may exceed CopiedCapacity
+	uint32         Count        = 0;  // as the pixels fired, before thinning
+	uint32         Kept         = 0;  // as appended, may exceed Capacity
 	float          MaxLogChange = 0.0f;
 	TArray<uint64> Packed;
 
-	double TPrev      = 0.0;
-	double TCur       = 0.0;
-	uint32 FrameIndex = 0;
+	double TPrev          = 0.0;
+	double TCur           = 0.0;
+	uint32 FrameIndex     = 0;
+	bool   bBudgetIsGuard = false;
 
 	std::atomic<bool> bResolveIssued{false};
 	std::atomic<bool> bResolveQueued{false};
@@ -75,10 +82,8 @@ struct FEventGpuState
 {
 	TRefCountPtr<IPooledRenderTarget> State;
 	TRefCountPtr<IPooledRenderTarget> LastEvent;
-	TRefCountPtr<FRDGPooledBuffer>    Events;
 
-	FIntPoint Size     = FIntPoint::ZeroValue;
-	uint32    Capacity = 0;
+	FIntPoint Size = FIntPoint::ZeroValue;
 };
 
 //}
@@ -89,5 +94,6 @@ namespace FlightForgeEventGen
 FLIGHTFORGESHADERS_API void Dispatch_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture* Input, FEventGpuState& State, FEventGenParams Params,
                                                    const TSharedPtr<FEventReadback, ESPMode::ThreadSafe>& Slot);
 
-FLIGHTFORGESHADERS_API void Resolve_RenderThread(const TSharedPtr<FEventReadback, ESPMode::ThreadSafe>& Slot);
+// copies a frame that outgrew its first readback again, else unpacks it and sets bCopied
+FLIGHTFORGESHADERS_API void Resolve_RenderThread(FRHICommandListImmediate& RHICmdList, const TSharedPtr<FEventReadback, ESPMode::ThreadSafe>& Slot);
 }  // namespace FlightForgeEventGen

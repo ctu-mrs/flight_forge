@@ -95,7 +95,8 @@ void ConfigureRangefinder(USensor* Sensor, const FVector& Offset, double RangeCm
 
 struct FEventPixelSpec
 {
-	double Contrast;
+	double ContrastPos;
+	double ContrastNeg;
 	double Sigma;
 	double RefractoryS;
 	double CutoffHz;
@@ -112,8 +113,8 @@ void ConfigureEvent(USensor* Sensor, const FVector& Offset, const FRotator& Rota
 		Config.FOVAngle             = FovDeg;
 		Config.Width                = W;
 		Config.Height               = H;
-		Config.ContrastThresholdPos = Pixel.Contrast;
-		Config.ContrastThresholdNeg = Pixel.Contrast;
+		Config.ContrastThresholdPos = Pixel.ContrastPos;
+		Config.ContrastThresholdNeg = Pixel.ContrastNeg;
 		Config.ThresholdSigma       = Pixel.Sigma;
 		Config.RefractoryPeriod     = Pixel.RefractoryS;
 		Config.CutoffHz             = Pixel.CutoffHz;
@@ -370,8 +371,8 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Event;
 		Event.Type      = SensorType::EVENT_CAMERA;
-		// 12 Meps readout, ~100 us refractory, photoreceptor rolls off around 200 Hz
-		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 346, 260, {0.25, 0.04, 1e-4, 200.0, 12e6}); };
+		// docs.inivation.com davis346: 12 MEPS arbitrated readout, 14.3 % ON / 22.5 % OFF median contrast
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 346, 260, {0.143, 0.225, 0.04, 1e-4, 200.0, 12e6}); };
 		D.Sensors.Add(Event);
 
 		Devices.Add(D);
@@ -386,8 +387,40 @@ static TArray<FSensorDeviceSpec> BuildRegistry()
 
 		FDeviceSensorEntry Event;
 		Event.Type      = SensorType::EVENT_CAMERA;
-		// IMX636: ~1 Geps peak readout, tens of us refractory, faster front end
-		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 1280, 720, {0.25, 0.03, 2e-5, 1000.0, 1.06e9}); };
+		// Sony IMX636: 1.06 Geps readout, 25 % nominal contrast; past its rate the ERC drops events spatially and temporally
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 1280, 720, {0.25, 0.25, 0.03, 2e-5, 1000.0, 1.06e9}); };
+		D.Sensors.Add(Event);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("prophesee_genx320");
+		D.Description      = TEXT("Prophesee GenX320 event sensor kit: 320x320, ~70deg lens");
+		D.MeshShape        = EDeviceMeshShape::Box;
+		D.MeshDimensionsCm = FVector(3.0, 3.0, 3.6);  // kit housing unpublished, EVK4's
+
+		FDeviceSensorEntry Event;
+		Event.Type      = SensorType::EVENT_CAMERA;
+		// 25 % nominal contrast; readout limit unpublished, so no ceiling, the rest are the generic defaults
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 320, 320, {0.25, 0.25, 0.03, 1e-4, 300.0, 0.0}); };
+		D.Sensors.Add(Event);
+
+		Devices.Add(D);
+	}
+
+	{
+		FSensorDeviceSpec D;
+		D.Name             = TEXT("inivation_dvxplorer");
+		D.Description      = TEXT("iniVation DVXplorer event camera: 640x480, ~70deg with kit lens");
+		D.MeshShape        = EDeviceMeshShape::Box;
+		D.MeshDimensionsCm = FVector(4.0, 4.0, 5.5);  // same 40x60x25 mm case as the DAVIS346
+
+		FDeviceSensorEntry Event;
+		Event.Type      = SensorType::EVENT_CAMERA;
+		// 165 MEPS readout scanned at 5 kHz, so one event per pixel per 200 us; 13 % median, 27.5 % at 99.9 % of pixels
+		Event.Configure = [](USensor* S, const FVector& O, const FRotator& R) { ConfigureEvent(S, O, R, 70, 640, 480, {0.13, 0.13, 0.047, 2e-4, 300.0, 165e6}); };
 		D.Sensors.Add(Event);
 
 		Devices.Add(D);

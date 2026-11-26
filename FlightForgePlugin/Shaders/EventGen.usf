@@ -6,7 +6,7 @@ Texture2D<float4>         InputTexture;
 RWTexture2D<float4>       StateTexture;      // x reference log, y/z low-pass stages, w last output
 RWTexture2D<uint>         LastEventTexture;  // microseconds, wrapping
 RWStructuredBuffer<uint2> EventBuffer;       // x: px | py << 16 | polarity << 31, y: microseconds after frame start
-RWStructuredBuffer<uint>  HeaderBuffer;      // 0 events appended, 1 max |dL| as float bits
+RWStructuredBuffer<uint>  HeaderBuffer;      // 0 events the pixels fired, 1 max |dL| as float bits, 2 events delivered
 
 int2  Size;
 float Dt;
@@ -16,6 +16,8 @@ uint  MaxEvents;
 uint  FrameIndex;
 uint  Seed;
 uint  bSeedState;
+uint  bCountOnly;
+uint  Budget;
 
 float ThresholdPos;
 float ThresholdNeg;
@@ -42,25 +44,90 @@ float Hash01(uint a, uint b, uint c)
 	return (h & 0xFFFFFFu) / 16777216.0;
 }
 
+// Irwin-Hall: unit variance from four uniforms, no transcendentals
 float Gaussian(uint a, uint b, uint c)
 {
-	float u1 = max(Hash01(a, b, c), 1e-7);
-	float u2 = Hash01(a, b, c + 0x9E3779B9u);
-	return sqrt(-2.0 * log(u1)) * cos(6.283185307 * u2);
+	precise float Sum = Hash01(a, b, c) + Hash01(a, b, c + 0x9E3779B9u) + Hash01(a, b, c + 0x3C6EF372u) + Hash01(a, b, c + 0xDAA66D2Bu);
+	return (Sum - 2.0) * 1.73205081;
 }
 
 //}
 
-void Emit(uint2 P, bool bPositive, uint OffsetUs)
+/* deterministic math //{ */
+
+// the CPU port computes the same bits: only bit ops, +, - and *, every result precise so nothing is fused or reordered
+
+float DetRcp(float X)
 {
-	uint Index;
-	InterlockedAdd(HeaderBuffer[0], 1u, Index);
-	if (Index < MaxEvents)
-	{
-		EventBuffer[Index] = uint2(P.x | (P.y << 16) | (bPositive ? 0x80000000u : 0u), OffsetUs);
-	}
+	precise float R = asfloat(0x7EF311C3u - asuint(X));
+	R = R * (2.0 - X * R);
+	R = R * (2.0 - X * R);
+	R = R * (2.0 - X * R);
+	return R;
 }
 
+float DetLog(float X)
+{
+	const uint    Bits = asuint(X);
+	int           E    = int(Bits >> 23) - 127;
+	precise float M    = asfloat((Bits & 0x007FFFFFu) | 0x3F800000u);
+	if (M > 1.41421356)
+	{
+		M = M * 0.5;
+		E += 1;
+	}
+	precise float F    = M - 1.0;
+	precise float S    = F * DetRcp(F + 2.0);
+	precise float S2   = S * S;
+	precise float Poly = 1.0 + S2 * (0.333333333 + S2 * (0.2 + S2 * (0.142857143 + S2 * 0.111111111)));
+	precise float Out  = float(E) * 0.693147181 + 2.0 * S * Poly;
+	return Out;
+}
+
+float DetExp(float X)
+{
+	precise float N = floor(X * 1.44269504 + 0.5);
+	if (N < -126.0)
+	{
+		return 0.0;
+	}
+	precise float R   = X - N * 0.693147181;
+	precise float P   = 1.0 + R * (1.0 + R * (0.5 + R * (0.166666667 + R * (0.0416666667 + R * (0.00833333333 + R * (0.00138888889 + R * 0.000198412698))))));
+	precise float Out = P * asfloat(uint(int(N) + 127) << 23);
+	return Out;
+}
+
+uint OffsetUs(float Frac)
+{
+	precise float Us = Frac * float(DtUs) + 0.5;
+	return (uint)floor(Us);
+}
+
+//}
+
+/* Emit() //{ */
+
+// the readout thins a frame past its budget uniformly, so a burst loses density, not whole tiles
+void Emit(uint2 P, uint PixelKey, bool bPositive, uint Offset, uint Count, inout uint Ordinal)
+{
+	precise float Thin = Hash01(PixelKey, Seed ^ (FrameIndex * 0x27D4EB2Fu), 0x300u + Ordinal) * (float)Count;
+	if (bCountOnly == 0u && (Count <= Budget || Thin < (float)Budget))
+	{
+		uint Index;
+		InterlockedAdd(HeaderBuffer[2], 1u, Index);
+		if (Index < MaxEvents)
+		{
+			EventBuffer[Index] = uint2(P.x | (P.y << 16) | (bPositive ? 0x80000000u : 0u), Offset);
+		}
+	}
+	Ordinal++;
+}
+
+//}
+
+/* MainCS() //{ */
+
+// dispatched twice per frame: bCountOnly sizes the frame without touching state, then the real pass emits
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -70,32 +137,37 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float3 Rgb     = InputTexture.Load(int3(P, 0)).rgb;
-	const float  I       = max(dot(Rgb, float3(0.2126, 0.7152, 0.0722)), 0.0);
-	const float  Inten01 = saturate(I);
-	const float  L       = log(I + LogEps);
+	const float3  Rgb     = InputTexture.Load(int3(P, 0)).rgb;
+	precise float I       = max(0.2126 * Rgb.r + 0.7152 * Rgb.g + 0.0722 * Rgb.b, 0.0);
+	precise float Inten01 = saturate(I);
+	precise float L       = DetLog(I + LogEps);
 
 	if (bSeedState != 0u)
 	{
-		StateTexture[P]     = float4(L, L, L, L);
-		LastEventTexture[P] = BaseUs - RefractoryUs;
+		if (bCountOnly == 0u)
+		{
+			StateTexture[P]     = float4(L, L, L, L);
+			LastEventTexture[P] = BaseUs - RefractoryUs;
+		}
 		return;
 	}
 
 	const uint PixelKey = P.x + P.y * 65536u;
+	const uint Count    = bCountOnly != 0u ? 0u : HeaderBuffer[0];
+	uint       Ordinal  = 0u;
 
-	float4 State = StateTexture[P];
-	float  Ref   = State.x;
-	float  Lp1   = State.y;
-	float  Lp2   = State.z;
-	const float LPrev = State.w;
+	const float4  State = StateTexture[P];
+	precise float Ref   = State.x;
+	precise float Lp1   = State.y;
+	precise float Lp2   = State.z;
+	const float   LPrev = State.w;
 
 	// photoreceptor bandwidth falls with illumination: two cascaded first-order stages
 	if (CutoffHz > 0.0)
 	{
-		const float Alpha = 1.0 - exp(-6.283185307 * CutoffHz * lerp(0.05, 1.0, Inten01) * Dt);
-		Lp1 += Alpha * (L - Lp1);
-		Lp2 += Alpha * (Lp1 - Lp2);
+		precise float Alpha = 1.0 - DetExp(-6.283185307 * CutoffHz * (0.05 + 0.95 * Inten01) * Dt);
+		Lp1 = Lp1 + Alpha * (L - Lp1);
+		Lp2 = Lp2 + Alpha * (Lp1 - Lp2);
 	}
 	else
 	{
@@ -105,15 +177,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float LCur = Lp2;
 
 	// the leak drags the reference down so ON events fire at the leak rate
-	Ref -= LeakRateHz * ThresholdPos * Dt * (0.9 + 0.2 * Hash01(PixelKey, Seed, 1u));
+	Ref = Ref - LeakRateHz * ThresholdPos * Dt * (0.9 + 0.2 * Hash01(PixelKey, Seed, 1u));
 
-	const float Cpos = max(ThresholdPos + ThresholdSigma * Gaussian(PixelKey, Seed, 2u), 0.01);
-	const float Cneg = max(ThresholdNeg + ThresholdSigma * Gaussian(PixelKey, Seed, 3u), 0.01);
+	precise float Cpos = max(ThresholdPos + ThresholdSigma * Gaussian(PixelKey, Seed, 2u), 0.01);
+	precise float Cneg = max(ThresholdNeg + ThresholdSigma * Gaussian(PixelKey, Seed, 3u), 0.01);
 
 	uint LastEv = LastEventTexture[P];
 
-	const float dL = LCur - LPrev;
-	InterlockedMax(HeaderBuffer[1], asuint(abs(dL)));
+	precise float dL = LCur - LPrev;
 
 	// a burst cannot outrun the refractory period; past that the pixel just resets
 	const uint MaxPerPixel = min(64u, RefractoryUs > 0u ? DtUs / RefractoryUs + 1u : 64u);
@@ -121,15 +192,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (dL > 0.0)
 	{
-		while (Ref + Cpos <= LCur && Emitted < MaxPerPixel)
+		precise float InvDl = DetRcp(dL);
+		while (Emitted < MaxPerPixel)
 		{
-			Ref += Cpos;
-			const float Frac   = saturate((Ref - LPrev) / dL);
-			const uint  Offset = (uint)round(Frac * DtUs);
-			const uint  TUs    = BaseUs + Offset;
+			precise float Next = Ref + Cpos;
+			if (Next > LCur)
+			{
+				break;
+			}
+			Ref                = Next;
+			precise float Frac = saturate((Ref - LPrev) * InvDl);
+			const uint    Off  = OffsetUs(Frac);
+			const uint    TUs  = BaseUs + Off;
 			if (TUs - LastEv >= RefractoryUs)
 			{
-				Emit(P, true, Offset);
+				Emit(P, PixelKey, true, Off, Count, Ordinal);
 				LastEv = TUs;
 			}
 			Emitted++;
@@ -137,15 +214,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	else if (dL < 0.0)
 	{
-		while (Ref - Cneg >= LCur && Emitted < MaxPerPixel)
+		precise float InvDl = DetRcp(-dL);
+		while (Emitted < MaxPerPixel)
 		{
-			Ref -= Cneg;
-			const float Frac   = saturate((Ref - LPrev) / dL);
-			const uint  Offset = (uint)round(Frac * DtUs);
-			const uint  TUs    = BaseUs + Offset;
+			precise float Next = Ref - Cneg;
+			if (Next < LCur)
+			{
+				break;
+			}
+			Ref                = Next;
+			precise float Frac = saturate((LPrev - Ref) * InvDl);
+			const uint    Off  = OffsetUs(Frac);
+			const uint    TUs  = BaseUs + Off;
 			if (TUs - LastEv >= RefractoryUs)
 			{
-				Emit(P, false, Offset);
+				Emit(P, PixelKey, false, Off, Count, Ordinal);
 				LastEv = TUs;
 			}
 			Emitted++;
@@ -157,29 +240,48 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Ref = LCur;
 	}
 
-	// shot noise: up to 4x the base rate in the dark, 100x on hot pixels
+	// shot noise: up to 4x the base rate in the dark, 100x on hot pixels; Poisson arrivals, so any dt delivers the rate
 	if (ShotNoiseRateHz > 0.0)
 	{
-		float Rate = ShotNoiseRateHz * (1.0 + 3.0 * (1.0 - Inten01));
+		precise float Rate = ShotNoiseRateHz * (1.0 + 3.0 * (1.0 - Inten01));
 		if (Hash01(PixelKey, Seed, 4u) < HotPixelFraction)
 		{
-			Rate *= 100.0;
+			Rate = Rate * 100.0;
 		}
 
-		const float U = Hash01(PixelKey, Seed ^ (FrameIndex * 0x85EBCA6Bu), 5u);
-		if (U < Rate * Dt)
+		precise float InvRate = DetRcp(Rate);
+		precise float InvDt   = DetRcp(Dt);
+		const uint    NoiseKey = Seed ^ (FrameIndex * 0x85EBCA6Bu);
+		precise float T        = 0.0;
+		for (uint j = 0u; j < MaxPerPixel; ++j)
 		{
-			const float V      = Hash01(PixelKey, Seed ^ (FrameIndex * 0xC2B2AE35u), 6u);
-			const uint  Offset = (uint)(V * DtUs);
-			const uint  TUs    = BaseUs + Offset;
+			T = T - DetLog(max(Hash01(PixelKey, NoiseKey, 0x100u + j), 1e-7)) * InvRate;
+			if (T >= Dt)
+			{
+				break;
+			}
+			const uint Off = OffsetUs(T * InvDt);
+			const uint TUs = BaseUs + Off;
 			if (TUs - LastEv >= RefractoryUs)
 			{
-				Emit(P, Hash01(PixelKey, Seed ^ FrameIndex, 7u) < 0.5, Offset);
+				Emit(P, PixelKey, Hash01(PixelKey, NoiseKey, 0x200u + j) < 0.5, Off, Count, Ordinal);
 				LastEv = TUs;
 			}
 		}
 	}
 
+	if (bCountOnly != 0u)
+	{
+		if (Ordinal > 0u)
+		{
+			InterlockedAdd(HeaderBuffer[0], Ordinal);
+		}
+		return;
+	}
+
+	InterlockedMax(HeaderBuffer[1], asuint(abs(dL)));
 	StateTexture[P]     = float4(Ref, Lp1, Lp2, LCur);
 	LastEventTexture[P] = LastEv;
 }
+
+//}
