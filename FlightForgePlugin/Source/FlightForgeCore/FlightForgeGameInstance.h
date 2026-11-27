@@ -22,6 +22,9 @@ public:
 
 	std::shared_ptr<FSimServer> Server;
 
+	// a ModelForge export folder the next world loads, set when leaving the main menu for it
+	FString PendingModelForgeScene;
+
 	UDeviceMeshLibrary* GetDeviceMeshes()
 	{
 		if (!DeviceMeshes)

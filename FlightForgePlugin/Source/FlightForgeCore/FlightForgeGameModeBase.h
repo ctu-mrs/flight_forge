@@ -9,21 +9,27 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameUserSettings.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
 #include "LandscapeProxy.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Misc/PackageName.h"
+#include "UObject/Package.h"
 #include "UObject/ConstructorHelpers.h"
 
 #include "RobotPawn.h"
 #include "SimClock.h"
 #include "Server/SimServer.h"
 #include "HAL/FileManager.h"
+#include "Utils/ModelForgeScene.h"
 #include "Utils/ObjectLibrary.h"
+#include "Utils/SettingsMenuToggle.h"
 #include "Utils/SpawnConfig.h"
+#include "Utils/SurfaceHeightQuery.h"
 #include "Utils/WorldObjectSpawner.h"
 #include "Utils/WireFrame.h"
 #include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "RenderingThread.h"
@@ -134,7 +140,7 @@ private:
 			DefaultPawnClass = RobotPawnClass;
 		}
 
-		GroundOrigin = FindGroundOrigin();
+		SetGroundOrigin(FindGroundOrigin());
 
 		if (FSimServer* Server = GetServer())
 		{
@@ -149,6 +155,7 @@ private:
 		else
 		{
 			InitializeDronePool();
+			EnterWorld();
 		}
 	}
 
@@ -174,6 +181,15 @@ private:
 		const bool bPausedFrame = World && World->IsPaused();
 
 		PumpInstructions();
+
+		if (bMenuWorld)
+		{
+			LeaveMenuForModelForgeScene();
+		}
+		else if (bAwaitModelForgeStart)
+		{
+			FollowModelForgeStart();
+		}
 
 		if (bLockstep.load())
 		{
@@ -230,20 +246,61 @@ private:
 		return Instance ? Instance->Server.get() : nullptr;
 	}
 
-	// the "UAV" PlayerStart lowered onto the floor it stands on, or the level origin
+	/* FindGroundOrigin() //{ */
+
+	// a PlayerStart (one tagged "UAV" first) lowered onto the floor below it, or the level origin
 	FVector FindGroundOrigin()
 	{
-		AActor* PlayerStart = FindPlayerStart(0, FString("UAV"));
+		APlayerStart* PlayerStart = nullptr;
+		for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
+		{
+			if (It->PlayerStartTag == FName("UAV"))
+			{
+				PlayerStart = *It;
+				break;
+			}
+			PlayerStart = PlayerStart ? PlayerStart : *It;
+		}
 		if (!PlayerStart)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("AFlightForgeGameModeBase: no PlayerStart tagged \"UAV\", the ground frame sits at the level origin"));
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge: the world has no PlayerStart, the ground frame sits at the level origin"));
 			return FVector::ZeroVector;
 		}
 
-		return PlayerStart->GetActorLocation() - FVector(0, 0, FWireFrame::PlayerStartHeightCm);
+		return GroundBelow(PlayerStart->GetActorLocation());
 	}
 
+	FVector GroundBelow(const FVector& PlayerStartLocation)
+	{
+		constexpr double MaxCorrectionM = 10.0;
+		const FVector    Start          = LiftOntoSurface(PlayerStartLocation);
+		const FVector    Nominal        = PlayerStartLocation - FVector(0, 0, FWireFrame::PlayerStartHeightCm);
+
+		TArray<double> Heights;
+		FSurfaceHeightQuery::Batch(GetWorld(), Nominal, {FWireFrame::ToGround(Start, Nominal)}, true, Heights);
+
+		if (!FMath::IsFinite(Heights[0]) || FMath::Abs(Heights[0]) > MaxCorrectionM)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge: no floor within %.0f m of the \"UAV\" PlayerStart, the ground frame sits %.2f cm below it"), MaxCorrectionM,
+			       FWireFrame::PlayerStartHeightCm);
+			return Nominal;
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: the ground frame sits on the floor, %.1f cm from the nominal PlayerStart height"), 100.0 * Heights[0]);
+		return Nominal + FVector(0, 0, 100.0 * Heights[0]);
+	}
+
+	/* //} */
+
 	FVector GroundOrigin = FVector::ZeroVector;
+	mutable FCriticalSection GroundOriginLock;
+
+	// only the game thread writes it, so its own reads skip the lock
+	void SetGroundOrigin(const FVector& Origin)
+	{
+		FScopeLock Lock(&GroundOriginLock);
+		GroundOrigin = Origin;
+	}
 
 	void InitializeDronePool()
 	{
@@ -275,6 +332,8 @@ private:
 public:
 	/* LiftOntoSurface() //{ */
 
+	static constexpr double LiftClearanceCm = 100.0;
+
 	// landscape collision is one-sided, so a drone asked for below the terrain falls through
 	// every trace and renders the world from underneath; the heightfield is what tells us
 	FVector LiftOntoSurface(const FVector& Location)
@@ -286,8 +345,6 @@ public:
 			return Location;
 		}
 
-		constexpr double ClearanceCm = 100.0;
-
 		for (TActorIterator<ALandscapeProxy> It(World); It; ++It)
 		{
 			const TOptional<float> Height = It->GetHeightAtLocation(Location);
@@ -297,8 +354,8 @@ public:
 				continue;
 			}
 
-			const FVector Lifted = FVector(Location.X, Location.Y, *Height + ClearanceCm);
-			UE_LOG(LogTemp, Warning, TEXT("SpawnRobot: %s is under the terrain, spawning at %s instead"), *Location.ToCompactString(),
+			const FVector Lifted = FVector(Location.X, Location.Y, *Height + LiftClearanceCm);
+			UE_LOG(LogTemp, Warning, TEXT("FlightForge: %s is under the terrain, starting at %s instead"), *Location.ToCompactString(),
 			       *Lifted.ToCompactString());
 
 			return Lifted;
@@ -312,7 +369,7 @@ public:
 	/* RestOnSurface() //{ */
 
 	// the base link origin sits above the landing gear, so a pose on the floor would start the airframe inside it
-	void RestOnSurface(ARobotPawn& Pawn)
+	void RestOnSurface(ARobotPawn& Pawn, const double MaxDropCm)
 	{
 		UStaticMeshComponent* Body  = Pawn.RootMeshComponent;
 		UWorld*               World = GetWorld();
@@ -339,7 +396,7 @@ public:
 
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(FlightForgeSpawnRest), false, &Pawn);
 		FHitResult            Hit;
-		const bool bHit = World->SweepSingleByChannel(Hit, Top, FVector(Top.X, Top.Y, Box.Min.Z + Footprint.Z), FQuat::Identity, Body->GetCollisionObjectType(),
+		const bool bHit = World->SweepSingleByChannel(Hit, Top, FVector(Top.X, Top.Y, Box.Min.Z + Footprint.Z - MaxDropCm), FQuat::Identity, Body->GetCollisionObjectType(),
 		                                              FCollisionShape::MakeBox(Footprint), Params, FCollisionResponseParams(Body->GetCollisionResponseToChannels()));
 		if (!bHit || Hit.bStartPenetrating)
 		{
@@ -347,10 +404,10 @@ public:
 		}
 
 		const double Lift = Hit.Location.Z - Footprint.Z - Box.Min.Z + RestGapCm;
-		if (Lift > 0.0)
+		if (Lift > 0.0 || MaxDropCm > 0.0)
 		{
 			Pawn.SetActorLocation(Origin + FVector(0.0, 0.0, Lift));
-			UE_LOG(LogTemp, Log, TEXT("FlightForge: raised '%s' by %.1f cm to rest on the surface below it"), *Pawn.Label, Lift);
+			UE_LOG(LogTemp, Log, TEXT("FlightForge: moved '%s' vertically by %.1f cm to rest on the surface below it"), *Pawn.Label, Lift);
 		}
 	}
 
@@ -398,7 +455,7 @@ public:
 		Pawn->uav_crashed_ = false;
 		Pawn->SetCameraCaptureMode(this->CameraCaptureMode);
 		Pawn->SetStaticMesh(std::string(TCHAR_TO_UTF8(*Name)));
-		RestOnSurface(*Pawn);
+		RestOnSurface(*Pawn, Location.Z > Transform.GetLocation().Z ? 2.0 * LiftClearanceCm : 0.0);
 		Pawn->WireKind = Name.Contains(TEXT("wing")) ? 2 : (Pawn->PropellerLinkNames().Num() > 0 ? 1 : 0);
 		Pawn->Simulate_UE_Physics(3.0f);
 
@@ -729,9 +786,78 @@ public:
 
 	/* //} */
 
-	// Unreal cm; set at BeginPlay, read by any thread
+	/* main menu and ModelForge scenes //{ */
+
+	bool bMenuWorld = false;
+
+	// the main menu's own UI owns the input there
+	void EnterWorld()
+	{
+		bMenuWorld = IsMenuWorld();
+		if (bMenuWorld)
+		{
+			return;
+		}
+
+		GetWorld()->SpawnActor<ASettingsMenuToggle>();
+
+		UFlightForgeGameInstance* Instance = Cast<UFlightForgeGameInstance>(GetGameInstance());
+		if (Instance && !Instance->PendingModelForgeScene.IsEmpty())
+		{
+			ModelForgeScene::Load(GetWorld(), Instance->PendingModelForgeScene);
+			Instance->PendingModelForgeScene.Reset();
+		}
+		bAwaitModelForgeStart = !ModelForgeScene::ActiveFolder(GetWorld()).IsEmpty();
+	}
+
+	bool bAwaitModelForgeStart = false;
+
+	// robots start where ModelForge put the player, once its collision is there to stand on
+	void FollowModelForgeStart()
+	{
+		FVector Start;
+		if (!ModelForgeScene::PlacedStart(GetWorld(), Start))
+		{
+			bAwaitModelForgeStart = !ModelForgeScene::ActiveFolder(GetWorld()).IsEmpty();
+			return;
+		}
+
+		bAwaitModelForgeStart = false;
+		SetGroundOrigin(GroundBelow(Start + FVector(0, 0, FWireFrame::PlayerStartHeightCm)));
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: the ground frame follows the ModelForge player start, %s"), *GroundOrigin.ToCompactString());
+	}
+
+	bool IsMenuWorld() const
+	{
+		FString Menu;
+		GConfig->GetString(TEXT("/Script/EngineSettings.GameMapsSettings"), TEXT("GameDefaultMap"), Menu, GEngineIni);
+		Menu = FPackageName::ObjectPathToPackageName(Menu);
+		return !Menu.IsEmpty() && UWorld::RemovePIEPrefix(GetWorld()->GetPackage()->GetName()) == Menu;
+	}
+
+	// ModelForge's scene menu loads into the running world, which for the main menu means an empty world of its own
+	void LeaveMenuForModelForgeScene()
+	{
+		const FString            Folder   = ModelForgeScene::ActiveFolder(GetWorld());
+		UFlightForgeGameInstance* Instance = Cast<UFlightForgeGameInstance>(GetGameInstance());
+		if (Folder.IsEmpty() || !Instance)
+		{
+			return;
+		}
+
+		bMenuWorld                       = false;
+		Instance->PendingModelForgeScene = Folder;
+
+		UE_LOG(LogTemp, Log, TEXT("FlightForge: leaving the main menu for the ModelForge scene %s"), *Folder);
+		UGameplayStatics::OpenLevel(this, TEXT("/Engine/Maps/Entry"), true, FString::Printf(TEXT("?game=%s"), *ForcedGameMode()));
+	}
+
+	/* //} */
+
+	// Unreal cm, read by any thread
 	FVector GetGroundOrigin() const
 	{
+		FScopeLock Lock(&GroundOriginLock);
 		return GroundOrigin;
 	}
 

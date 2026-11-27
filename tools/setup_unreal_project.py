@@ -296,7 +296,7 @@ def main():
         if args.engine:
             engine_build(args.engine.expanduser().resolve(), project, args.dry_run, args.create_module)
         else:
-            log("setup complete; next build <Project>Editor, then set a PlayerStart tagged UAV in your map", args.dry_run)
+            log("setup complete; next build <Project>Editor, then put a PlayerStart on the floor of your map", args.dry_run)
         log("originals of changed files, where present, were saved as <filename>.flightforge.bak", args.dry_run)
     except (SetupError, subprocess.CalledProcessError) as error:
         print(f"error: {error}", file=sys.stderr)
