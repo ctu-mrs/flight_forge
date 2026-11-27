@@ -1,0 +1,337 @@
+include "common.fbs";
+include "robot.fbs";
+
+namespace flightforge.wire;
+
+/* connection //{ */
+
+table PingRequest {}
+
+table GetInfoRequest {}
+
+table GetInfoResponse {
+  api_major: ushort;
+  api_minor: ushort;
+  schema: [ubyte];  // flightforge.bfbs, the compiled schema
+}
+
+//}
+
+/* time //{ */
+
+table GetTimeRequest {}
+
+table GetTimeResponse {
+  wall_time: double;  // s, wall clock, ignores dilation
+  sim_time: double;  // s since the level began
+  time_dilation: double = 1;
+}
+
+table GetFpsRequest {}
+
+table GetFpsResponse {
+  fps: float;  // Hz
+}
+
+table SetTimeDilationRequest {
+  dilation: double = 1;  // sim s per wall s
+}
+
+table SetTimeDilationResponse {
+  applied: double = 1;  // after the engine's clamp
+}
+
+// adaptive_min_dt > 0 lets the step shrink when an event camera aliases
+table SetFixedTimestepRequest {
+  dt: double;  // s, 0 follows the wall clock
+  adaptive_min_dt: double;  // s
+}
+
+table SetFixedTimestepResponse {
+  applied: double;  // s
+}
+
+// lockstep parks the world paused; step runs ticks and returns once every camera has its frames
+table SetLockstepRequest {
+  enabled: bool = true;
+}
+
+table StepRequest {
+  ticks: uint = 1;
+}
+
+table StepResponse {
+  sim_time: double;  // s
+  tick_count: ulong;  // ticks run since lockstep was enabled
+}
+
+//}
+
+/* world //{ */
+
+// a name from list_worlds, a package path, or a map's short name in any case where it is unique
+table SwitchWorldRequest {
+  level: string;
+}
+
+// answered once the new world ticks; robots do not survive a switch
+table SwitchWorldResponse {
+  package: string;
+  removed_robots: [int];
+}
+
+table ListWorldsRequest {}
+
+table WorldInfo {
+  name: string;  // what switch_world takes: the short name, or the package path where another map shares it
+  package: string;
+  display_name: string;
+}
+
+table ListWorldsResponse {
+  worlds: [WorldInfo];
+  current: string;  // package of the world that has begun play, empty while none has
+  loading: string;  // package a switch_world in progress is loading, else empty
+}
+
+enum Weather : ubyte {
+  SUNNY = 0,
+  CLOUDY = 1,
+  FOGGY = 2,
+  RAIN = 3,
+  RAIN_LIGHT = 4,
+  RAIN_THUNDERSTORM = 5,
+  SAND_DUST_CALM = 6,
+  SAND_DUST_STORM = 7,
+  SNOW = 8,
+  SNOW_BLIZZARDS = 9,
+  OVERCAST = 10,
+}
+
+table SetWeatherRequest {
+  weather: Weather;
+}
+
+table SetDaytimeRequest {
+  hour: ubyte;  // 0-23
+  minute: ubyte;  // 0-59
+  animate: bool = null;  // absent keeps the level's setting; true runs the sky's own day cycle at the level's day length
+}
+
+table GetDaytimeRequest {}
+
+// the sky's clock; where the level animates it, it advances per simulated second and holds while the world is paused
+table GetDaytimeResponse {
+  hour: double;  // since midnight, 0-24; NaN on a world lit by its own lights until set_daytime
+  animated: bool;
+  sky: string;  // ultra_dynamic_sky, sun_sky or lights
+}
+
+enum GraphicsQuality : ubyte {
+  LOW = 0,
+  MEDIUM = 1,
+  HIGH = 2,
+  EPIC = 3,
+  CINEMATIC = 4,
+}
+
+table SetGraphicsSettingsRequest {
+  quality: GraphicsQuality;
+}
+
+table SetForestDensityRequest {
+  level: int;
+}
+
+table SetForestHillyLevelRequest {
+  level: int;
+}
+
+table SetMutualVisibilityRequest {
+  enabled: bool;
+}
+
+enum CaptureMode : ubyte {
+  ALL_FRAMES = 0,
+  ON_MOVEMENT = 1,
+  ON_DEMAND = 2,
+}
+
+table GetCaptureModeRequest {}
+
+table GetCaptureModeResponse {
+  mode: CaptureMode;
+}
+
+table SetCaptureModeRequest {
+  mode: CaptureMode;
+}
+
+table GetWorldOriginRequest {}
+
+// the only Unreal-space value on the wire, for aligning with editor coordinates
+table GetWorldOriginResponse {
+  origin: Vec3;  // cm, Unreal frame, where the ground frame's origin sits
+}
+
+table GetClassMapRequest {}
+
+// sensors emit leaf ids; collapse through parent_id to the level a task needs
+table ClassEntry {
+  id: int;
+  parent_id: int;  // 0 at the root level
+  path: string;  // e.g. vegetation/tree/conifer
+}
+
+table GetClassMapResponse {
+  classes: [ClassEntry];
+  hash: ulong;  // over ids and paths
+}
+
+//}
+
+/* scene //{ */
+
+table SpawnObjectsFromYamlRequest {
+  yaml: string;
+}
+
+table SpawnObjectsFromYamlResponse {
+  object_ids: [int];
+}
+
+table RemoveSpawnedObjectRequest {
+  object_id: int = -1;  // negative removes every spawned object
+}
+
+table RemoveSpawnedObjectResponse {
+  removed_count: int;
+}
+
+table MoveSpawnedObjectRequest {
+  object_id: int;
+  pose: Pose;
+  scale: Vec3;  // absent keeps 1
+}
+
+table ListSpawnedObjectsRequest {}
+
+table SpawnedObject {
+  id: int;
+  asset: string;
+  stencil: int;
+  pose: Pose;
+  scale: Vec3;
+}
+
+table ListSpawnedObjectsResponse {
+  objects: [SpawnedObject];
+}
+
+table ExportSceneRequest {}
+
+// spawn_objects_from_yaml on this recreates the scene exactly
+table ExportSceneResponse {
+  yaml: string;
+}
+
+table ListAssetsRequest {
+  path_prefix: string;  // empty means /Game
+  name_filter: string;  // case-insensitive substring
+}
+
+table ListAssetsResponse {
+  assets: [string];
+  truncated: bool;
+}
+
+table LoadLibraryRequest {
+  path: string;  // a manifest or a directory of glTF models on the simulator's machine
+}
+
+table LoadLibraryResponse {
+  count: int;
+}
+
+// empty strings match everything; each word of filter must appear in the id, class or description
+table ListLibraryRequest {
+  library: string;
+  object_class: string;
+  filter: string;
+  offset: uint;
+  limit: uint = 200;
+}
+
+table LibraryObject {
+  library: string;
+  id: string;
+  spawn_name: string;  // what a spawn config's asset field takes
+  object_class: string;
+  description: string;
+  license: string;
+  thumbnail: string;  // a path on the simulator's machine
+  scale: double = 1;
+  height_m: double;  // m
+  runtime: bool = true;
+}
+
+table ListLibraryResponse {
+  objects: [LibraryObject];  // one page
+  total: uint;  // every match
+}
+
+// any extent <= 0 disables the box
+table GetWorldMeshRequest {
+  center: Vec3;  // m
+  extent: Vec3;  // m, half-size
+  max_triangles: uint;  // 0 takes the server default
+}
+
+table GetWorldMeshResponse {
+  vertices: [Vec3f];  // m
+  indices: [uint];  // triangles
+  truncated: bool;
+  source_count: int;
+}
+
+table GetDistanceBatchRequest {
+  points: [Vec3f];  // m
+  max_radius: double = 5;  // m, > 0
+  tolerance: double = 0.001;  // m
+  terrain_only: bool;  // Landscape and actors tagged terrain only
+}
+
+table GetDistanceBatchResponse {
+  distances: [float];  // m, max_radius when nothing is nearer, 0 inside geometry
+}
+
+// one trace straight down per point, against what blocks a robot's airframe; geometry a trace starts inside is skipped
+table GetSurfaceHeightRequest {
+  points: [Vec3];  // m; a NaN z traces from the top of the world
+  ignore_robots: bool = true;
+  robot_ids: [int];  // since 1.8, one per point: each point leaves out only its own robot (-1 none), other robots are surface; overrides ignore_robots
+}
+
+table GetSurfaceHeightResponse {
+  heights: [double];  // m, of the first surface below each point, NaN where there is none
+}
+
+//}
+
+// viewport //{
+
+// the main viewport (player 0's view) as rendered; with robot_id and sensor_id on the Request the view first takes that camera's
+// pose, FOV and image size, and keeps them until release
+table GetViewportImageRequest {
+  view: int;  // the matched camera's eye (stereo, 0 left) or face (fisheye)
+  release: bool;  // give the view and window size back to the game; returns no image
+  encoding: ImageEncoding;
+}
+
+table ViewportImageResponse {
+  stamp: double;  // s, sim
+  fov: double;  // deg, horizontal
+  image: Image;
+}
+
+//}

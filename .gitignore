@@ -1,7 +1,20 @@
 .idea/
 
 FlightForgePlugin/Binaries
-
 FlightForgePlugin/Intermediate
 
-.idea/
+UINav3Plugin_5.4/Binaries
+UINav3Plugin_5.4/Intermediate
+
+UnrealYAML/Binaries
+UnrealYAML/Intermediate
+
+# gitman-managed dependencies
+.gitman/
+/glTFRuntime
+
+# sibling client checkout
+/mrs_flight_forge_connector/
+
+# high-poly CAD sources of the decimated device housings
+FlightForgePlugin/Content/Meshes/Sensors/*.source.glb

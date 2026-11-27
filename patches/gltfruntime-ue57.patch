@@ -1,0 +1,21 @@
+--- a/Source/glTFRuntime/Public/glTFRuntimeParser.h
++++ b/Source/glTFRuntime/Public/glTFRuntimeParser.h
+@@ -8,6 +8,7 @@
+ #include "Animation/PoseAsset.h"
+ #include "Animation/Skeleton.h"
+ #include "Async/Async.h"
++#include "UObject/GCObject.h"
+ #include "Async/ParallelFor.h"
+ #include "Dom/JsonValue.h"
+ #include "Dom/JsonObject.h"
+--- a/Source/glTFRuntime/Private/glTFRuntimeFunctionLibrary.cpp
++++ b/Source/glTFRuntime/Private/glTFRuntimeFunctionLibrary.cpp
+@@ -2,6 +2,8 @@
+ 
+ 
+ #include "glTFRuntimeFunctionLibrary.h"
++#include "Misc/Paths.h"
++#include "Animation/AnimSequence.h"
+ #include "Async/Async.h"
+ #include "HttpModule.h"
+ #include "HAL/PlatformApplicationMisc.h"

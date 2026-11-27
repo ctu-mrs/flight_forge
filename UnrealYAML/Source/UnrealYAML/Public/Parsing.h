@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Node.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "Parsing.generated.h"
 
 

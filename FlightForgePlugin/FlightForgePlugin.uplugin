@@ -21,7 +21,15 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "ueds",
+			"Name": "FlightForgeShaders",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		},
+		{
+			"Name": "FlightForgeCore",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
@@ -35,6 +43,20 @@
 			"AdditionalDependencies": [
 				"Engine"
 			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ProceduralMeshComponent",
+			"Enabled": true
+		},
+		{
+			"Name": "glTFRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "UnrealYAML",
+			"Enabled": true
 		}
 	]
 }

@@ -1,0 +1,50 @@
+// Vertex shader for the FlightForge instance-segmentation ID pass.
+// A trimmed copy of the engine's HitProxyVertexShader: transform through the
+// vertex factory, no per-vertex/instance id fetch - the id is a per-draw
+// uniform consumed by the pixel shader.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+
+struct FSegIdVSToPS
+{
+	FVertexFactoryInterpolantsVSToPS FactoryInterpolants;
+	float4 PixelPosition : TEXCOORD6;
+	FStereoVSOutput StereoOutput;
+	INVARIANT_OUTPUT float4 Position : SV_POSITION;
+};
+
+#if VERTEXSHADER
+
+void Main(
+	FVertexFactoryInput Input,
+	out FSegIdVSToPS Output
+#if USE_GLOBAL_CLIP_PLANE
+	, out float OutGlobalClipPlaneDistance : SV_ClipDistance
+#endif
+	)
+{
+	StereoSetupVF(Input, Output.StereoOutput);
+
+	FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+	float4 WorldPosition = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+	half3x3 TangentToLocal = VertexFactoryGetTangentToLocal(Input, VFIntermediates);
+
+	FMaterialVertexParameters VertexParameters = GetMaterialVertexParameters(Input, VFIntermediates, WorldPosition.xyz, TangentToLocal);
+	WorldPosition.xyz += GetMaterialWorldPositionOffset(VertexParameters);
+
+	{
+		float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPosition);
+		Output.Position = INVARIANT(mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip));
+	}
+
+#if USE_GLOBAL_CLIP_PLANE
+	OutGlobalClipPlaneDistance = dot(ResolvedView.GlobalClippingPlane, float4(WorldPosition.xyz, 1));
+#endif
+
+	Output.FactoryInterpolants = VertexFactoryGetInterpolantsVSToPS(Input, VFIntermediates, VertexParameters);
+	Output.PixelPosition = WorldPosition;
+}
+
+#endif // VERTEXSHADER

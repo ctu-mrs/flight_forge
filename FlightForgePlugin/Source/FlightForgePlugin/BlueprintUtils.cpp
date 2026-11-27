@@ -3,6 +3,9 @@
 
 #include "BlueprintUtils.h"
 
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+
 void UBlueprintUtils::WriteGateTransformToCsv(const FString& Filename, const TArray<FString>& GateNames, const TArray<FVector>& Vectors, const TArray<float>& Heading, bool& bOutResult, FString& OutString)
 {
 	if (GateNames.Num() != Vectors.Num() || Vectors.Num() != Heading.Num())

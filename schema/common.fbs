@@ -1,0 +1,60 @@
+// poses are in the ground frame (x = Unreal +X, y = Unreal -Y, z up) unless a field says otherwise
+
+namespace flightforge.wire;
+
+struct Vec3 {
+  x: double;
+  y: double;
+  z: double;
+}
+
+struct Vec3f {
+  x: float;
+  y: float;
+  z: float;
+}
+
+// unit quaternion, body to parent
+struct Quat {
+  x: double;
+  y: double;
+  z: double;
+  w: double;
+}
+
+// a zeroed Pose has w = 0, so writers always set the orientation; a table's absent Pose means identity
+struct Pose {
+  position: Vec3;  // m
+  orientation: Quat;
+}
+
+enum PixelFormat : ubyte {
+  UNKNOWN = 0,
+  RGB8 = 1,
+  RGBA8 = 2,
+  BGR8 = 3,
+  BGRA8 = 4,
+  MONO8 = 5,
+  MONO16 = 6,
+}
+
+// 3 is reserved for LZ4
+enum Compression : ubyte {
+  NONE = 0,
+  JPEG = 1,
+  PNG = 2,
+}
+
+table ImageEncoding {
+  compression: Compression = JPEG;
+  quality: ubyte = 90;  // 1-100, JPEG only
+}
+
+// raw rows are packed, little-endian, top row first
+table Image {
+  width: uint;  // px
+  height: uint;  // px
+  format: PixelFormat;  // layout once decompressed
+  compression: Compression;
+  data: [ubyte];
+}

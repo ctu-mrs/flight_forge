@@ -1,0 +1,29 @@
+// Pixel shader for the FlightForge instance-segmentation ID pass: emits the
+// per-draw instance id color. Coverage/clipping is evaluated so masked
+// materials can be supported later without a shader change.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+
+float4 SegId;
+
+void Main(
+	FVertexFactoryInterpolantsVSToPS Interpolants,
+	float4 PixelPosition : TEXCOORD6,
+	in FStereoPSInput StereoInput,
+	in INPUT_POSITION_QUALIFIERS float4 SvPosition : SV_Position
+	OPTIONAL_IsFrontFace,
+	out float4 OutColor : SV_Target0
+	)
+{
+	StereoSetupPS(StereoInput);
+
+	FMaterialPixelParameters MaterialParameters = GetMaterialPixelParameters(Interpolants, SvPosition);
+	FPixelMaterialInputs PixelMaterialInputs;
+	CalcMaterialParameters(MaterialParameters, PixelMaterialInputs, SvPosition, bIsFrontFace);
+
+	GetMaterialCoverageAndClipping(MaterialParameters, PixelMaterialInputs);
+
+	OutColor = SegId;
+}

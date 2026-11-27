@@ -1,0 +1,61 @@
+# Segmentation class tree. Copy to <project>/Config/FlightForgeClasses.yaml and add rules.
+#
+# classes: one node per line, path = its place in the tree, id fixed forever (append new ids, never
+#          renumber). Sensors emit the leaf id; get_class_map gives every node's parent, so a consumer
+#          collapses to whatever level it needs (tree, vegetation, ...). Ids must stay in 1..255 while
+#          the legacy stencil carries them.
+# roots:   content folders whose sub-folders spell the class path: /Game/Assets/Vegetation/Tree/Conifer/SM_x
+#          -> vegetation/tree/conifer (case-insensitive; an unregistered sub-folder falls back to its parent).
+# rules:   explicit matches, first wins, checked before the folder derivation: path (asset path wildcard),
+#          class_name (actor class wildcard), tag (actor tag). Marketplace packs are mapped here instead
+#          of being moved.
+
+classes:
+  - {id: 1,  path: terrain}
+  - {id: 2,  path: terrain/road}
+  - {id: 3,  path: terrain/sidewalk}
+  - {id: 4,  path: terrain/grass}
+  - {id: 5,  path: terrain/rock}
+  - {id: 6,  path: terrain/water}
+  - {id: 10, path: vegetation}
+  - {id: 11, path: vegetation/tree}
+  - {id: 12, path: vegetation/tree/conifer}
+  - {id: 13, path: vegetation/tree/broadleaf}
+  - {id: 14, path: vegetation/tree/dead}
+  - {id: 15, path: vegetation/bush}
+  - {id: 16, path: vegetation/ground_cover}
+  - {id: 20, path: structure}
+  - {id: 21, path: structure/building}
+  - {id: 22, path: structure/building/wall}
+  - {id: 23, path: structure/building/roof}
+  - {id: 24, path: structure/wall}
+  - {id: 25, path: structure/fence}
+  - {id: 26, path: structure/pole}
+  - {id: 27, path: structure/power_line}
+  - {id: 28, path: structure/tower}
+  - {id: 29, path: structure/sign}
+  - {id: 30, path: structure/door}
+  - {id: 31, path: structure/window}
+  - {id: 32, path: structure/stairs}
+  - {id: 33, path: structure/pipe}
+  - {id: 40, path: vehicle}
+  - {id: 41, path: vehicle/car}
+  - {id: 42, path: vehicle/truck}
+  - {id: 43, path: vehicle/aircraft}
+  - {id: 44, path: vehicle/drone}
+  - {id: 50, path: living}
+  - {id: 51, path: living/person}
+  - {id: 52, path: living/animal}
+  - {id: 60, path: prop}
+  - {id: 61, path: prop/container}
+  - {id: 62, path: prop/box}
+  - {id: 63, path: prop/machinery}
+  - {id: 64, path: prop/furniture}
+  - {id: 65, path: prop/debris}
+  - {id: 66, path: prop/gate_target}
+  - {id: 70, path: sky}
+
+roots:
+  - /Game/Assets
+
+rules: []

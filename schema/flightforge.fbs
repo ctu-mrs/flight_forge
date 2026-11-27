@@ -1,0 +1,169 @@
+// FlightForge wire 1.0, the single source of truth: tools/generate_wire.sh generates every binding from it
+include "common.fbs";
+include "robot.fbs";
+include "sensors.fbs";
+include "sim.fbs";
+
+namespace flightforge.wire;
+
+// members are append-only: never reorder, remove or insert, so older clients keep their type ids
+union RequestBody {
+  PingRequest,
+  GetInfoRequest,
+
+  GetTimeRequest,
+  GetFpsRequest,
+  SetTimeDilationRequest,
+  SetFixedTimestepRequest,
+  SetLockstepRequest,
+  StepRequest,
+
+  SwitchWorldRequest,
+  SetWeatherRequest,
+  SetDaytimeRequest,
+  SetGraphicsSettingsRequest,
+  SetForestDensityRequest,
+  SetForestHillyLevelRequest,
+  SetMutualVisibilityRequest,
+  GetCaptureModeRequest,
+  SetCaptureModeRequest,
+  GetWorldOriginRequest,
+  GetClassMapRequest,
+
+  SpawnObjectsFromYamlRequest,
+  RemoveSpawnedObjectRequest,
+  MoveSpawnedObjectRequest,
+  ListSpawnedObjectsRequest,
+  ExportSceneRequest,
+  ListAssetsRequest,
+  LoadLibraryRequest,
+  ListLibraryRequest,
+  GetWorldMeshRequest,
+  GetDistanceBatchRequest,
+
+  SpawnRobotRequest,
+  ListRobotsRequest,
+  RemoveRobotRequest,
+  GetDescriptionRequest,
+  GetStateRequest,
+  SetStateRequest,
+  SetStatesRequest,
+  SetTrajectoryRequest,
+  GetCollisionRequest,
+  GetMoveLineVisibleRequest,
+  SetMoveLineVisibleRequest,
+
+  AddSensorRequest,
+  RemoveSensorRequest,
+  ListSensorsRequest,
+  AddDeviceRequest,
+  ListDevicesRequest,
+  GetCameraInfoRequest,
+
+  GetRgbCameraConfigRequest,
+  SetRgbCameraConfigRequest,
+  GetStereoCameraConfigRequest,
+  SetStereoCameraConfigRequest,
+  GetFisheyeCameraConfigRequest,
+  SetFisheyeCameraConfigRequest,
+  GetEventCameraConfigRequest,
+  SetEventCameraConfigRequest,
+  GetLidarConfigRequest,
+  SetLidarConfigRequest,
+
+  GetRgbCameraDataRequest,
+  GetStereoCameraDataRequest,
+  GetFisheyeCameraDataRequest,
+  GetDepthCameraDataRequest,
+  RetiredGetRgbSegCameraDataRequest,
+  GetInstanceSegDataRequest,
+  GetInstanceSegMapRequest,
+  GetEventCameraDataRequest,
+  GetLidarScanRequest,
+  GetRangefinderDataRequest,
+
+  GetSurfaceHeightRequest,
+  GetDaytimeRequest,
+  GetViewportImageRequest,
+  ListWorldsRequest,
+}
+
+// members are append-only, as for RequestBody; ops that return nothing answer NONE
+union ResponseBody {
+  GetInfoResponse,
+
+  GetTimeResponse,
+  GetFpsResponse,
+  SetTimeDilationResponse,
+  SetFixedTimestepResponse,
+  StepResponse,
+
+  GetCaptureModeResponse,
+  GetWorldOriginResponse,
+  GetClassMapResponse,
+
+  SpawnObjectsFromYamlResponse,
+  RemoveSpawnedObjectResponse,
+  ListSpawnedObjectsResponse,
+  ExportSceneResponse,
+  ListAssetsResponse,
+  LoadLibraryResponse,
+  ListLibraryResponse,
+  GetWorldMeshResponse,
+  GetDistanceBatchResponse,
+
+  SpawnRobotResponse,
+  ListRobotsResponse,
+  GetDescriptionResponse,
+  GetStateResponse,
+  SetStateResponse,
+  SetStatesResponse,
+  GetCollisionResponse,
+  GetMoveLineVisibleResponse,
+
+  AddSensorResponse,
+  ListSensorsResponse,
+  AddDeviceResponse,
+  ListDevicesResponse,
+  GetCameraInfoResponse,
+
+  GetRgbCameraConfigResponse,
+  GetStereoCameraConfigResponse,
+  GetFisheyeCameraConfigResponse,
+  GetEventCameraConfigResponse,
+  GetLidarConfigResponse,
+
+  RgbCameraDataResponse,
+  StereoCameraDataResponse,
+  FisheyeCameraDataResponse,
+  DepthCameraDataResponse,
+  RetiredRgbSegCameraDataResponse,
+  InstanceSegDataResponse,
+  InstanceSegMapResponse,
+  EventCameraDataResponse,
+  LidarScanResponse,
+  RangefinderDataResponse,
+
+  GetSurfaceHeightResponse,
+  GetDaytimeResponse,
+  ViewportImageResponse,
+  ListWorldsResponse,
+  SwitchWorldResponse,
+}
+
+// a frame carries one Request; robot ops need robot_id, sensor ops robot_id and optionally sensor_id
+table Request {
+  seq: uint;  // echoed in the Response
+  robot_id: int = null;
+  sensor_id: int = null;
+  body: RequestBody;
+}
+
+table Response {
+  seq: uint;
+  ok: bool;
+  error: string;  // empty when ok
+  body: ResponseBody;
+}
+
+root_type Request;

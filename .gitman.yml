@@ -1,0 +1,18 @@
+location: .gitman
+sources:
+  - repo: https://github.com/rdeioris/glTFRuntime.git
+    name: glTFRuntime
+    rev: a332141050502eaad42bce7b7cb7197c28839354
+    type: git
+    params:
+    sparse_paths:
+      -
+    links:
+      - source: ''
+        target: glTFRuntime
+    scripts:
+      # UE 5.7 strict-include fixes; drop once upstream carries them
+      - git apply --directory=. ../../patches/gltfruntime-ue57.patch || git apply --check --reverse --directory=. ../../patches/gltfruntime-ue57.patch
+default_group: ''
+groups:
+  -

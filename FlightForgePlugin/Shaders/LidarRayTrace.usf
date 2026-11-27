@@ -1,0 +1,100 @@
+// One lidar scan against the view's ray-tracing scene: a ray per thread, the hit point in the sensor frame at the scan's end.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneData.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "/Engine/Private/RayTracing/TraceRayInline.ush"
+
+#define PRIMITIVE_SKIP 1
+#define PRIMITIVE_DROP 2
+
+RaytracingAccelerationStructure TLAS;
+StructuredBuffer<float4>        Rays;           // xyz unit direction in the sensor frame, w position in the scan [0,1]
+StructuredBuffer<uint2>         PrimitiveInfo;  // by persistent primitive index: component id, PRIMITIVE_* flags
+uint                            NumPrimitives;
+uint                            NumRays;
+uint                            OutWidth;
+float3                          StartOrigin;    // translated world, cm
+float3                          EndOrigin;
+float4                          StartRotation;
+float4                          EndRotation;
+float                           MinRange;       // cm
+float                           MaxRange;
+uint                            InstanceMask;
+RWTexture2D<float4>             Out;            // xyz cm in the end frame, w component id; NaN xyz for no return
+
+float3 RotateVector(float4 Q, float3 V)
+{
+	const float3 T = 2.0 * cross(Q.xyz, V);
+	return V + Q.w * T + cross(Q.xyz, T);
+}
+
+float4 SlerpQuat(float4 A, float4 B, float Alpha)
+{
+	float CosTheta = dot(A, B);
+	if (CosTheta < 0.0)
+	{
+		B        = -B;
+		CosTheta = -CosTheta;
+	}
+	if (CosTheta > 0.9999)
+	{
+		return normalize(lerp(A, B, Alpha));
+	}
+	const float Theta = acos(CosTheta);
+	return (sin((1.0 - Alpha) * Theta) * A + sin(Alpha * Theta) * B) / sin(Theta);
+}
+
+uint2 PrimitiveOf(uint GPUSceneInstance)
+{
+	const FInstanceSceneData Instance = GetInstanceSceneData(GPUSceneInstance);
+	return Instance.PrimitiveId < NumPrimitives ? uint2(Instance.PrimitiveId, PrimitiveInfo[Instance.PrimitiveId].y) : uint2(Instance.PrimitiveId, 0);
+}
+
+// the robot's own body is passed through during traversal: the sensor usually sits inside its hull
+struct FSkipOwnBody : FDefaultTraceRayInlineCallback
+{
+	bool OnAnyHit(float3 ObjectRayOrigin, float3 ObjectRayDirection, FTraceRayInlineResult Hit)
+	{
+		return PrimitiveOf(Hit.InstanceID).y != PRIMITIVE_SKIP;
+	}
+};
+
+[numthreads(32, 1, 1)]
+void Main(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint Index = DispatchThreadId.x;
+	if (Index >= NumRays)
+	{
+		return;
+	}
+
+	const float4 Ray       = Rays[Index];
+	const float4 Rotation  = SlerpQuat(StartRotation, EndRotation, Ray.w);
+	const float3 Origin    = lerp(StartOrigin, EndOrigin, Ray.w);
+	const float3 Direction = RotateVector(Rotation, Ray.xyz);
+
+	float4 Result = float4(asfloat(0x7FC00000u), asfloat(0x7FC00000u), asfloat(0x7FC00000u), 0.0);
+
+	FRayDesc Desc;
+	Desc.Origin    = Origin;
+	Desc.Direction = Direction;
+	Desc.TMin      = 0.0;
+	Desc.TMax      = MaxRange;
+
+	FTraceRayInlineContext Context = CreateTraceRayInlineContext();
+	FSkipOwnBody           Skip;
+	FTraceRayInlineResult  Hit = TraceRayInlineWithCallback(TLAS, RAY_FLAG_FORCE_NON_OPAQUE, InstanceMask, Desc.GetNativeDesc(), Context, Skip);
+	if (Hit.IsHit())
+	{
+		const uint2 Primitive = PrimitiveOf(Hit.InstanceID);
+		const uint  Id        = Primitive.x < NumPrimitives ? PrimitiveInfo[Primitive.x].x : 0;
+		if (Primitive.y != PRIMITIVE_DROP && Hit.HitT >= MinRange)
+		{
+			const float3 Point = Origin + Direction * Hit.HitT;
+			Result             = float4(RotateVector(float4(-EndRotation.xyz, EndRotation.w), Point - EndOrigin), asfloat(Id));
+		}
+	}
+
+	Out[uint2(Index % OutWidth, Index / OutWidth)] = Result;
+}

@@ -1,4 +1,5 @@
 ﻿#include "Misc/AutomationTest.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "Parsing.h"
 #include "Inputs.h"
 
@@ -11,10 +12,10 @@
 
 #if ENGINE_MAJOR_VERSION >= 5
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(Parsing, "UnrealYAML.Parsing",
-                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
 #else
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(Parsing, "UnrealYAML.Parsing",
-                                 EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
+                                 EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
 #endif
 
 bool Parsing::RunTest(const FString& Parameters) {

@@ -1,0 +1,49 @@
+// Decodes a Nanite visibility buffer rendered for the id pass: every pixel whose Nanite surface is the
+// one in the scene depth takes its primitive's id colour.
+
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneData.ush"
+#include "/Engine/Private/Nanite/NaniteDataDecode.ush"
+
+Texture2D<UlongType>  VisBuffer64;
+Texture2D<float>      SceneDepth;
+Buffer<float4>        IdByPrimitive;
+uint                  NumPrimitiveIds;
+uint4                 IdRect;   // x y w h of the id image
+RWTexture2D<float4>   OutId;
+
+[numthreads(8, 8, 1)]
+void Main(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= IdRect.zw))
+	{
+		return;
+	}
+
+	uint DepthInt = 0, VisibleClusterIndex = 0, TriIndex = 0;
+	UnpackVisPixel(VisBuffer64[Pixel], DepthInt, VisibleClusterIndex, TriIndex);
+	if (VisibleClusterIndex == 0xFFFFFFFF)
+	{
+		return;
+	}
+
+	// the scene depth carries every surface; a Nanite pixel that is behind a classic mesh keeps the classic id
+	const float NaniteDepth = asfloat(DepthInt);
+	if (NaniteDepth < SceneDepth[Pixel + IdRect.xy] - 1e-7)
+	{
+		return;
+	}
+
+	const FVisibleCluster    VisibleCluster = GetVisibleCluster(VisibleClusterIndex);
+	const FInstanceSceneData InstanceData   = GetInstanceSceneDataUnchecked(VisibleCluster.InstanceId);
+	if (InstanceData.PrimitiveId >= NumPrimitiveIds)
+	{
+		return;
+	}
+	const float4 Id = IdByPrimitive[InstanceData.PrimitiveId];
+	if (Id.a > 0.0 || any(Id.rgb > 0.0))
+	{
+		OutId[Pixel] = Id;
+	}
+}
